@@ -1,0 +1,39 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "scenarios": {
+      ".read": "auth != null",
+      // Allow seeding by preventing writes if data already exists.
+      // For production, a more secure rule (e.g., admin-only) would be better.
+      ".write": "auth != null && !data.exists()"
+    },
+    "userScenarios": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "evaluations": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".indexOn": ["scenarioId"]
+      }
+    },
+    "leaderboards": {
+      ".read": "auth != null",
+      "$scenarioId": {
+        ".indexOn": "score",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['score', 'displayName', 'uid']) && newData.child('score').isNumber() && newData.child('displayName').isString() && newData.child('uid').isString() && newData.child('uid').val() === $uid"
+        }
+      }
+    }
+  }
+}
