@@ -75,7 +75,7 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, use
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please upload a valid image file (PNG, JPG, etc.).');
+      alert(t('operator.invalidImageAlert'));
       return;
     }
 
@@ -124,7 +124,7 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, use
         setPastEvaluations(prev => [newEntry, ...prev]);
       } catch (error) {
         console.error("Failed to save evaluation:", error);
-        alert("Could not save your evaluation. Please check your connection and try again.");
+        alert(t('operator.saveEvalFailed'));
       }
     }
 
@@ -159,7 +159,7 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, use
 
             <div className="flex flex-col mb-6">
                 <label htmlFor="workflow" className="text-lg font-semibold mb-2">1. {t('operator.explain')}</label>
-                <p className="text-sm text-slate-400 mb-3">Describe the steps in your process. Specify which tasks are handled by AI and which require human intervention.</p>
+                <p className="text-sm text-slate-400 mb-3">{t('operator.explainHelper')}</p>
                 <textarea
                   id="workflow"
                   value={workflowExplanation}

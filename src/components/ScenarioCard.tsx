@@ -11,9 +11,10 @@ interface ScenarioCardProps {
   highScore?: number;
   averageScore?: number;
   onDelete?: (scenarioId: string) => void;
+  onTranslate?: (scenario: Scenario) => void;
 }
 
-const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, highScore, averageScore }) => {
+const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, highScore, averageScore, onTranslate }) => {
   const isCustom = !!scenario.userId;
   const { t, lang } = useTranslation();
   const localizedTitle = lang === 'Spanish' && scenario.title_es ? scenario.title_es : scenario.title;
@@ -85,6 +86,15 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, highSco
       <button className="mt-4 text-sm font-semibold text-white bg-sky-600/50 hover:bg-sky-500/70 py-2 rounded-md transition-colors w-full">
         {t('scenario.start')}
       </button>
+      {/* Translate button for scenarios missing translations */}
+      {(!scenario.title_es || !scenario.description_es || !scenario.goal_es) && (
+        <button
+          onClick={(e) => { e.stopPropagation(); if (typeof onTranslate === 'function') onTranslate(scenario); }}
+          className="mt-2 text-xs font-medium text-slate-800 bg-amber-400 hover:bg-amber-300 py-1 rounded-md transition-colors w-full"
+        >
+          {t('scenario.translate')}
+        </button>
+      )}
     </div>
   );
 };

@@ -29,7 +29,9 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const { t, lang, setLang } = useTranslation();
 
   const handleLogout = () => {
@@ -71,6 +73,25 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
       document.body.style.overflow = "";
     };
   }, [isMenuOpen]);
+
+  // Close profile dropdown on Esc or click outside
+  useEffect(() => {
+    if (!isProfileMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsProfileMenuOpen(false);
+    };
+    const onClick = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onClick);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onClick);
+    };
+  }, [isProfileMenuOpen]);
 
   return (
     <>
@@ -118,21 +139,25 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
                       <option value="Spanish">Spanish</option>
                     </select>
 
-                    <Avatar user={user} />
-                    <button 
-                      onClick={() => setIsProfileOpen(true)}
-                      aria-label={t('header.editProfile')}
-                      className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
-                    >
-                      <svg className="h-4 w-4 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zM6 20v-1a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1"/></svg>
-                      <span>{t('header.editProfile')}</span>
-                    </button>
-                    <button 
-                      onClick={handleLogout}
-                      className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-red-500/20 hover:text-red-400 transition-colors"
-                    >
-                      {t('header.logout')}
-                    </button>
+                    {/* Avatar with dropdown menu for profile actions */}
+                    <div className="relative" ref={profileMenuRef}>
+                      <button
+                        onClick={() => setIsProfileMenuOpen(prev => !prev)}
+                        aria-haspopup="menu"
+                        aria-expanded={isProfileMenuOpen}
+                        className="flex items-center rounded-md focus:outline-none"
+                        title={String(user.displayName || '')}
+                      >
+                        <Avatar user={user} />
+                      </button>
+
+                      {isProfileMenuOpen && (
+                        <div className="absolute right-0 mt-2 w-44 bg-slate-800 border border-slate-700 rounded-md shadow-lg z-50">
+                          <button onClick={() => { setIsProfileOpen(true); setIsProfileMenuOpen(false); }} className="w-full text-left px-4 py-2 text-slate-200 hover:bg-slate-700">{t('header.editProfile')}</button>
+                          <button onClick={() => { setIsProfileMenuOpen(false); handleLogout(); }} className="w-full text-left px-4 py-2 text-slate-200 hover:bg-red-700/20">{t('header.logout')}</button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 {/* Mobile Hamburger Button */}
@@ -178,7 +203,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
 
               <div className="flex flex-col items-center justify-center space-y-4 text-center">
         <div className="flex items-center space-x-4 mb-8">
-          <Avatar user={user} onClick={() => setIsProfileOpen(true)} />
+          <Avatar user={user} />
                     <div>
                         <p className="font-semibold text-white">{user.displayName}</p>
                         <p className="text-sm text-slate-400">{user.email}</p>
@@ -186,7 +211,8 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
                 </div>
 
           <div className="mb-6">
-            <button onClick={() => setIsProfileOpen(true)} className="w-full text-left px-4 py-3 rounded-md text-slate-300 hover:bg-slate-800">{t('header.editProfile')}</button>
+            {/* Mobile Edit profile remains inside mobile menu but is a menu item, not triggered by avatar click */}
+            <button onClick={() => { setIsProfileOpen(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 rounded-md text-slate-300 hover:bg-slate-800">{t('header.editProfile')}</button>
           </div>
 
         <button 

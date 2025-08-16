@@ -66,7 +66,8 @@ const RightSidebar: React.FC<RightSidebarProps> = ({ user }) => {
   const { t } = useTranslation();
 
   return (
-    <aside className="hidden md:block md:w-72 lg:w-80 xl:w-96 space-y-6">
+  // Temporarily force the sidebar visible for debugging (was hidden md:block ...)
+  <aside className="block w-full md:w-72 lg:w-80 xl:w-96 space-y-6">
       <div className="sticky top-20 space-y-4">
         <LeaderboardSidebar leaderboard={globalTop} isLoading={isLoadingGlobal} />
 

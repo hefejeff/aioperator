@@ -3,8 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import type firebase from 'firebase/compat/app';
 import type { Scenario } from '../types';
-import { saveUserScenario } from '../services/firebaseService';
-import { deleteUserScenario } from '../services/firebaseService';
+import { saveUserScenario, deleteUserScenario, updateScenario } from '../services/firebaseService';
 import ScenarioCard from './ScenarioCard';
 import CreateScenarioForm from './CreateScenarioForm';
 import { useTranslation } from '../i18n';
@@ -47,6 +46,60 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
     // This will throw on error, which is caught by the form component
     const newScenario = await saveUserScenario(user.uid, data as any);
     onScenarioCreated(newScenario);
+  };
+
+  const [translatingId, setTranslatingId] = useState<string | null>(null);
+
+  const handleTranslate = async (scenario: Scenario) => {
+    if (translatingId) return; // single translation at a time
+    setTranslatingId(scenario.id);
+    try {
+      // Attempt to use geminiService to translate to Spanish if missing
+      const mod = await import('../services/geminiService');
+
+      const translateText = async (text: string, target: 'Spanish' | 'English') => {
+        try {
+          const prompt = `Translate the following text to ${target}. Keep meaning and tone, be concise. Return only the translated text:\n\n${text}`;
+          const raw = await mod.generateText(prompt, null, { temperature: 0.2 });
+          return (raw ?? text).trim();
+        } catch (err) {
+          console.debug('Translation failed, falling back to original', err);
+          return text;
+        }
+      };
+
+      const updated: Scenario = { ...scenario };
+      // If Spanish missing, create title_es/description_es/goal_es from English
+      if (!updated.title_es && updated.title) {
+        updated.title_es = await translateText(updated.title, 'Spanish');
+      }
+      if (!updated.description_es && updated.description) {
+        updated.description_es = await translateText(updated.description, 'Spanish');
+      }
+      if (!updated.goal_es && updated.goal) {
+        updated.goal_es = await translateText(updated.goal, 'Spanish');
+      }
+
+      if (updated.userId) {
+        // user-owned scenario — update in-place
+        await updateScenario(updated);
+      } else {
+        // seeded scenario — create a per-user override so we don't write to protected global path
+        const { createUserScenarioOverride } = await import('../services/firebaseService');
+        await createUserScenarioOverride(user.uid, updated.id, {
+          title_es: updated.title_es,
+          description_es: updated.description_es,
+          goal_es: updated.goal_es,
+          domain: updated.domain,
+        });
+      }
+      setLocalScenarios(prev => prev.map(s => s.id === updated.id ? updated : s));
+    } catch (err) {
+      console.error('Translation failed:', err);
+      alert('Translation failed. See console for details.');
+    } finally {
+      setTranslatingId(null);
+    }
   };
 
   const filteredScenarios = domainFilter === 'All' ? localScenarios : localScenarios.filter(s => (s.domain || 'General') === domainFilter);
@@ -94,6 +147,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
             onSelect={onSelectScenario}
             highScore={highScores[scenario.id]}
             averageScore={averageScores[scenario.id]}
+            onTranslate={handleTranslate}
           />
         ))}
       </div>

@@ -4,7 +4,7 @@ import { LoadingSpinner } from './OperatorConsole';
 // Note: import is done dynamically in the handler to avoid throwing at module load if API key is missing
 
 interface CreateScenarioFormProps {
-  onSave: (data: { title: string; description: string; goal: string; domain?: string }) => Promise<void>;
+  onSave: (data: { title: string; title_es?: string; description: string; description_es?: string; goal: string; goal_es?: string; domain?: string }) => Promise<void>;
   onClose: () => void;
 }
 
@@ -29,7 +29,44 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
     setIsLoading(true);
     try {
       const finalDomain = domain || 'General';
-      await onSave({ title, description, goal, domain: finalDomain });
+
+      // Build payload that includes both English and Spanish versions.
+      const payload: any = {
+        title: title.trim(),
+        description: description.trim(),
+        goal: goal.trim(),
+        domain: finalDomain,
+      };
+
+      // Try to generate translations via geminiService if available. If it fails, fall back to the original text.
+      const tryTranslate = async (text: string, target: 'English' | 'Spanish') => {
+        try {
+          const mod = await import('../services/geminiService');
+          const prompt = `Translate the following text to ${target}. Keep the meaning and tone, be concise, and return only the translated text:\n\n${text}`;
+          const raw = await mod.generateText(prompt, null, { temperature: 0.2 });
+          return (raw ?? text).trim();
+        } catch (err) {
+          console.debug('Translation attempt failed, using original text as fallback', err);
+          return text;
+        }
+      };
+
+      if (language === 'English') {
+        // user provided English -> create Spanish translations
+        payload.title_es = await tryTranslate(payload.title, 'Spanish');
+        payload.description_es = await tryTranslate(payload.description, 'Spanish');
+        payload.goal_es = await tryTranslate(payload.goal, 'Spanish');
+      } else {
+        // user provided Spanish -> create English translations
+        payload.title_es = payload.title; // keep original Spanish
+        payload.title = await tryTranslate(payload.title, 'English');
+        payload.description_es = payload.description;
+        payload.description = await tryTranslate(payload.description, 'English');
+        payload.goal_es = payload.goal;
+        payload.goal = await tryTranslate(payload.goal, 'English');
+      }
+
+      await onSave(payload);
       onClose(); // Close on success
     } catch (err) {
       setError(t('create.errorSaveFailed'));

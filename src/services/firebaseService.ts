@@ -14,12 +14,17 @@ export const updateUserProfile = async (user: firebase.User): Promise<void> => {
     // Fetch existing profile to preserve preferences like preferredLanguage
     const snapshot = await userRef.get();
     const existing = snapshot.exists() ? snapshot.val() : {};
-    await userRef.update({
-      displayName: user.displayName ?? existing.displayName,
-      email: user.email ?? existing.email,
-      photoURL: user.photoURL ?? existing.photoURL,
-      preferredLanguage: existing.preferredLanguage ?? 'English',
-    });
+    // Build an updates object only with defined values to avoid Firebase errors
+    const updates: Record<string, any> = {};
+    updates.displayName = user.displayName ?? existing.displayName;
+    updates.email = user.email ?? existing.email;
+    // Only include photoURL if it's defined (even null is acceptable if user intends to clear it)
+    if (typeof user.photoURL !== 'undefined') {
+      updates.photoURL = user.photoURL ?? existing.photoURL ?? null;
+    }
+    updates.preferredLanguage = existing.preferredLanguage ?? 'English';
+
+    await userRef.update(updates);
   } catch (error) {
     console.error("Error updating user profile:", error);
     // Non-critical, so we don't throw
@@ -115,6 +120,42 @@ export const saveUserScenario = async (userId: string, scenarioData: Omit<Scenar
         console.error("Error saving user scenario:", error);
         throw error;
     }
+};
+
+// Update an existing scenario (either seeded scenarios or user-created ones)
+export const updateScenario = async (scenario: Scenario): Promise<void> => {
+  try {
+    if (scenario.userId) {
+      const ref = db.ref(`userScenarios/${scenario.userId}/${scenario.id}`);
+      await ref.update(scenario as any);
+    } else {
+      // Writing to global seeded scenarios may be restricted by DB rules.
+      // For safety, avoid updating `/scenarios/{id}` directly here —
+      // callers should use `createUserScenarioOverride` when they intend to store
+      // per-user translations or overrides for seeded content.
+      const ref = db.ref(`scenarios/${scenario.id}`);
+      await ref.update(scenario as any);
+    }
+  } catch (error) {
+    console.error(`Failed to update scenario ${scenario.id}:`, error);
+    throw error;
+  }
+};
+
+// Create a per-user override copy of a seeded scenario. This stores the scenario under
+// `userScenarios/{userId}/{scenarioId}` and sets userId so the UI treats it as custom.
+export const createUserScenarioOverride = async (userId: string, scenarioId: string, data: Partial<Scenario>): Promise<void> => {
+  try {
+    const ref = db.ref(`userScenarios/${userId}/${scenarioId}`);
+    // Ensure the override includes id and userId so it behaves like a user-created scenario
+  // Build payload but remove any keys with undefined values to satisfy Realtime DB set constraints
+  const rawPayload = { id: scenarioId, userId, ...data } as Record<string, any>;
+  const payload = Object.fromEntries(Object.entries(rawPayload).filter(([_, v]) => typeof v !== 'undefined')) as any;
+  await ref.set(payload);
+  } catch (error) {
+    console.error(`Failed to create user scenario override for ${scenarioId}:`, error);
+    throw error;
+  }
 };
 
 export const deleteUserScenario = async (userId: string, scenarioId: string): Promise<void> => {
