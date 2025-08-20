@@ -6,8 +6,9 @@ import ProfileModal from './ProfileModal';
 import { useTranslation } from '../i18n';
 
 interface HeaderProps {
-  onNavigate: (view: 'DASHBOARD' | 'TRAINING' | 'HISTORY') => void;
+  onNavigate: (view: 'DASHBOARD' | 'TRAINING' | 'HISTORY' | 'ADMIN') => void;
   user: firebase.User | null;
+  userRole?: 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER' | null;
 }
 
   const Avatar: React.FC<{ user: firebase.User; onClick?: () => void }> = ({ user, onClick }) => {
@@ -26,7 +27,7 @@ interface HeaderProps {
 };
 
 
-const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
+const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -38,7 +39,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
     auth.signOut().catch(error => console.error('Logout Error:', error));
   };
 
-  const handleMobileNav = (view: 'DASHBOARD' | 'TRAINING' | 'HISTORY') => {
+  const handleMobileNav = (view: 'DASHBOARD' | 'TRAINING' | 'HISTORY' | 'ADMIN') => {
     onNavigate(view);
     setIsMenuOpen(false); // Close menu after navigation
   };
@@ -127,6 +128,14 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
                   >
                       {t('nav.history')}
                   </button>
+                  {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
+                    <button 
+                      onClick={() => onNavigate('ADMIN')}
+                      className="px-3 py-2 rounded-md text-sm font-medium text-amber-300 hover:bg-amber-800/20 hover:text-amber-200 transition-colors border border-amber-700/40"
+                    >
+                        {t('nav.admin')}
+                    </button>
+                  )}
                   <div className="flex items-center space-x-3">
                     {/* Language selector */}
                     <select
@@ -233,6 +242,14 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
         >
           {t('nav.history')}
         </button>
+        {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
+          <button 
+            onClick={() => handleMobileNav('ADMIN')}
+            className="w-full text-xl py-4 rounded-md font-medium text-amber-300 hover:bg-amber-800/20 hover:text-amber-200 transition-colors border border-amber-700/40"
+          >
+            {t('nav.admin')}
+          </button>
+        )}
                 
                 <div className="absolute bottom-8 left-0 right-0 px-4 space-y-3">
                     <div className="flex justify-center">

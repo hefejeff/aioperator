@@ -4,7 +4,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import type firebase from 'firebase/compat/app';
 import { auth } from './firebaseConfig';
 import type { Scenario } from './types';
-import { getScenarios, seedScenarios, updateUserProfile, getAllUserEvaluations } from './services/firebaseService';
+import { getScenarios, seedScenarios, updateUserProfile, getAllUserEvaluations, getUserProfile } from './services/firebaseService';
 import Header from './components/Header';
 import DashboardView from './components/DashboardView';
 import TrainingView from './components/TrainingView';
@@ -12,12 +12,12 @@ import OperatorConsole from './components/OperatorConsole';
 import LoginView from './components/LoginView';
 import LoadingScreen from './components/LoadingScreen';
 import HistoryView from './components/HistoryView';
+import AdminDashboard from './components/AdminDashboard';
 import RightSidebar from './components/RightSidebar';
 import { ALL_SCENARIOS } from './constants';
 import { I18nProvider } from './i18n';
-import { getUserProfile } from './services/firebaseService';
 
-type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'HISTORY';
+type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'HISTORY' | 'ADMIN';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('DASHBOARD');
@@ -31,16 +31,18 @@ const App: React.FC = () => {
   const [isLoadingScenarios, setIsLoadingScenarios] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [initialLang, setInitialLang] = useState<'English' | 'Spanish'>('English');
+  const [role, setRole] = useState<'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER' | null>(null);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
-      setUser(currentUser);
+    setUser(currentUser);
       setIsLoadingAuth(false);
       
       if (currentUser) {
         try {
-          const profile = await getUserProfile(currentUser.uid);
-          if (profile && profile.preferredLanguage) setInitialLang(profile.preferredLanguage as 'English' | 'Spanish');
+      const profile = await getUserProfile(currentUser.uid);
+      if (profile && profile.preferredLanguage) setInitialLang(profile.preferredLanguage as 'English' | 'Spanish');
+      if (profile && profile.role) setRole(profile.role);
         } catch (e) {
           // ignore
         }
@@ -114,7 +116,7 @@ const App: React.FC = () => {
   }, []);
 
 
-  const handleNavigate = useCallback((newView: 'DASHBOARD' | 'TRAINING' | 'HISTORY') => {
+  const handleNavigate = useCallback((newView: 'DASHBOARD' | 'TRAINING' | 'HISTORY' | 'ADMIN') => {
     setActiveScenario(null);
     setView(newView);
   }, []);
@@ -195,6 +197,11 @@ const App: React.FC = () => {
                     user={user!}
                     onStartTraining={handleStartTraining} 
                />;
+      case 'ADMIN':
+        if (user) {
+          return <AdminDashboard currentUser={user} />;
+        }
+        return null;
     }
   };
 
@@ -205,7 +212,7 @@ const App: React.FC = () => {
   return (
     <I18nProvider initial={initialLang}>
     <div className="min-h-screen bg-slate-900 font-sans">
-      <Header onNavigate={handleNavigate} user={user} />
+  <Header onNavigate={handleNavigate} user={user} userRole={role} />
         {error && (
             <div className="bg-yellow-900/30 border-l-4 border-yellow-500 text-yellow-300 p-4 mx-4 my-6 sm:mx-6 md:mx-8 rounded-r-lg shadow-lg animate-fade-in" role="alert">
                 <div className="flex">

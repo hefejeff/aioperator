@@ -1,15 +1,18 @@
 {
   "rules": {
     "users": {
+      ".read": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'ADMIN' || root.child('users/' + auth.uid + '/role').val() === 'SUPER_ADMIN')",
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid"
+        ".read": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'ADMIN' || root.child('users/' + auth.uid + '/role').val() === 'SUPER_ADMIN')",
+  ".write": "auth != null && auth.uid === $uid && (newData.child('role').val() === data.child('role').val())",
+        "role": {
+          ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'ADMIN' || root.child('users/' + auth.uid + '/role').val() === 'SUPER_ADMIN')",
+          ".validate": "newData.isString() && newData.val().matches(/^(SUPER_ADMIN|ADMIN|PRO_USER|USER)$/)"
+        }
       }
     },
     "scenarios": {
       ".read": "auth != null",
-      // Allow seeding by preventing writes if data already exists.
-      // For production, a more secure rule (e.g., admin-only) would be better.
       ".write": "auth != null && !data.exists()"
     },
     "userScenarios": {

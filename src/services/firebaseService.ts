@@ -1,6 +1,6 @@
 import { db } from '../firebaseConfig';
 import type firebase from 'firebase/compat/app';
-import type { EvaluationResult, Scenario, StoredEvaluationResult, AggregatedEvaluationResult, LeaderboardEntry } from '../types';
+import type { EvaluationResult, Scenario, StoredEvaluationResult, AggregatedEvaluationResult, LeaderboardEntry, UserProfile, Role } from '../types';
 import { ALL_SCENARIOS } from '../constants';
 
 // For performance at scale, you should add indexes to your database rules file (e.g., database.rules.json):
@@ -36,7 +36,7 @@ export const getUserProfile = async (uid: string): Promise<import('../types').Us
     const userRef = db.ref(`users/${uid}`);
     const snapshot = await userRef.get();
     if (!snapshot.exists()) return null;
-    return { uid, ...(snapshot.val() as Omit<import('../types').UserProfile, 'uid'>) } as import('../types').UserProfile;
+  return { uid, ...(snapshot.val() as Omit<UserProfile, 'uid'>) } as UserProfile;
   } catch (error) {
     console.error('Failed to fetch user profile:', error);
     return null;
@@ -129,12 +129,12 @@ export const updateScenario = async (scenario: Scenario): Promise<void> => {
       const ref = db.ref(`userScenarios/${scenario.userId}/${scenario.id}`);
       await ref.update(scenario as any);
     } else {
-      // Writing to global seeded scenarios may be restricted by DB rules.
-      // For safety, avoid updating `/scenarios/{id}` directly here —
-      // callers should use `createUserScenarioOverride` when they intend to store
-      // per-user translations or overrides for seeded content.
-      const ref = db.ref(`scenarios/${scenario.id}`);
-      await ref.update(scenario as any);
+      // Seeded scenario (no userId): do not update the global seeded copy.
+      // Callers should use createUserScenarioOverride(userId, scenarioId, data) instead.
+      throw new Error(
+        `Refusing to update seeded scenario ${scenario.id}. ` +
+        `Use createUserScenarioOverride(userId, scenarioId, data) to create a per-user override.`
+      );
     }
   } catch (error) {
     console.error(`Failed to update scenario ${scenario.id}:`, error);
@@ -253,6 +253,33 @@ export const getGlobalLeaderboard = async (topN = 5): Promise<LeaderboardEntry[]
   } catch (error) {
     console.error('Failed to compute global leaderboard:', error);
     return [];
+  }
+};
+
+// Admin: list all user profiles (requires permissive DB rules or admin backend)
+export const listAllUsers = async (): Promise<UserProfile[]> => {
+  try {
+    const usersRef = db.ref('users');
+    const snapshot = await usersRef.get();
+    if (!snapshot.exists()) return [];
+    const data = snapshot.val();
+    return Object.entries<any>(data).map(([uid, profile]) => ({ uid, ...(profile as Omit<UserProfile, 'uid'>) }));
+  } catch (error) {
+    console.error('Failed to list users:', error);
+    return [];
+  }
+};
+
+// Admin: set a user's role; authorizerUid can be used for server-side checks if you add Cloud Functions later
+export const setUserRole = async (_authorizerUid: string, targetUid: string, newRole: Role): Promise<boolean> => {
+  try {
+    // Client-side gating is best-effort; enforce with DB rules or Cloud Functions in production
+    const ref = db.ref(`users/${targetUid}/role`);
+    await ref.set(newRole);
+    return true;
+  } catch (error) {
+    console.error('Failed to set user role:', error);
+    return false;
   }
 };
 

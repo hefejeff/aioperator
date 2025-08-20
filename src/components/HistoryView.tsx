@@ -5,6 +5,7 @@ import type { AggregatedEvaluationResult } from '../types';
 import { LoadingSpinner } from './OperatorConsole';
 import { Icons } from '../constants';
 import { useTranslation } from '../i18n';
+import ZoomableImageModal from './ZoomableImageModal';
 
 // Group evaluations by scenario title for display
 const groupEvaluations = (evaluations: AggregatedEvaluationResult[]) => {
@@ -17,6 +18,7 @@ const groupEvaluations = (evaluations: AggregatedEvaluationResult[]) => {
 const HistoryView: React.FC<{ user: firebase.User }> = ({ user }) => {
   const [history, setHistory] = useState<Record<string, AggregatedEvaluationResult[]>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [selected, setSelected] = useState<{ imageUrl: string; workflowExplanation?: string } | null>(null);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -80,20 +82,35 @@ const HistoryView: React.FC<{ user: firebase.User }> = ({ user }) => {
                             <p className="text-5xl font-bold text-sky-400">{item.score}<span className="text-2xl text-slate-500">/10</span></p>
                         </div>
                     </div>
-                    {item.imageUrl && (
-                        <details className="mt-4">
-                            <summary className="cursor-pointer text-sm text-sky-400 hover:underline">{t('history.viewDiagram')}</summary>
-                            <img src={item.imageUrl} alt="Submitted workflow diagram" className="mt-2 max-h-60 rounded-lg border border-slate-600" />
-                        </details>
+        {item.imageUrl && (
+                      <div className="mt-4">
+                        <button
+                          type="button"
+          onClick={() => setSelected({ imageUrl: item.imageUrl!, workflowExplanation: item.workflowExplanation })}
+                          className="cursor-pointer text-sm text-sky-400 hover:underline"
+                        >
+                          {t('history.viewDiagram')}
+                        </button>
+                        <img
+                          src={item.imageUrl}
+                          alt="Submitted workflow diagram"
+                          className="mt-2 max-h-60 rounded-lg border border-slate-600"
+          onClick={() => setSelected({ imageUrl: item.imageUrl!, workflowExplanation: item.workflowExplanation })}
+                        />
+                      </div>
                     )}
                   </div>
                 ))}
               </div>
             </div>
           ))}
+          {selected && (
+            <ZoomableImageModal imageUrl={selected.imageUrl} workflowExplanation={selected.workflowExplanation} onClose={() => setSelected(null)} />
+          )}
         </div>
       )}
     </div>
   );
 };
 export default HistoryView;
+

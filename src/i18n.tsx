@@ -8,6 +8,7 @@ const resources: Record<string, Record<string, string>> = {
     'nav.home': 'Home',
     'nav.training': 'Training',
     'nav.history': 'History',
+  'nav.admin': 'Admin',
     'header.editProfile': 'Edit Profile',
     'header.logout': 'Logout',
 
@@ -46,6 +47,12 @@ const resources: Record<string, Record<string, string>> = {
     'operator.yourGoalLabel': 'Your Goal:',
     'operator.yourScore': 'Your Score',
     'operator.aiFeedback': 'Feedback from AI Consultant:',
+  'operator.aiAssist': 'AI Assist: draft explanation',
+  'operator.aiDiagramAssist': 'AI Assist: create diagram',
+  'operator.previewTitle': 'Diagram Preview',
+  'operator.copyMermaid': 'Copy Mermaid',
+  'operator.useAsImage': 'Use as Image',
+  'operator.refreshPreview': 'Refresh Preview',
     'operator.noHistoryScenario': 'No history for this scenario yet. Submit a workflow to see your results here!',
 
     // Sidebar & leaderboard
@@ -105,6 +112,7 @@ const resources: Record<string, Record<string, string>> = {
     'nav.home': 'Inicio',
     'nav.training': 'Entrenamiento',
     'nav.history': 'Historial',
+  'nav.admin': 'Admin',
     'header.editProfile': 'Editar Perfil',
     'header.logout': 'Cerrar sesión',
 
@@ -143,6 +151,12 @@ const resources: Record<string, Record<string, string>> = {
     'operator.yourGoalLabel': 'Tu objetivo:',
     'operator.yourScore': 'Tu puntuación',
     'operator.aiFeedback': 'Comentarios del Consultor IA:',
+  'operator.aiAssist': 'Asistencia IA: borrador de explicación',
+  'operator.aiDiagramAssist': 'Asistencia IA: crear diagrama',
+  'operator.previewTitle': 'Vista previa del diagrama',
+  'operator.copyMermaid': 'Copiar Mermaid',
+  'operator.useAsImage': 'Usar como imagen',
+  'operator.refreshPreview': 'Actualizar vista previa',
     'operator.noHistoryScenario': 'No hay historial para este escenario todavía. ¡Envía un flujo de trabajo para ver tus resultados aquí!',
 
     // Sidebar & leaderboard

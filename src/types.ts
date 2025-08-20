@@ -20,6 +20,7 @@ export interface UserProfile {
   email: string | null;
   photoURL: string | null;
   preferredLanguage?: 'English' | 'Spanish' | null;
+  role?: Role | null;
 }
 
 export interface EvaluationResult {
@@ -45,3 +46,5 @@ export interface LeaderboardEntry {
   displayName: string;
   score: number;
 }
+
+export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER';
