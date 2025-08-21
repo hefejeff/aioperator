@@ -1,6 +1,6 @@
 import { db } from '../firebaseConfig';
 import type firebase from 'firebase/compat/app';
-import type { EvaluationResult, Scenario, StoredEvaluationResult, AggregatedEvaluationResult, LeaderboardEntry, UserProfile, Role } from '../types';
+import type { EvaluationResult, Scenario, StoredEvaluationResult, AggregatedEvaluationResult, LeaderboardEntry, UserProfile, Role, Platform, SavedPrd, SavedPitch } from '../types';
 import { ALL_SCENARIOS } from '../constants';
 
 // For performance at scale, you should add indexes to your database rules file (e.g., database.rules.json):
@@ -359,6 +359,88 @@ export const getLeaderboardForScenario = async (scenarioId: string): Promise<Lea
   } catch (error) {
     console.error(`Firebase error fetching leaderboard for scenario ${scenarioId}:`, error);
     // Don't throw, just return empty so UI doesn't break on offline mode.
+    return [];
+  }
+};
+
+// Save a generated PRD for later retrieval
+export const savePrd = async (
+  userId: string,
+  scenarioId: string,
+  platform: Platform,
+  markdown: string,
+  scenarioTitle?: string
+): Promise<string> => {
+  try {
+    const prdRef = db.ref(`prds/${userId}`).push();
+    const payload = {
+      userId,
+      scenarioId,
+      scenarioTitle: scenarioTitle ?? null,
+      platform,
+      markdown,
+      timestamp: Date.now(),
+    };
+    await prdRef.set(payload);
+    return prdRef.key as string;
+  } catch (error) {
+    console.error('Failed to save PRD:', error);
+    throw error;
+  }
+};
+
+// Save a generated Elevator Pitch for later retrieval
+export const savePitch = async (
+  userId: string,
+  scenarioId: string,
+  markdown: string,
+  scenarioTitle?: string
+): Promise<string> => {
+  try {
+    const pitchRef = db.ref(`pitches/${userId}`).push();
+    const payload = {
+      userId,
+      scenarioId,
+      scenarioTitle: scenarioTitle ?? null,
+      markdown,
+      timestamp: Date.now(),
+    };
+    await pitchRef.set(payload);
+    return pitchRef.key as string;
+  } catch (error) {
+    console.error('Failed to save Elevator Pitch:', error);
+    throw error;
+  }
+};
+
+// Get saved PRDs for a user
+export const getSavedPrds = async (userId: string): Promise<SavedPrd[]> => {
+  try {
+    const ref = db.ref(`prds/${userId}`);
+    const snap = await ref.get();
+    if (!snap.exists()) return [];
+    const data = snap.val();
+    return Object.entries<any>(data)
+      .map(([id, v]) => ({ id, ...(v as Omit<SavedPrd, 'id'>) }))
+      .sort((a, b) => b.timestamp - a.timestamp);
+  } catch (error) {
+    console.error('Failed to load saved PRDs:', error);
+    return [];
+  }
+};
+
+// Get saved Elevator Pitches for a user
+export const getSavedPitches = async (userId: string): Promise<SavedPitch[]> => {
+  try {
+    const ref = db.ref(`pitches/${userId}`);
+    const snap = await ref.get();
+    if (!snap.exists()) return [];
+    const data = snap.val();
+    return Object.entries<any>(data)
+      .map(([id, v]) => ({ id, ...(v as Omit<SavedPitch, 'id'>) }))
+      .sort((a, b) => b.timestamp - a.timestamp);
+  } catch (error) {
+    console.error('Failed to load saved Elevator Pitches:', error);
     return [];
   }
 };

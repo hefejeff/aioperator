@@ -72,7 +72,7 @@ const ProfileModal: React.FC<Props> = ({ user, onClose, onSaved }) => {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md" role="dialog" aria-modal="true">
+      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md max-h-[85vh] overflow-y-auto" role="dialog" aria-modal="true">
   <h2 className="text-xl font-bold text-white mb-4">{t('profile.title')}</h2>
         {isLoading ? (
           <div className="p-6 text-center"><LoadingSpinner /></div>

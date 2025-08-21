@@ -48,3 +48,27 @@ export interface LeaderboardEntry {
 }
 
 export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER';
+
+// Target platform for PRD generation
+export type Platform = 'MS365' | 'GOOGLE' | 'CUSTOM';
+
+// Saved PRD document
+export interface SavedPrd {
+  id: string;
+  userId: string;
+  scenarioId: string;
+  scenarioTitle?: string;
+  platform: Platform;
+  markdown: string;
+  timestamp: number;
+}
+
+// Saved Elevator Pitch document
+export interface SavedPitch {
+  id: string;
+  userId: string;
+  scenarioId: string;
+  scenarioTitle?: string;
+  markdown: string;
+  timestamp: number;
+}

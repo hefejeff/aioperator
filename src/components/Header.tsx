@@ -4,6 +4,7 @@ import { auth } from '../firebaseConfig';
 import { Icons } from '../constants';
 import ProfileModal from './ProfileModal';
 import { useTranslation } from '../i18n';
+import LoginView from './LoginView';
 
 interface HeaderProps {
   onNavigate: (view: 'DASHBOARD' | 'TRAINING' | 'HISTORY' | 'ADMIN') => void;
@@ -34,6 +35,8 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const { t, lang, setLang } = useTranslation();
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
 
   const handleLogout = () => {
     auth.signOut().catch(error => console.error('Logout Error:', error));
@@ -106,7 +109,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
               <Icons.Sparkles />
               <span className="text-xl font-bold text-sky-400">{t('app.title')}</span>
             </div>
-            {user && (
+            {user ? (
               <>
                 {/* Desktop Navigation */}
                 <div className="hidden md:flex items-center space-x-4">
@@ -180,6 +183,30 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
                     </button>
                 </div>
               </>
+            ) : (
+              <div className="flex items-center gap-3">
+                <select
+                  value={lang}
+                  onChange={(e) => setLang(e.target.value as any)}
+                  className="hidden sm:block bg-slate-900 border border-slate-700 text-slate-200 rounded-md px-2 py-1 text-sm"
+                  aria-label="Language selector"
+                >
+                  <option value="English">English</option>
+                  <option value="Spanish">Spanish</option>
+                </select>
+                <button
+                  onClick={() => { setAuthMode('signup'); setIsAuthOpen(true); }}
+                  className="px-3 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500"
+                >
+                  {t('auth.signUp')}
+                </button>
+                <button
+                  onClick={() => { setAuthMode('login'); setIsAuthOpen(true); }}
+                  className="px-3 py-2 rounded-md bg-slate-800 text-white text-sm font-medium border border-slate-700 hover:bg-slate-700"
+                >
+                  {t('auth.signIn')}
+                </button>
+              </div>
             )}
           </div>
         </nav>
@@ -270,6 +297,19 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
       )}
       {isProfileOpen && user && (
         <ProfileModal user={user} onClose={() => setIsProfileOpen(false)} onSaved={() => {/* App listens to profile-updated event to refresh UI */}} />
+      )}
+      {isAuthOpen && !user && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => setIsAuthOpen(false)}>
+          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-lg w-full p-4 md:p-6" onClick={(e)=>e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-white font-semibold">{authMode === 'signup' ? t('auth.createAccount') : t('auth.welcomeBack')}</h3>
+              <button onClick={() => setIsAuthOpen(false)} className="p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-700/50" aria-label="Close">
+                <Icons.X />
+              </button>
+            </div>
+            <LoginView mode={authMode} />
+          </div>
+        </div>
       )}
     </>
   );

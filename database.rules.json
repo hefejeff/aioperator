@@ -37,6 +37,20 @@
           ".validate": "newData.hasChildren(['score', 'displayName', 'uid']) && newData.child('score').isNumber() && newData.child('displayName').isString() && newData.child('uid').isString() && newData.child('uid').val() === $uid"
         }
       }
+    },
+    "prds": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".indexOn": ["scenarioId", "timestamp", "platform"]
+      }
+    },
+    "pitches": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".indexOn": ["scenarioId", "timestamp"]
+      }
     }
   }
 }

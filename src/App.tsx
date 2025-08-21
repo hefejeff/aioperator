@@ -9,7 +9,8 @@ import Header from './components/Header';
 import DashboardView from './components/DashboardView';
 import TrainingView from './components/TrainingView';
 import OperatorConsole from './components/OperatorConsole';
-import LoginView from './components/LoginView';
+// import LoginView from './components/LoginView';
+import PublicLanding from './components/PublicLanding';
 import LoadingScreen from './components/LoadingScreen';
 import HistoryView from './components/HistoryView';
 import AdminDashboard from './components/AdminDashboard';
@@ -228,7 +229,9 @@ const App: React.FC = () => {
       )}
   <div className="md:flex md:items-start md:space-x-6 p-4 sm:p-6 md:p-8">
             <main className={`flex-1 ${error ? 'pt-0' : ''}`}>
-              {user ? renderAppContent() : <LoginView />}
+              {user ? renderAppContent() : (
+                <PublicLanding />
+              )}
             </main>
             <div className="mt-6 lg:mt-0">
               {user && <RightSidebar user={user} />}

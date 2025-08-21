@@ -136,7 +136,7 @@ const ZoomableImageModal: React.FC<Props> = ({ imageUrl, onClose, workflowExplan
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-5xl h-[80vh] flex flex-col shadow-2xl" onClick={(e)=>e.stopPropagation()}>
+      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl overflow-hidden" onClick={(e)=>e.stopPropagation()}>
         <div className="flex items-center justify-between p-3 border-b border-slate-700">
           <div className="text-slate-200 font-semibold">Submitted Diagram</div>
           <div className="flex items-center gap-2">

@@ -1,16 +1,24 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { auth } from '../firebaseConfig';
 import { Icons } from '../constants';
 import { LoadingSpinner } from './OperatorConsole';
 
-const LoginView: React.FC = () => {
-  const [isSignUp, setIsSignUp] = useState(false);
+interface LoginViewProps {
+  mode?: 'login' | 'signup';
+}
+
+const LoginView: React.FC<LoginViewProps> = ({ mode = 'login' }) => {
+  const [isSignUp, setIsSignUp] = useState(mode === 'signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    setIsSignUp(mode === 'signup');
+  }, [mode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
