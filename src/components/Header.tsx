@@ -2,14 +2,16 @@ import React, { useEffect, useRef, useState } from 'react';
 import type firebase from 'firebase/compat/app';
 import { auth } from '../firebaseConfig';
 import { Icons } from '../constants';
+import brainIcon from '../assets/brain_icon.png';
 import ProfileModal from './ProfileModal';
 import { useTranslation } from '../i18n';
 import LoginView from './LoginView';
 
 interface HeaderProps {
-  onNavigate: (view: 'DASHBOARD' | 'TRAINING' | 'HISTORY' | 'ADMIN') => void;
+  onNavigate: (view: 'DASHBOARD' | 'TRAINING' | 'ADMIN') => void;
   user: firebase.User | null;
   userRole?: 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER' | null;
+  onOpenWorkflowDrawer?: () => void;
 }
 
   const Avatar: React.FC<{ user: firebase.User; onClick?: () => void }> = ({ user, onClick }) => {
@@ -28,7 +30,7 @@ interface HeaderProps {
 };
 
 
-const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
+const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkflowDrawer }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -42,7 +44,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
     auth.signOut().catch(error => console.error('Logout Error:', error));
   };
 
-  const handleMobileNav = (view: 'DASHBOARD' | 'TRAINING' | 'HISTORY' | 'ADMIN') => {
+  const handleMobileNav = (view: 'DASHBOARD' | 'TRAINING' | 'ADMIN') => {
     onNavigate(view);
     setIsMenuOpen(false); // Close menu after navigation
   };
@@ -102,12 +104,25 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
       <header className="bg-slate-900/70 backdrop-blur-md sticky top-0 z-40 border-b border-slate-700">
         <nav className="container mx-auto px-4 sm:px-6 md:px-8">
           <div className="flex items-center justify-between h-16">
-            <div 
-              className="flex items-center space-x-2 cursor-pointer"
-              onClick={() => onNavigate('DASHBOARD')}
-            >
-              <Icons.Sparkles />
-              <span className="text-xl font-bold text-sky-400">{t('app.title')}</span>
+            <div className="flex items-center space-x-4">
+              <div 
+                className="flex items-center space-x-2 cursor-pointer"
+                onClick={() => onNavigate('DASHBOARD')}
+              >
+                <img src={brainIcon} alt="Logo" className="h-8 w-8 object-contain drop-shadow" />
+                <span className="text-xl font-bold text-sky-400">{t('app.title')}</span>
+              </div>
+              
+              {/* Workflow Drawer Button */}
+              {user && onOpenWorkflowDrawer && (
+                <button
+                  onClick={onOpenWorkflowDrawer}
+                  className="p-2 rounded-lg bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 text-slate-300 hover:text-white transition-colors"
+                  title="Open My Workflows"
+                >
+                  <Icons.Document />
+                </button>
+              )}
             </div>
             {user ? (
               <>
@@ -117,19 +132,13 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
                     onClick={() => onNavigate('DASHBOARD')}
                     className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
                   >
-                      {t('nav.home')}
+                      {t('nav.dashboard')}
                   </button>
                   <button 
                     onClick={() => onNavigate('TRAINING')}
                     className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
                   >
-                      {t('nav.training')}
-                  </button>
-                  <button 
-                    onClick={() => onNavigate('HISTORY')}
-                    className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
-                  >
-                      {t('nav.history')}
+                      {t('nav.playground')}
                   </button>
                   {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
                     <button 
@@ -225,7 +234,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
         <div 
           className="flex items-center space-x-2"
         >
-          <Icons.Sparkles />
+          <img src={brainIcon} alt="Logo" className="h-8 w-8 object-contain drop-shadow" />
           <span className="text-xl font-bold text-sky-400">{t('app.title')}</span>
         </div>
                 <button 
@@ -255,19 +264,13 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
           onClick={() => handleMobileNav('DASHBOARD')}
           className="w-full text-xl py-4 rounded-md font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
         >
-          {t('nav.home')}
+          {t('nav.dashboard')}
         </button>
         <button 
           onClick={() => handleMobileNav('TRAINING')}
           className="w-full text-xl py-4 rounded-md font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
         >
-          {t('nav.training')}
-        </button>
-        <button 
-          onClick={() => handleMobileNav('HISTORY')}
-          className="w-full text-xl py-4 rounded-md font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
-        >
-          {t('nav.history')}
+          {t('nav.playground')}
         </button>
         {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
           <button 

@@ -13,11 +13,11 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
   const [description, setDescription] = useState('');
   const [goal, setGoal] = useState('');
   const [domain, setDomain] = useState('');
-  const [language, setLanguage] = useState<'English' | 'Spanish'>('English');
+  const [generatingExample, setGeneratingExample] = useState(false);
+  const { t, lang } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState<string | null>(null);
+  // AI generation removed
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +51,7 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
         }
       };
 
-      if (language === 'English') {
+  if (lang === 'English') {
         // user provided English -> create Spanish translations
         payload.title_es = await tryTranslate(payload.title, 'Spanish');
         payload.description_es = await tryTranslate(payload.description, 'Spanish');
@@ -76,60 +76,146 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
     }
   };
 
-  const handleGenerate = async () => {
-    setGenerateError(null);
-    setIsGenerating(true);
+  const handleGenerateExample = async () => {
+    if (!domain) return; // need a domain to tailor example
+    setGeneratingExample(true);
     try {
-      // lazy import so the module check runs only when user requests generation
       const mod = await import('../services/geminiService');
-  const hintParts: string[] = [];
-    if (title.trim()) hintParts.push(`Title hint: ${title.trim()}`);
-    if (description.trim()) hintParts.push(`Description hint: ${description.trim()}`);
-    if (goal.trim()) hintParts.push(`Goal hint: ${goal.trim()}`);
-  if (domain) hintParts.push(`Prefer domain: ${domain}`);
-  if (language) hintParts.push(`Return language: ${language}`);
+      
+      // Create varied, domain-specific prompts for more diverse examples
+      const domainPrompts: Record<string, string[]> = {
+        'Sales': [
+          'Create a workflow for automating lead scoring and qualification in a B2B sales environment',
+          'Design a process for automated follow-up sequences after sales demos',
+          'Build a system for territory assignment and opportunity distribution',
+          'Create a workflow for competitive analysis and proposal customization'
+        ],
+        'HR': [
+          'Design an automated candidate screening and interview scheduling system',
+          'Create a workflow for employee onboarding and document collection',
+          'Build a performance review reminder and feedback collection process',
+          'Design a system for tracking PTO requests and coverage arrangements'
+        ],
+        'Finance': [
+          'Create an automated expense report processing and approval workflow',
+          'Design a system for monthly financial close and reconciliation tasks',
+          'Build a workflow for vendor payment approvals and processing',
+          'Create an automated budget variance reporting system'
+        ],
+        'Operations': [
+          'Design a workflow for supply chain disruption monitoring and response',
+          'Create a system for quality control issue tracking and resolution',
+          'Build an automated inventory reorder and vendor notification process',
+          'Design a workflow for maintenance scheduling and equipment tracking'
+        ],
+        'Logistics': [
+          'Create an automated shipment tracking and customer notification system',
+          'Design a workflow for route optimization and delivery scheduling',
+          'Build a system for warehouse capacity planning and allocation',
+          'Create a process for freight audit and carrier performance tracking'
+        ],
+        'Healthcare': [
+          'Design a patient appointment reminder and preparation workflow',
+          'Create a system for medical record requests and transfer processing',
+          'Build a workflow for insurance verification and pre-authorization',
+          'Design an automated lab result notification and follow-up system'
+        ],
+        'Manufacturing': [
+          'Create a workflow for production line efficiency monitoring and alerts',
+          'Design a system for quality defect tracking and root cause analysis',
+          'Build an automated materials planning and procurement process',
+          'Create a workflow for equipment downtime tracking and maintenance scheduling'
+        ],
+        'Legal': [
+          'Design a contract review and approval workflow with stakeholder routing',
+          'Create a system for legal document template management and generation',
+          'Build a workflow for compliance deadline tracking and notifications',
+          'Design an automated client intake and conflict checking process'
+        ],
+        'Procurement': [
+          'Create a workflow for vendor evaluation and selection processes',
+          'Design a system for purchase requisition approval and routing',
+          'Build an automated contract renewal notification system',
+          'Create a workflow for spend analysis and budget tracking'
+        ],
+        'Marketing': [
+          'Design a workflow for content approval and publication scheduling',
+          'Create a system for lead nurturing campaign automation',
+          'Build a workflow for event planning and attendee management',
+          'Design an automated competitor monitoring and alert system'
+        ],
+        'IT': [
+          'Create a workflow for incident escalation and resolution tracking',
+          'Design a system for software license management and renewal alerts',
+          'Build an automated user access provisioning and deprovisioning process',
+          'Create a workflow for security vulnerability assessment and patching'
+        ],
+        'Customer Support': [
+          'Design a workflow for ticket routing based on customer tier and issue type',
+          'Create a system for automated knowledge base article suggestions',
+          'Build a workflow for customer satisfaction follow-up and feedback collection',
+          'Design an escalation process for high-priority customer issues'
+        ]
+      };
 
-  const prompt = `You are an assistant that creates training scenarios for an "AI Operator Training Hub" application. Each scenario must describe a real-world business process flow (actors, steps, inputs/outputs) where at least one step could be improved or automated using AI. Prefer domains other than customer support unless the user explicitly asks for customer support. Choose a domain for the scenario from this list: Sales, HR, Finance, Operations, Logistics, Healthcare, Manufacturing, Legal, Procurement, Marketing, IT, Customer Support. Produce a JSON object with the following keys:\n- domain: short domain name from the list above\n- title: a short descriptive title (max 60 chars)\n- description: a concise summary (2-3 sentences) that explains the business process, lists the main actors/roles involved, and highlights which step(s) are good candidates for AI improvement or automation\n- goal: a clear, actionable goal the trainee should achieve when designing or critiquing an improved process (focus on AI augmentation opportunities)\nIf the user provided hints, incorporate them. Return ONLY valid JSON. Hints: ${hintParts.join(' | ')}`;
+      const prompts = domainPrompts[domain] || ['Create a general workflow automation scenario'];
+      const selectedPrompt = prompts[Math.floor(Math.random() * prompts.length)];
+      
+      const prompt = `${selectedPrompt}. You must respond with EXACTLY this format:
 
-  // choose a random temperature between 0.35 and 0.85 for variety
-  const temp = Math.random() * (0.85 - 0.35) + 0.35;
-  const raw = await mod.generateText(prompt, null, { temperature: Number(temp.toFixed(2)) });
+TITLE: "A specific, actionable title for this workflow"
+PROBLEM: "A detailed, real-world problem description with specific pain points and current inefficiencies"
+TARGET: "Concrete, measurable outcomes and success criteria that would be achieved"
 
-      // Try to parse JSON from the response
-      let parsed: any = null;
-      try {
-        parsed = JSON.parse(raw);
-      } catch (err) {
-        // If parsing fails, attempt to extract JSON block from the text
-        const match = raw.match(/\{[\s\S]*\}/);
-        if (match) {
-          try {
-            parsed = JSON.parse(match[0]);
-          } catch (err2) {
-            // fallthrough
-          }
+Make this example specific to ${domain} with realistic details, metrics, and business impact. Avoid generic responses.`;
+      
+      const response = await mod.generateText(prompt, null, { temperature: 0.4 });
+      
+      // Parse the structured response
+      const lines = response.split('\n').filter(line => line.trim());
+      let parsedTitle = '';
+      let parsedProblem = '';
+      let parsedTarget = '';
+      
+      for (const line of lines) {
+        if (line.startsWith('TITLE:')) {
+          parsedTitle = line.replace('TITLE:', '').replace(/['"]/g, '').trim();
+        } else if (line.startsWith('PROBLEM:')) {
+          parsedProblem = line.replace('PROBLEM:', '').replace(/['"]/g, '').trim();
+        } else if (line.startsWith('TARGET:')) {
+          parsedTarget = line.replace('TARGET:', '').replace(/['"]/g, '').trim();
         }
       }
-
-      if (parsed && typeof parsed === 'object') {
-        if (parsed.domain) setDomain(String(parsed.domain));
-        if (parsed.title) setTitle(String(parsed.title));
-        if (parsed.description) setDescription(String(parsed.description));
-        if (parsed.goal) setGoal(String(parsed.goal));
-      } else {
-        // If we couldn't parse, put the raw response into the description for editing
-        setDescription(raw);
-        setGenerateError(t('create.generateErrorNonJson'));
-      }
+      
+      // Directly populate form fields
+      if (parsedTitle) setTitle(parsedTitle);
+      if (parsedProblem) setDescription(parsedProblem);
+      if (parsedTarget) setGoal(parsedTarget);
+      
+      console.log('AI Example generated and populated:', { parsedTitle, parsedProblem, parsedTarget });
+      
     } catch (err) {
-      console.error('AI generation error:', err);
-      setGenerateError(t('create.generateErrorFailed'));
+      console.error('Failed to generate example', err);
+      // Fallback with domain-specific content that directly populates fields
+      const fallbackData = {
+        title: `${domain} Process Optimization`,
+        problem: `Current ${domain.toLowerCase()} processes are inefficient and time-consuming, requiring significant manual effort that could be automated.`,
+        target: `Streamline ${domain.toLowerCase()} operations through AI automation to reduce processing time and improve accuracy.`
+      };
+      
+      setTitle(fallbackData.title);
+      setDescription(fallbackData.problem);
+      setGoal(fallbackData.target);
     } finally {
-      setIsGenerating(false);
+      setGeneratingExample(false);
     }
   };
 
-  const { t } = useTranslation();
+  // handleGenerate removed
+
+  const domainOptions = [
+    'Sales','HR','Finance','Operations','Logistics','Healthcare','Manufacturing','Legal','Procurement','Marketing','IT','Customer Support'
+  ];
 
   return (
     <div 
@@ -141,124 +227,101 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
         onClick={(e) => e.stopPropagation()} // Prevent closing modal when clicking inside
       >
   <h2 className="text-2xl font-bold text-white mb-4">{t('create.title')}</h2>
-        <form onSubmit={handleSave} className="space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center md:space-x-4">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-300 mb-1">{t('create.domain')}</label>
-              <select
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
-              >
-                <option value="">{t('create.domainAuto')}</option>
-                <option>Sales</option>
-                <option>HR</option>
-                <option>Finance</option>
-                <option>Operations</option>
-                <option>Logistics</option>
-                <option>Healthcare</option>
-                <option>Manufacturing</option>
-                <option>Legal</option>
-                <option>Procurement</option>
-                <option>Marketing</option>
-                <option>IT</option>
-                <option>Customer Support</option>
-              </select>
-            </div>
-            <div className="mt-3 md:mt-0 md:w-64">
-              <label className="block text-sm font-medium text-slate-300 mb-1">{t('create.language')}</label>
-              <select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value as 'English' | 'Spanish')}
-                className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
-              >
-                <option>English</option>
-                <option>Spanish</option>
-              </select>
-            </div>
-          </div>
+        <form onSubmit={handleSave} className="space-y-5">
+          {/* Domain */}
           <div>
-            <label htmlFor="title" className="block text-sm font-medium text-slate-300 mb-1">{t('create.titleField')}</label>
-              <input
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-slate-300">{t('create.domain')}</label>
+              <button
+                type="button"
+                onClick={handleGenerateExample}
+                disabled={!domain || generatingExample}
+                className="text-xs px-2 py-1 rounded-md bg-sky-700 text-white disabled:opacity-40 hover:bg-sky-600 transition-colors"
+              >
+                {generatingExample ? t('loading') : t('aiExample.button')}
+              </button>
+            </div>
+            <select
+              value={domain}
+              onChange={(e) => { setDomain(e.target.value); }}
+              className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
+            >
+              <option value="">{t('create.domainAuto')}</option>
+              {domainOptions.map(opt => (
+                <option key={opt} value={opt}>{t(`domain.${opt}`)}</option>
+              ))}
+            </select>
+          </div>
+          {/* Workflow Title */}
+          <div>
+            <label htmlFor="title" className="block text-sm font-medium text-slate-300 mb-1">Workflow Title</label>
+            <input
               id="title"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={t('create.titleField')}
+              placeholder="Enter a descriptive title for your workflow"
               className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
             />
+          </div>
+          {/* Your Problem (Description) */}
+          <div>
+            <label htmlFor="description" className="block text-sm font-medium text-slate-300 mb-1">Your Problem</label>
+            <textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={4}
+              placeholder={t('create.descriptionPlaceholder')}
+              className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
+            />
+          </div>
+          {/* Target (Goal) */}
+          <div>
+            <label htmlFor="goal" className="block text-sm font-medium text-slate-300 mb-1">Target</label>
+            <textarea
+              id="goal"
+              value={goal}
+              onChange={(e) => setGoal(e.target.value)}
+              rows={4}
+              placeholder={t('create.goalPlaceholder')}
+              className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
+            />
+          </div>
+          {/* Domain badge */}
+          <div>
             {domain && (
               <div className="mt-2">
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-700 text-emerald-100">{domain}</span>
               </div>
             )}
           </div>
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium text-slate-300 mb-1">{t('create.description')}</label>
-            <textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder={t('create.descriptionPlaceholder')}
-              className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
-            />
-          </div>
-          <div>
-            <label htmlFor="goal" className="block text-sm font-medium text-slate-300 mb-1">{t('create.goal')}</label>
-            <textarea
-              id="goal"
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-              rows={5}
-              placeholder={t('create.goalPlaceholder')}
-              className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
-            />
-          </div>
           
           {error && (
             <p className="text-sm text-red-400 bg-red-900/30 p-3 rounded-lg text-center">{error}</p>
           )}
 
-          {generateError && (
-            <p className="text-sm text-amber-300 bg-amber-900/20 p-3 rounded-lg text-center">{generateError}</p>
-          )}
-
-          <div className="flex items-center justify-between gap-4 pt-4">
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={handleGenerate}
-                disabled={isGenerating}
-                className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-500 transition-colors disabled:opacity-60"
-              >
-                {isGenerating ? <LoadingSpinner /> : t('create.generate')}
-              </button>
-              <span className="text-sm text-slate-400">{t('create.orFill')}</span>
-            </div>
-
-            <div className="flex justify-end space-x-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-700 transition-colors"
-              >
-                {t('create.cancel')}
-              </button>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="flex items-center justify-center px-6 py-2 bg-sky-600 text-white font-bold rounded-lg hover:bg-sky-500 transition-colors disabled:bg-slate-700 disabled:cursor-not-allowed"
-              >
-                {isLoading ? <LoadingSpinner /> : t('create.save')}
-              </button>
-            </div>
+          <div className="flex items-center justify-end gap-4 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-700 transition-colors"
+            >
+              {t('create.cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="flex items-center justify-center px-6 py-2 bg-sky-600 text-white font-bold rounded-lg hover:bg-sky-500 transition-colors disabled:bg-slate-700 disabled:cursor-not-allowed"
+            >
+              {isLoading ? <LoadingSpinner /> : t('create.save')}
+            </button>
           </div>
         </form>
         <button 
             onClick={onClose}
             className="absolute top-3 right-3 text-slate-500 hover:text-slate-300 transition-colors"
-            aria-label="Close"
+                aria-label={t('common.close')}
         >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

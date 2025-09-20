@@ -33,7 +33,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
           onClick={() => setIsCreating(true)}
           className="mt-4 inline-flex items-center justify-center px-5 py-2 border border-transparent text-base font-medium rounded-md text-white bg-sky-600 hover:bg-sky-700 transition-colors"
         >
-          Create New Scenario
+          Create New Workflow
         </button>
       </div>
 

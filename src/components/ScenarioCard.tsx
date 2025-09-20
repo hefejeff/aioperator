@@ -12,9 +12,12 @@ interface ScenarioCardProps {
   averageScore?: number;
   onDelete?: (scenarioId: string) => void;
   onTranslate?: (scenario: Scenario) => void;
+  isFavorited?: boolean;
+  onToggleFavorite?: (scenario: Scenario) => void;
+  favoriteBusy?: boolean;
 }
 
-const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, highScore, averageScore, onTranslate }) => {
+const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, highScore, averageScore, onTranslate, isFavorited, onToggleFavorite, favoriteBusy }) => {
   const isCustom = !!scenario.userId;
   const { t, lang } = useTranslation();
   const localizedTitle = lang === 'Spanish' && scenario.title_es ? scenario.title_es : scenario.title;
@@ -28,15 +31,27 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, highSco
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter') onSelect(scenario); }}
     >
-      {isCustom && (
-          <div className="absolute top-2 right-2 flex items-center space-x-2 z-10">
-          <span className="text-xs bg-sky-900 text-sky-300 px-2 py-1 rounded-full font-semibold">{t('scenario.custom')}</span>
-          {/* delete button */}
+      {/* Action cluster (favorite, custom badge, delete) */}
+      <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
+        {isCustom && (
+          <span className="text-[10px] leading-none bg-sky-900 text-sky-300 px-2 py-1 rounded-full font-semibold uppercase tracking-wide">{t('scenario.custom')}</span>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); if (!favoriteBusy && onToggleFavorite) onToggleFavorite(scenario); }}
+          disabled={favoriteBusy}
+          className={`p-1 rounded-full transition-colors disabled:opacity-60 ${isFavorited ? 'text-yellow-400 hover:text-yellow-300' : 'text-slate-400 hover:text-slate-200'}`}
+          aria-label={isFavorited ? 'Unfavorite' : 'Favorite'}
+          title={isFavorited ? 'Unfavorite' : 'Favorite'}
+        >
+          {favoriteBusy ? (
+            <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          ) : isFavorited ? <Icons.StarSolid /> : <Icons.Star />}
+        </button>
+        {isCustom && (
           <button
             onClick={(e) => {
               e.stopPropagation();
               if (confirm('Delete this scenario? This cannot be undone.')) {
-                // call parent's delete via a custom event -- parent should pass onDelete prop
                 const ev = new CustomEvent('scenario-delete', { detail: { id: scenario.id } });
                 window.dispatchEvent(ev);
               }
@@ -49,14 +64,17 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, highSco
               <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+        )}
+      </div>
+      {/* Domain pill row (right-justified) */}
+      {scenario.domain && (
+        <div className="absolute top-2 left-2 z-10 flex justify-start">
+          <span className={`text-[11px] leading-tight uppercase tracking-wide px-2 py-1 rounded-full font-semibold shadow-sm ${DOMAIN_COLORS[scenario.domain] || DOMAIN_COLORS['General']}`}>{scenario.domain}</span>
         </div>
       )}
       <div className="flex-grow">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xl font-bold text-sky-400">{localizedTitle}</h3>
-          {scenario.domain && (
-            <span className={`text-xs uppercase px-2 py-1 rounded-full font-semibold ${DOMAIN_COLORS[scenario.domain] || DOMAIN_COLORS['General']}`}>{scenario.domain}</span>
-          )}
+        <div className="mb-2 pt-6">
+          <h3 className="text-xl font-bold text-sky-400 pr-4">{localizedTitle}</h3>
         </div>
   <p className="text-slate-400 text-sm mb-4">{localizedDescription}</p>
         

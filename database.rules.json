@@ -2,6 +2,7 @@
   "rules": {
     "users": {
       ".read": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'ADMIN' || root.child('users/' + auth.uid + '/role').val() === 'SUPER_ADMIN')",
+      ".indexOn": ["email"],
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'ADMIN' || root.child('users/' + auth.uid + '/role').val() === 'SUPER_ADMIN')",
   ".write": "auth != null && auth.uid === $uid && (newData.child('role').val() === data.child('role').val())",
@@ -13,7 +14,15 @@
     },
     "scenarios": {
       ".read": "auth != null",
-      ".write": "auth != null && !data.exists()"
+      ".write": "auth != null && !data.exists()",
+      "$scenarioId": {
+        "favoritedBy": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "newData.val() === true || !newData.exists()"
+          }
+        }
+      }
     },
     "userScenarios": {
       "$uid": {
@@ -50,6 +59,16 @@
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && auth.uid === $uid",
         ".indexOn": ["scenarioId", "timestamp"]
+      }
+    },
+    "workflowVersions": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$scenarioId": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid",
+          ".indexOn": ["timestamp"]
+        }
       }
     }
   }

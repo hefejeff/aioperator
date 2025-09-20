@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import type firebase from 'firebase/compat/app';
 import type { Scenario } from '../types';
-import { saveUserScenario, deleteUserScenario, updateScenario } from '../services/firebaseService';
+import { saveUserScenario, deleteUserScenario, updateScenario, toggleFavoriteScenario, getUserFavoriteScenarioIds } from '../services/firebaseService';
 import ScenarioCard from './ScenarioCard';
 import CreateScenarioForm from './CreateScenarioForm';
 import { useTranslation } from '../i18n';
@@ -21,10 +21,23 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
   const [isCreating, setIsCreating] = useState(false);
   const [localScenarios, setLocalScenarios] = useState<Scenario[]>(scenarios);
   const [domainFilter, setDomainFilter] = useState<string>('All');
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [favoriteBusyId, setFavoriteBusyId] = useState<string | null>(null);
 
   useEffect(() => {
   setLocalScenarios(scenarios);
   }, [scenarios]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const favs = await getUserFavoriteScenarioIds(user.uid);
+        setFavoriteIds(favs);
+      } catch (e) {
+        // non-blocking
+      }
+    })();
+  }, [user]);
 
   useEffect(() => {
     const onDelete = async (e: Event) => {
@@ -103,6 +116,40 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
   };
 
   const filteredScenarios = domainFilter === 'All' ? localScenarios : localScenarios.filter(s => (s.domain || 'General') === domainFilter);
+  const sortedScenarios = [...filteredScenarios].sort((a,b)=>{
+    const aFav = favoriteIds.has(a.id) ? 1 : 0;
+    const bFav = favoriteIds.has(b.id) ? 1 : 0;
+    if (aFav !== bFav) return bFav - aFav; // favorites first
+    return a.title.localeCompare(b.title);
+  });
+
+  const handleToggleFavorite = async (scenario: Scenario) => {
+    if (favoriteBusyId) return;
+    setFavoriteBusyId(scenario.id);
+    try {
+      const nowFav = await toggleFavoriteScenario(user.uid, scenario);
+      setFavoriteIds(prev => {
+        const next = new Set(prev);
+        if (nowFav) next.add(scenario.id); else next.delete(scenario.id);
+        return next;
+      });
+      // Optimistically update local scenario favoritedBy map
+      setLocalScenarios(prev => prev.map(s => {
+        if (s.id !== scenario.id) return s;
+        const current = { ...(s.favoritedBy || {}) } as Record<string, true>;
+        if (nowFav) {
+          current[user.uid] = true as true;
+        } else {
+          delete current[user.uid];
+        }
+        return { ...s, favoritedBy: Object.keys(current).length ? current : undefined };
+      }));
+    } catch (e) {
+      alert('Failed to toggle favorite.');
+    } finally {
+      setFavoriteBusyId(null);
+    }
+  };
 
   const { t } = useTranslation();
 
@@ -140,7 +187,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredScenarios.map(scenario => (
+    {sortedScenarios.map(scenario => (
           <ScenarioCard 
             key={scenario.id} 
             scenario={scenario} 
@@ -148,6 +195,9 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
             highScore={highScores[scenario.id]}
             averageScore={averageScores[scenario.id]}
             onTranslate={handleTranslate}
+      isFavorited={favoriteIds.has(scenario.id)}
+      onToggleFavorite={handleToggleFavorite}
+  favoriteBusy={favoriteBusyId === scenario.id}
           />
         ))}
       </div>

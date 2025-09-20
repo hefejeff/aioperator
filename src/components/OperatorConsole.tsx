@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useRef } from 'react';
 import type firebase from 'firebase/compat/app';
-import type { Scenario, EvaluationResult, StoredEvaluationResult, LeaderboardEntry, Platform } from '../types';
+import type { Scenario, EvaluationResult, StoredEvaluationResult, Platform } from '../types';
 import { generateText, generatePRD, prdToMarkdown, generateElevatorPitch, elevatorPitchToMarkdown } from '../services/geminiService';
-import { getEvaluations, savePrd, savePitch } from '../services/firebaseService';
+import { getEvaluations, savePrd, savePitch, saveWorkflowVersion, getWorkflowVersions, getLatestPrdForScenario, getLatestPitchForScenario } from '../services/firebaseService';
+import { evaluateOperatorPerformance } from '../services/geminiService';
 import { Icons } from '../constants';
-import LeaderboardSidebar from './LeaderboardSidebar';
+import AIActionsPanel from './AIActionsPanel';
 import { useTranslation } from '../i18n';
 import { useDiagramAsImage } from './useDiagramAsImage';
 
@@ -25,8 +26,8 @@ export const LoadingSpinner: React.FC = () => (
 
 const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, user, onEvaluationCompleted: _onEvaluationCompleted }) => {
   const [workflowExplanation, setWorkflowExplanation] = useState('');
-  const [evaluation] = useState<EvaluationResult | null>(null);
-  const [isLoading] = useState(false);
+  const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [image, setImage] = useState<{ base64: string; mimeType: string; dataUrl: string } | null>(null);
   const [pastEvaluations, setPastEvaluations] = useState<StoredEvaluationResult[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
@@ -77,7 +78,7 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, use
   const handleGeneratePrd = async () => {
     setPrdLoading(true);
     try {
-      const prd = await generatePRD(localizedGoal, workflowExplanation, image ? image.base64 : null, prdPlatform);
+      const prd = await generatePRD(localizedGoal, workflowExplanation, image ? image.base64 : null, prdPlatforms);
       const md = prdToMarkdown(prd);
       setPrdMarkdown(md);
       setIsPrdOpen(true);
@@ -99,7 +100,11 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, use
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'prd.md';
+  const platformLabelShort = prdPlatforms.length === 1 
+    ? (prdPlatforms[0] === 'MS365' ? 'MS365' : prdPlatforms[0] === 'GOOGLE' ? 'GOOGLE' : 'CUSTOM')
+    : 'MULTI';
+  const dateStr = new Date().toISOString().split('T')[0];
+  a.download = `PRD_${platformLabelShort}_${dateStr}.md`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -109,7 +114,7 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, use
     if (pitchLoading) return;
     setPitchLoading(true);
     try {
-      const ep = await generateElevatorPitch(localizedGoal, workflowExplanation);
+      const ep = await generateElevatorPitch(localizedGoal, workflowExplanation, prdPlatforms);
       const md = elevatorPitchToMarkdown(ep);
       setPitchMarkdown(md);
       setIsPitchOpen(true);
@@ -128,31 +133,50 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, use
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'elevator-pitch.md';
+  const platformLabelShort = prdPlatforms.length === 1 
+    ? (prdPlatforms[0] === 'MS365' ? 'MS365' : prdPlatforms[0] === 'GOOGLE' ? 'GOOGLE' : 'CUSTOM')
+    : 'MULTI';
+  const dateStr = new Date().toISOString().split('T')[0];
+  a.download = `Pitch_${platformLabelShort}_${dateStr}.md`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   // Evaluation submit handler (placeholder)
-  const handleSubmitForEvaluation = () => {
-    alert('Evaluation submitted (placeholder)');
-  };
-  const [historyModalOpen, setHistoryModalOpen] = useState(false);
-  const [historyModalEval, setHistoryModalEval] = useState<StoredEvaluationResult | null>(null);
-  const [historyModalWorkflow, setHistoryModalWorkflow] = useState('');
-  const [prdPlatform, setPrdPlatform] = useState<Platform>('MS365');
+  const handleSubmitForEvaluation = useCallback(async () => {
+    if (isLoading || !workflowExplanation.trim()) return;
+    setIsLoading(true);
+    setEvaluation(null);
+    try {
+      const imagePart = image ? { base64: image.base64, mimeType: image.mimeType } : null;
+      const result = await evaluateOperatorPerformance(localizedGoal, workflowExplanation, imagePart);
+      setEvaluation(result);
+      // TODO: persist evaluation history via firebase (future enhancement)
+    } catch (e) {
+      console.error('Evaluation failed', e);
+      alert('Evaluation failed. Try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoading, workflowExplanation, image, localizedGoal]);
+  // Historic evaluation selection (modal removed; direct load)
+  const [highlightEditor, setHighlightEditor] = useState(false);
+  const [prdPlatforms, setPrdPlatforms] = useState<Platform[]>(['MS365']);
   const [prdLoading, setPrdLoading] = useState(false);
   const [prdMarkdown, setPrdMarkdown] = useState('');
   const [isPrdOpen, setIsPrdOpen] = useState(false);
   const [savingPrd, setSavingPrd] = useState(false);
+  const [lastSavedPrdTs, setLastSavedPrdTs] = useState<number | null>(null);
   // Elevator pitch state
   const [isPitchOpen, setIsPitchOpen] = useState(false);
   const [pitchMarkdown, setPitchMarkdown] = useState('');
   const [pitchLoading, setPitchLoading] = useState(false);
   const [savingPitch, setSavingPitch] = useState(false);
+  const [lastSavedPitchTs, setLastSavedPitchTs] = useState<number | null>(null);
+  const [savingVersion, setSavingVersion] = useState(false);
+  const [isVersionNameOpen, setIsVersionNameOpen] = useState(false);
+  const [versionTitleInput, setVersionTitleInput] = useState('');
   // Leaderboard state (dummy initial values)
-  const [leaderboard] = useState<LeaderboardEntry[]>([]);
-  const [isLoadingLeaderboard] = useState(false);
 
   // ...existing code...
 
@@ -580,45 +604,20 @@ Return only the steps.`;
 
 
   const openHistoryModal = useCallback((item: StoredEvaluationResult) => {
-  console.debug('[OperatorConsole] Opening history modal for item', item?.id);
-    setHistoryModalEval(item);
-    setHistoryModalWorkflow(item.workflowExplanation || '');
-    setHistoryModalOpen(true);
+    console.debug('[OperatorConsole] Loading historic evaluation into editor', item?.id);
+  const text = item.workflowExplanation || '';
+  setWorkflowExplanation(text);
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+    setHighlightEditor(true);
+    setTimeout(() => setHighlightEditor(false), 1200);
+    // focus textarea
+    setTimeout(() => {
+      const ta = document.getElementById('workflow');
+      if (ta) (ta as HTMLTextAreaElement).focus();
+    }, 350);
   }, []);
 
-  const handleGeneratePrdFromHistoryModal = useCallback(async () => {
-    if (!historyModalEval) return;
-    if (prdLoading) return;
-    setPrdLoading(true);
-    try {
-      const prd = await generatePRD(localizedGoal, historyModalWorkflow || '', null, prdPlatform);
-      const md = prdToMarkdown(prd);
-      setPrdMarkdown(md);
-      setIsPrdOpen(true);
-    } catch (e) {
-      console.error('PRD generation (history modal) failed:', e);
-      alert('PRD generation failed. Try again.');
-    } finally {
-      setPrdLoading(false);
-    }
-  }, [historyModalEval, prdLoading, localizedGoal, historyModalWorkflow, prdPlatform]);
-
-  const handleGeneratePitchFromHistoryModal = useCallback(async () => {
-    if (!historyModalEval) return;
-    if (pitchLoading) return;
-    setPitchLoading(true);
-    try {
-      const ep = await generateElevatorPitch(localizedGoal, historyModalWorkflow || '');
-      const md = elevatorPitchToMarkdown(ep);
-      setPitchMarkdown(md);
-      setIsPitchOpen(true);
-    } catch (e) {
-      console.error('Elevator pitch generation (history modal) failed:', e);
-      alert('Elevator pitch generation failed. Try again.');
-    } finally {
-      setPitchLoading(false);
-    }
-  }, [historyModalEval, pitchLoading, localizedGoal, historyModalWorkflow]);
+  // Removed modal-specific generation callbacks (historic selection now loads directly into editor)
 
   // Using the custom hook for diagram conversion
   const handleDiagramAsImage = useDiagramAsImage(mermaidSvg, setImage, setIsMermaidOpen);
@@ -627,31 +626,111 @@ Return only the steps.`;
     if (savingPrd) return;
     try {
       setSavingPrd(true);
-      await savePrd(user.uid, scenario.id, prdPlatform, prdMarkdown, localizedTitle);
+      console.log('handleSavePrd called with:', { user: user?.uid, scenario: scenario?.id, prdPlatforms });
+  const getPlatformLabel = (platforms: Platform[]) => {
+    if (platforms.length === 0) return 'Custom';
+    if (platforms.length === 1) {
+      const platform = platforms[0];
+      return platform === 'MS365' ? t('platform.ms365')
+        : platform === 'GOOGLE' ? t('platform.google')
+        : platform === 'CUSTOM' ? t('platform.custom')
+        : platform === 'CUSTOM_PROMPT' ? t('platform.customPrompt')
+        : platform === 'ASSISTANT' ? t('platform.assistant')
+        : platform === 'COMBINATION' ? t('platform.combination')
+        : platform;
+    }
+    return `${platforms.length} Platforms`;
+  };
+  const platformLabel = getPlatformLabel(prdPlatforms);
+  const datedTitle = `${localizedTitle || 'Workflow'} – ${platformLabel} – ${new Date().toLocaleDateString()}`;
+  // For now, save with the first platform or 'MULTI' if multiple
+  const saveWithPlatform = prdPlatforms.length > 0 ? prdPlatforms[0] : 'CUSTOM';
+  await savePrd(user.uid, scenario.id, saveWithPlatform, prdMarkdown, datedTitle);
       alert('PRD saved to your library.');
+  setLastSavedPrdTs(Date.now());
     } catch (e) {
       console.error('Save PRD failed:', e);
       alert('Failed to save PRD.');
     } finally {
       setSavingPrd(false);
     }
-  }, [savingPrd, user?.uid, scenario?.id, prdPlatform, prdMarkdown, localizedTitle]);
+  }, [savingPrd, user?.uid, scenario?.id, prdPlatforms, prdMarkdown, localizedTitle, t]);
 
   const handleSavePitch = useCallback(async () => {
     if (savingPitch) return;
     try {
       setSavingPitch(true);
-      await savePitch(user.uid, scenario.id, pitchMarkdown, localizedTitle);
+      console.log('handleSavePitch called with:', { user: user?.uid, scenario: scenario?.id, prdPlatforms });
+  const getPlatformLabel = (platforms: Platform[]) => {
+    if (platforms.length === 0) return 'Custom';
+    if (platforms.length === 1) {
+      const platform = platforms[0];
+      return platform === 'MS365' ? t('platform.ms365')
+        : platform === 'GOOGLE' ? t('platform.google')
+        : platform === 'CUSTOM' ? t('platform.custom')
+        : platform === 'CUSTOM_PROMPT' ? t('platform.customPrompt')
+        : platform === 'ASSISTANT' ? t('platform.assistant')
+        : platform === 'COMBINATION' ? t('platform.combination')
+        : platform;
+    }
+    return `${platforms.length} Platforms`;
+  };
+  const platformLabel = getPlatformLabel(prdPlatforms);
+  const datedTitle = `${localizedTitle || 'Workflow'} – ${platformLabel} – ${new Date().toLocaleDateString()}`;
+  await savePitch(user.uid, scenario.id, pitchMarkdown, datedTitle);
       alert('Elevator pitch saved to your library.');
+  setLastSavedPitchTs(Date.now());
     } catch (e) {
       console.error('Save Elevator Pitch failed:', e);
       alert('Failed to save Elevator Pitch.');
     } finally {
       setSavingPitch(false);
     }
-  }, [savingPitch, user?.uid, scenario?.id, pitchMarkdown, localizedTitle]);
+  }, [savingPitch, user?.uid, scenario?.id, pitchMarkdown, localizedTitle, prdPlatforms, t]);
 
-  // Load scenario history for this user and scenario
+  const handleSaveWorkflowVersion = useCallback(async () => {
+    if (savingVersion) return;
+    if (!workflowExplanation.trim()) {
+      alert('Nothing to save. Add a workflow explanation first.');
+      return;
+    }
+    const defaultName = `${localizedTitle || 'Workflow'} – ${new Date().toLocaleString()}`;
+    setVersionTitleInput(defaultName);
+    setIsVersionNameOpen(true);
+  }, [savingVersion, workflowExplanation, localizedTitle]);
+
+  const confirmSaveVersion = useCallback(async () => {
+    if (savingVersion) return;
+    try {
+      setSavingVersion(true);
+      await saveWorkflowVersion(
+        user.uid,
+        scenario.id,
+        workflowExplanation,
+        null,
+        {
+          prdMarkdown: prdMarkdown || null,
+          pitchMarkdown: pitchMarkdown || null,
+          evaluationScore: evaluation ? evaluation.score : null,
+          evaluationFeedback: evaluation ? evaluation.feedback : null,
+          versionTitle: versionTitleInput.trim() || null,
+    mermaidCode: mermaidCode || null,
+    mermaidSvg: mermaidSvg || null,
+    imageBase64: image?.base64 || null,
+    imageMimeType: image?.mimeType || null,
+        }
+      );
+      setIsVersionNameOpen(false);
+      alert('Workflow version snapshot saved.');
+    } catch (e) {
+      console.error('Save workflow version failed:', e);
+      alert('Failed to save workflow version.');
+    } finally {
+      setSavingVersion(false);
+    }
+  }, [savingVersion, user?.uid, scenario?.id, workflowExplanation, prdMarkdown, pitchMarkdown, evaluation, versionTitleInput, mermaidCode, mermaidSvg, image]);
+
+  // Load scenario history (evaluations) and latest workflow/doc artifacts for this scenario
   React.useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -661,8 +740,34 @@ Return only the steps.`;
           setPastEvaluations([]);
           return;
         }
-        const list = await getEvaluations(user.uid, scenario.id);
-        if (!cancelled) setPastEvaluations(list);
+        const [evals, versions, latestPrd, latestPitch] = await Promise.all([
+          getEvaluations(user.uid, scenario.id),
+          getWorkflowVersions(user.uid, scenario.id),
+          getLatestPrdForScenario(user.uid, scenario.id),
+          getLatestPitchForScenario(user.uid, scenario.id),
+        ]);
+        if (!cancelled) {
+          setPastEvaluations(evals);
+          // Auto-load most recent version if no current content (fresh open) and version exists
+          if (!workflowExplanation.trim() && versions.length) {
+            const latest = versions[0];
+            setWorkflowExplanation(latest.workflowExplanation || '');
+            if (latest.prdMarkdown) setPrdMarkdown(latest.prdMarkdown);
+            if (latest.pitchMarkdown) setPitchMarkdown(latest.pitchMarkdown);
+            if (latest.mermaidCode) setMermaidCode(latest.mermaidCode);
+            if (latest.mermaidSvg) setMermaidSvg(latest.mermaidSvg);
+            if (latest.imageBase64 && latest.imageMimeType) {
+              try {
+                const dataUrl = `data:${latest.imageMimeType};base64,${latest.imageBase64}`;
+                setImage({ base64: latest.imageBase64, mimeType: latest.imageMimeType, dataUrl });
+              } catch {}
+            }
+          } else {
+            // Fallback: if not loaded via version, try latest standalone PRD/Pitch for this scenario
+            if (!prdMarkdown && latestPrd?.markdown) setPrdMarkdown(latestPrd.markdown);
+            if (!pitchMarkdown && latestPitch?.markdown) setPitchMarkdown(latestPitch.markdown);
+          }
+        }
       } catch (e) {
         console.error('Failed to load history:', e);
         if (!cancelled) setPastEvaluations([]);
@@ -722,8 +827,9 @@ Return only the steps.`;
                 value={workflowExplanation}
                 onChange={(e) => setWorkflowExplanation(e.target.value)}
                 placeholder={"e.g., Step 1 (AI): Ingest customer email and categorize intent. Step 2 (Human): Review high-priority tickets..."}
-                className="flex-grow bg-slate-900 border border-slate-600 rounded-lg p-4 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow w-full"
+                className={`flex-grow bg-slate-900 border ${highlightEditor ? 'border-amber-400 ring-2 ring-amber-400/60' : 'border-slate-600'} rounded-lg p-4 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow w-full`}
                 rows={10}
+                aria-live="polite"
               />
             </div>
 
@@ -783,58 +889,28 @@ Return only the steps.`;
               </div>
             </div>
 
-            {/* PRD generator */}
-            <div className="mb-6">
-              <label className="block text-lg font-semibold mb-2">3. Generate PRD</label>
-              <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-300">Platform:</span>
-                  <select
-                    value={prdPlatform}
-                    onChange={(e)=> setPrdPlatform(e.target.value as Platform)}
-                    className="bg-slate-900 border border-slate-600 text-slate-200 rounded px-2 py-1"
-                    aria-label="Select target platform"
-                  >
-                    <option value="MS365">Microsoft 365</option>
-                    <option value="GOOGLE">Google Workspace</option>
-                    <option value="CUSTOM">Custom App</option>
-                  </select>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleGeneratePrd}
-                  disabled={prdLoading}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-60"
-                >
-                  {prdLoading ? <div className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin"/> : <Icons.Sparkles />}
-                  <span>Generate PRD</span>
-                </button>
-              </div>
+            {/* Consolidated AI Actions Panel */}
+            <div className="mt-10">
+              <AIActionsPanel
+                platforms={prdPlatforms}
+                onPlatformsChange={(platforms) => setPrdPlatforms(platforms)}
+                workflowExplanation={workflowExplanation}
+                onGeneratePrd={handleGeneratePrd}
+                onGeneratePitch={handleGeneratePitch}
+                onEvaluate={handleSubmitForEvaluation}
+                prdLoading={prdLoading}
+                pitchLoading={pitchLoading}
+                evalLoading={isLoading}
+                onSaveVersion={handleSaveWorkflowVersion}
+                savingVersion={savingVersion}
+                canSaveVersion={!!workflowExplanation.trim()}
+                t={t}
+                lastSavedPrdTs={lastSavedPrdTs}
+                lastSavedPitchTs={lastSavedPitchTs}
+                onOpenLastPrd={() => setIsPrdOpen(true)}
+                onOpenLastPitch={() => setIsPitchOpen(true)}
+              />
             </div>
-
-            {/* Elevator Pitch generator */}
-            <div className="mb-6">
-              <label className="block text-lg font-semibold mb-2">4. Elevator Pitch</label>
-              <div className="flex gap-3 items-center">
-                <button
-                  type="button"
-                  onClick={handleGeneratePitch}
-                  disabled={pitchLoading}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-60"
-                >
-                  {pitchLoading ? <div className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin"/> : <Icons.Sparkles />}
-                  <span>Generate Elevator Pitch</span>
-                </button>
-              </div>
-            </div>
-
-            <button
-              onClick={handleSubmitForEvaluation}
-              disabled={isLoading || !workflowExplanation}
-              className="w-full flex items-center justify-center bg-sky-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-sky-500 transition-colors disabled:bg-slate-700 disabled:cursor-not-allowed"
-            >
-              {isLoading ? <LoadingSpinner /> : t('operator.evaluate')}
-            </button>
           </div>
 
           {evaluation && (
@@ -886,64 +962,11 @@ Return only the steps.`;
           </div>
         </div>
 
-        {/* Right Sidebar */}
-        <aside className="w-full lg:w-96 flex-shrink-0">
-          <div className="lg:sticky lg:top-24 h-fit">
-            <LeaderboardSidebar
-              leaderboard={leaderboard}
-              isLoading={isLoadingLeaderboard}
-            />
-          </div>
-        </aside>
+  {/* (Removed unused empty aside that previously held a sidebar) */}
       </div>
 
       {/* Modals rendered as siblings after main content for valid JSX structure */}
-      {historyModalOpen && historyModalEval && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => setHistoryModalOpen(false)}>
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-2xl w-full p-4 md:p-6 max-h-[85vh] overflow-y-auto" onClick={(e)=>e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white font-semibold">Historic Evaluation</h3>
-              <button onClick={() => setHistoryModalOpen(false)} className="p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-700/50" aria-label="Close">
-                <Icons.X />
-              </button>
-            </div>
-            <div className="mb-4">
-              <label className="block text-slate-300 text-sm mb-1">Workflow Explanation</label>
-              <textarea
-                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-slate-200 text-sm"
-                rows={8}
-                value={historyModalWorkflow}
-                onChange={e => setHistoryModalWorkflow(e.target.value)}
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block text-slate-300 text-sm mb-1">AI Feedback</label>
-              <div className="bg-slate-800 border border-slate-700 rounded p-2 text-slate-200 text-sm whitespace-pre-wrap min-h-[60px]">{historyModalEval.feedback}</div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:items-center sm:justify-end">
-              <div className="text-xs text-slate-400 flex-1">Platform: {prdPlatform === 'MS365' ? 'Microsoft 365' : prdPlatform === 'GOOGLE' ? 'Google Workspace' : 'Custom App'}</div>
-              <button
-                type="button"
-                onClick={handleGeneratePrdFromHistoryModal}
-                disabled={prdLoading}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-60"
-              >
-                {prdLoading ? <div className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin"/> : <Icons.Sparkles />}
-                <span>Generate PRD</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleGeneratePitchFromHistoryModal}
-                disabled={pitchLoading}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-60"
-              >
-                {pitchLoading ? <div className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin"/> : <Icons.Sparkles />}
-                <span>Elevator Pitch</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+  {/* Historic modal removed: historic selection now loads directly into editor */}
 
       {isMermaidOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => setIsMermaidOpen(false)}>
@@ -1033,6 +1056,40 @@ Return only the steps.`;
               <button onClick={handleSavePitch} disabled={savingPitch || !pitchMarkdown} className="px-3 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-60">
                 {savingPitch ? <div className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin inline-block mr-2"/> : null}
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isVersionNameOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => !savingVersion && setIsVersionNameOpen(false)}>
+          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full p-5" onClick={(e)=>e.stopPropagation()}>
+            <h3 className="text-white font-semibold mb-2">Name this version</h3>
+            <p className="text-slate-400 text-sm mb-4">Provide a short label to identify this saved workflow snapshot.</p>
+            <input
+              type="text"
+              value={versionTitleInput}
+              onChange={(e)=> setVersionTitleInput(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              placeholder="Version title"
+              autoFocus
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => !savingVersion && setIsVersionNameOpen(false)}
+                className="px-3 py-2 text-sm rounded-md text-slate-300 hover:text-white hover:bg-slate-700"
+                disabled={savingVersion}
+              >Cancel</button>
+              <button
+                type="button"
+                onClick={confirmSaveVersion}
+                disabled={savingVersion}
+                className="px-4 py-2 text-sm rounded-md bg-sky-600 hover:bg-sky-500 text-white inline-flex items-center gap-2 disabled:opacity-50"
+              >
+                {savingVersion && <div className="w-4 h-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />}
+                Save Version
               </button>
             </div>
           </div>

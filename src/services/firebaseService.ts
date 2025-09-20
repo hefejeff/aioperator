@@ -1,6 +1,6 @@
 import { db } from '../firebaseConfig';
 import type firebase from 'firebase/compat/app';
-import type { EvaluationResult, Scenario, StoredEvaluationResult, AggregatedEvaluationResult, LeaderboardEntry, UserProfile, Role, Platform, SavedPrd, SavedPitch } from '../types';
+import type { EvaluationResult, Scenario, StoredEvaluationResult, AggregatedEvaluationResult, LeaderboardEntry, UserProfile, Role, Platform, SavedPrd, SavedPitch, WorkflowVersion } from '../types';
 import { ALL_SCENARIOS } from '../constants';
 
 // For performance at scale, you should add indexes to your database rules file (e.g., database.rules.json):
@@ -168,6 +168,39 @@ export const deleteUserScenario = async (userId: string, scenarioId: string): Pr
   }
 };
 
+// Toggle favorite for a scenario (works for seeded and user scenarios via override path for user scenarios)
+export const toggleFavoriteScenario = async (userId: string, scenario: Scenario): Promise<boolean> => {
+  try {
+    const path = scenario.userId ? `userScenarios/${scenario.userId}/${scenario.id}` : `scenarios/${scenario.id}`;
+    const ref = db.ref(path + `/favoritedBy/${userId}`);
+    const snap = await ref.get();
+    if (snap.exists()) {
+      await ref.remove();
+      return false; // now unfavorited
+    } else {
+      await ref.set(true);
+      return true; // now favorited
+    }
+  } catch (e) {
+    console.error('Failed to toggle favorite scenario', e);
+    throw e;
+  }
+};
+
+// Fetch favorites for user (returns scenario IDs)
+export const getUserFavoriteScenarioIds = async (userId: string): Promise<Set<string>> => {
+  try {
+    // Need to scan both seeded and user scenarios; for efficiency at scale you'd index a reverse mapping.
+    const all = await getScenarios(userId);
+    const favs = new Set<string>();
+    all.forEach(s => { if (s.favoritedBy && s.favoritedBy[userId]) favs.add(s.id); });
+    return favs;
+  } catch (e) {
+    console.error('Failed to load favorite scenario ids', e);
+    return new Set();
+  }
+};
+
 export const saveEvaluation = async (
   userId: string,
   scenarioId: string,
@@ -283,6 +316,35 @@ export const setUserRole = async (_authorizerUid: string, targetUid: string, new
   }
 };
 
+// Admin: delete a user and all their data; authorizerUid can be used for server-side checks if you add Cloud Functions later
+export const deleteUser = async (_authorizerUid: string, targetUid: string): Promise<boolean> => {
+  try {
+    // Delete user data from multiple locations
+    const updates: Record<string, null> = {};
+    
+    // Remove user profile
+    updates[`users/${targetUid}`] = null;
+    
+    // Remove user's scenarios
+    updates[`scenarios/${targetUid}`] = null;
+    
+    // Remove user's workflow versions  
+    updates[`workflowVersions/${targetUid}`] = null;
+    
+    // Remove user's evaluations
+    updates[`evaluations/${targetUid}`] = null;
+    
+    // Apply all deletions atomically
+    await db.ref().update(updates);
+    
+    console.log(`Successfully deleted user ${targetUid} and all associated data`);
+    return true;
+  } catch (error) {
+    console.error('Failed to delete user:', error);
+    return false;
+  }
+};
+
 export const getEvaluations = async (userId: string, scenarioId: string): Promise<StoredEvaluationResult[]> => {
   try {
     const userEvaluationsRef = db.ref(`evaluations/${userId}`);
@@ -372,6 +434,7 @@ export const savePrd = async (
   scenarioTitle?: string
 ): Promise<string> => {
   try {
+    console.log('Attempting to save PRD:', { userId, scenarioId, platform, scenarioTitle });
     const prdRef = db.ref(`prds/${userId}`).push();
     const payload = {
       userId,
@@ -381,7 +444,9 @@ export const savePrd = async (
       markdown,
       timestamp: Date.now(),
     };
+    console.log('PRD payload:', payload);
     await prdRef.set(payload);
+    console.log('PRD saved successfully with key:', prdRef.key);
     return prdRef.key as string;
   } catch (error) {
     console.error('Failed to save PRD:', error);
@@ -397,6 +462,7 @@ export const savePitch = async (
   scenarioTitle?: string
 ): Promise<string> => {
   try {
+    console.log('Attempting to save Pitch:', { userId, scenarioId, scenarioTitle });
     const pitchRef = db.ref(`pitches/${userId}`).push();
     const payload = {
       userId,
@@ -405,10 +471,59 @@ export const savePitch = async (
       markdown,
       timestamp: Date.now(),
     };
+    console.log('Pitch payload:', payload);
     await pitchRef.set(payload);
+    console.log('Pitch saved successfully with key:', pitchRef.key);
     return pitchRef.key as string;
   } catch (error) {
     console.error('Failed to save Elevator Pitch:', error);
+    throw error;
+  }
+};
+
+// Save a raw workflow explanation version for a scenario (version history separate from evaluations)
+export const saveWorkflowVersion = async (
+  userId: string,
+  scenarioId: string,
+  workflowExplanation: string,
+  sourceEvaluationId?: string | null,
+  options?: {
+    prdMarkdown?: string | null;
+    pitchMarkdown?: string | null;
+    evaluationScore?: number | null;
+    evaluationFeedback?: string | null;
+  versionTitle?: string | null;
+  mermaidCode?: string | null;
+  mermaidSvg?: string | null;
+  imageBase64?: string | null;
+  imageMimeType?: string | null;
+  }
+): Promise<string> => {
+  try {
+    console.log('Attempting to save Workflow Version:', { userId, scenarioId, versionTitle: options?.versionTitle });
+    const ref = db.ref(`workflowVersions/${userId}/${scenarioId}`).push();
+    const payload = {
+      userId,
+      scenarioId,
+      workflowExplanation,
+      sourceEvaluationId: sourceEvaluationId || null,
+      prdMarkdown: options?.prdMarkdown ?? null,
+      pitchMarkdown: options?.pitchMarkdown ?? null,
+      evaluationScore: options?.evaluationScore ?? null,
+      evaluationFeedback: options?.evaluationFeedback ?? null,
+  versionTitle: options?.versionTitle ?? null,
+  mermaidCode: options?.mermaidCode ?? null,
+  mermaidSvg: options?.mermaidSvg ?? null,
+  imageBase64: options?.imageBase64 ?? null,
+  imageMimeType: options?.imageMimeType ?? null,
+      timestamp: Date.now(),
+    };
+    console.log('Workflow Version payload:', payload);
+    await ref.set(payload);
+    console.log('Workflow Version saved successfully with key:', ref.key);
+    return ref.key as string;
+  } catch (error) {
+    console.error('Failed to save workflow version:', error);
     throw error;
   }
 };
@@ -441,6 +556,384 @@ export const getSavedPitches = async (userId: string): Promise<SavedPitch[]> => 
       .sort((a, b) => b.timestamp - a.timestamp);
   } catch (error) {
     console.error('Failed to load saved Elevator Pitches:', error);
+    return [];
+  }
+};
+
+// Get latest PRD for a user + scenario
+export const getLatestPrdForScenario = async (userId: string, scenarioId: string): Promise<SavedPrd | null> => {
+  try {
+    const ref = db.ref(`prds/${userId}`);
+    // Query by scenarioId (client-side filter since RTDB per-path index not yet defined)
+    const snap = await ref.get();
+    if (!snap.exists()) return null;
+    const data = snap.val();
+    const matches: (SavedPrd & { id: string })[] = [];
+    for (const key in data) {
+      const item = data[key];
+      if (item.scenarioId === scenarioId) {
+        matches.push({ id: key, ...(item as Omit<SavedPrd, 'id'>) });
+      }
+    }
+    if (!matches.length) return null;
+    matches.sort((a,b) => b.timestamp - a.timestamp);
+    return matches[0];
+  } catch (e) {
+    console.error('Failed to get latest PRD for scenario', e);
+    return null;
+  }
+};
+
+// Get latest Pitch for a user + scenario
+export const getLatestPitchForScenario = async (userId: string, scenarioId: string): Promise<SavedPitch | null> => {
+  try {
+    const ref = db.ref(`pitches/${userId}`);
+    const snap = await ref.get();
+    if (!snap.exists()) return null;
+    const data = snap.val();
+    const matches: (SavedPitch & { id: string })[] = [];
+    for (const key in data) {
+      const item = data[key];
+      if (item.scenarioId === scenarioId) {
+        matches.push({ id: key, ...(item as Omit<SavedPitch, 'id'>) });
+      }
+    }
+    if (!matches.length) return null;
+    matches.sort((a,b) => b.timestamp - a.timestamp);
+    return matches[0];
+  } catch (e) {
+    console.error('Failed to get latest Pitch for scenario', e);
+    return null;
+  }
+};
+
+// Get workflow versions for a user & scenario
+export const getWorkflowVersions = async (userId: string, scenarioId: string): Promise<WorkflowVersion[]> => {
+  try {
+    const ref = db.ref(`workflowVersions/${userId}/${scenarioId}`);
+    const snap = await ref.get();
+    if (!snap.exists()) return [];
+    const data = snap.val();
+    return Object.entries<any>(data)
+      .map(([id, v]) => ({ id, ...(v as Omit<WorkflowVersion, 'id'>) }))
+      .sort((a,b) => b.timestamp - a.timestamp);
+  } catch (error) {
+    console.error('Failed to load workflow versions:', error);
+    return [];
+  }
+};
+
+// Get all workflow versions for a user across all scenarios
+export const getAllUserWorkflowVersions = async (userId: string): Promise<WorkflowVersion[]> => {
+  try {
+    const ref = db.ref(`workflowVersions/${userId}`);
+    const snap = await ref.get();
+    if (!snap.exists()) return [];
+    const data = snap.val();
+    const allVersions: WorkflowVersion[] = [];
+    
+    // Iterate through all scenarios for this user
+    Object.entries<any>(data).forEach(([scenarioId, scenarioVersions]) => {
+      Object.entries<any>(scenarioVersions).forEach(([versionId, version]) => {
+        allVersions.push({ 
+          id: versionId, 
+          scenarioId, 
+          ...(version as Omit<WorkflowVersion, 'id' | 'scenarioId'>) 
+        });
+      });
+    });
+    
+    // Sort by timestamp, most recent first
+    return allVersions.sort((a, b) => b.timestamp - a.timestamp);
+  } catch (error) {
+    console.error('Failed to load all user workflow versions:', error);
+    return [];
+  }
+};
+
+// Get a specific workflow version by ID
+export const getWorkflowVersion = async (workflowId: string, userId?: string): Promise<WorkflowVersion | null> => {
+  try {
+    console.log('Looking for workflow ID:', workflowId, 'for user:', userId);
+    
+    if (userId) {
+      // If userId is provided, search only in that user's data
+      const ref = db.ref(`workflowVersions/${userId}`);
+      const snap = await ref.get();
+      if (!snap.exists()) {
+        console.log('No workflowVersions data exists for user:', userId);
+        return null;
+      }
+      
+      const data = snap.val();
+      console.log('User workflow data structure:', Object.keys(data));
+      
+      // Search through all scenarios for this user
+      for (const scenarioId in data) {
+        console.log(`Checking scenario ${scenarioId}, workflows:`, Object.keys(data[scenarioId]));
+        if (data[scenarioId][workflowId]) {
+          console.log('Found workflow!');
+          return {
+            id: workflowId,
+            scenarioId,
+            userId,
+            ...data[scenarioId][workflowId]
+          };
+        }
+      }
+    } else {
+      // Fallback to global search if no userId provided
+      const ref = db.ref('workflowVersions');
+      const snap = await ref.get();
+      if (!snap.exists()) {
+        console.log('No workflowVersions data exists');
+        return null;
+      }
+      
+      const data = snap.val();
+      console.log('WorkflowVersions data structure:', Object.keys(data));
+      
+      // Search through all users and scenarios
+      for (const userIdKey in data) {
+        console.log(`Checking user ${userIdKey}, scenarios:`, Object.keys(data[userIdKey]));
+        for (const scenarioId in data[userIdKey]) {
+          console.log(`Checking scenario ${scenarioId}, workflows:`, Object.keys(data[userIdKey][scenarioId]));
+          if (data[userIdKey][scenarioId][workflowId]) {
+            console.log('Found workflow!');
+            return {
+              id: workflowId,
+              scenarioId,
+              userId: userIdKey,
+              ...data[userIdKey][scenarioId][workflowId]
+            };
+          }
+        }
+      }
+    }
+    
+    console.log('Workflow not found');
+    return null;
+  } catch (error) {
+    console.error('Failed to load workflow version:', error);
+    return null;
+  }
+};
+
+// Get a specific scenario by ID
+export const getScenarioById = async (scenarioId: string, userId?: string): Promise<Scenario | null> => {
+  try {
+    const scenarios = await getScenarios(userId);
+    return scenarios.find(s => s.id === scenarioId) || null;
+  } catch (error) {
+    console.error('Failed to load scenario:', error);
+    return null;
+  }
+};
+
+// Update an existing workflow version
+export const updateWorkflowVersion = async (
+  workflowId: string,
+  userId: string,
+  scenarioId: string,
+  updates: Partial<WorkflowVersion>
+): Promise<void> => {
+  try {
+    console.log('Updating workflow version:', { workflowId, userId, scenarioId, updates });
+    
+    const ref = db.ref(`workflowVersions/${userId}/${scenarioId}/${workflowId}`);
+    
+    // Add lastModified timestamp to updates
+    const updateData = {
+      ...updates,
+      lastModified: Date.now()
+    };
+    
+    await ref.update(updateData);
+    console.log('Workflow version updated successfully');
+  } catch (error) {
+    console.error('Failed to update workflow version:', error);
+    throw error;
+  }
+};
+
+// Team collaboration functions
+import type { TeamMember, TeamRole, WorkflowTeam, PendingInvitation } from '../types';
+
+// Get team information for a workflow
+export const getWorkflowTeam = async (workflowId: string, userId: string, scenarioId: string): Promise<WorkflowTeam | null> => {
+  try {
+    const ref = db.ref(`workflowVersions/${userId}/${scenarioId}/${workflowId}/team`);
+    const snapshot = await ref.get();
+    
+    if (!snapshot.exists()) {
+      return null;
+    }
+    
+    return snapshot.val() as WorkflowTeam;
+  } catch (error) {
+    console.error('Failed to get workflow team:', error);
+    return null;
+  }
+};
+
+// Add a team member to a workflow
+export const addTeamMember = async (
+  workflowId: string,
+  workflowOwnerId: string,
+  scenarioId: string,
+  memberEmail: string,
+  role: TeamRole,
+  addedBy: string
+): Promise<void> => {
+  try {
+    // Get user profile by email to get userId and displayName
+    const usersRef = db.ref('users');
+    const userQuery = await usersRef.orderByChild('email').equalTo(memberEmail).get();
+    
+    if (!userQuery.exists()) {
+      throw new Error('User not found with this email address');
+    }
+    
+    const userData = userQuery.val();
+    const memberUserId = Object.keys(userData)[0];
+    const memberProfile = userData[memberUserId];
+    
+    const teamMember: TeamMember = {
+      userId: memberUserId,
+      email: memberEmail,
+      displayName: memberProfile.displayName || null,
+      role,
+      addedAt: Date.now(),
+      addedBy
+    };
+    
+    // Add member to team
+    const teamRef = db.ref(`workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/members/${memberUserId}`);
+    await teamRef.set(teamMember);
+    
+    // Also update workflowId in the team structure
+    const workflowIdRef = db.ref(`workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/workflowId`);
+    await workflowIdRef.set(workflowId);
+    
+  } catch (error) {
+    console.error('Failed to add team member:', error);
+    throw error;
+  }
+};
+
+// Remove a team member from a workflow
+export const removeTeamMember = async (
+  workflowId: string,
+  workflowOwnerId: string,
+  scenarioId: string,
+  memberUserId: string
+): Promise<void> => {
+  try {
+    const teamMemberRef = db.ref(`workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/members/${memberUserId}`);
+    await teamMemberRef.remove();
+  } catch (error) {
+    console.error('Failed to remove team member:', error);
+    throw error;
+  }
+};
+
+// Update team member role
+export const updateTeamMemberRole = async (
+  workflowId: string,
+  workflowOwnerId: string,
+  scenarioId: string,
+  memberUserId: string,
+  newRole: TeamRole
+): Promise<void> => {
+  try {
+    const roleRef = db.ref(`workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/members/${memberUserId}/role`);
+    await roleRef.set(newRole);
+  } catch (error) {
+    console.error('Failed to update team member role:', error);
+    throw error;
+  }
+};
+
+// Create invitation token and store pending invitation
+export const createInvitation = async (
+  workflowId: string,
+  workflowOwnerId: string,
+  scenarioId: string,
+  email: string,
+  role: TeamRole,
+  invitedBy: string
+): Promise<string> => {
+  try {
+    // Generate unique invitation token
+    const token = `invite_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    const invitation: PendingInvitation = {
+      email,
+      role,
+      invitedBy,
+      invitedAt: Date.now(),
+      token
+    };
+    
+    // Store invitation
+    const invitationRef = db.ref(`workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/invitations/${email.replace(/\./g, '_')}`);
+    await invitationRef.set(invitation);
+    
+    return token;
+  } catch (error) {
+    console.error('Failed to create invitation:', error);
+    throw error;
+  }
+};
+
+// Get all workflows that a user has access to (as owner or team member)
+export const getUserAccessibleWorkflows = async (userId: string): Promise<WorkflowVersion[]> => {
+  try {
+    const workflows: WorkflowVersion[] = [];
+    
+    // Get workflows owned by user
+    const ownedWorkflows = await getAllUserWorkflowVersions(userId);
+    workflows.push(...ownedWorkflows);
+    
+    // Get workflows where user is a team member
+    // This requires querying all workflow versions and checking team membership
+    // For now, we'll implement a simplified version that can be optimized later
+    
+    return workflows;
+  } catch (error) {
+    console.error('Failed to get user accessible workflows:', error);
+    return [];
+  }
+};
+
+// Get all users for collaboration dropdown
+export const getAllUsers = async (): Promise<UserProfile[]> => {
+  try {
+    const usersRef = db.ref('users');
+    const snapshot = await usersRef.get();
+    
+    if (!snapshot.exists()) {
+      return [];
+    }
+    
+    const usersData = snapshot.val();
+    const users: UserProfile[] = [];
+    
+    for (const uid in usersData) {
+      const userData = usersData[uid];
+      users.push({
+        uid,
+        displayName: userData.displayName || null,
+        email: userData.email || null,
+        photoURL: userData.photoURL || null,
+        preferredLanguage: userData.preferredLanguage || null,
+        role: userData.role || null
+      });
+    }
+    
+    return users.filter(user => user.email); // Only return users with email addresses
+  } catch (error) {
+    console.error('Failed to get all users:', error);
     return [];
   }
 };

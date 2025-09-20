@@ -24,10 +24,14 @@ View your app in AI Studio: https://ai.studio/apps/drive/1s96r2IfCyZ-naByeplaGn-
 
 - See CHATGPT_INSTRUCTIONS.md for concise guidance on using ChatGPT and LLMs with this repo.
 
+## User Guide
+
+For end‑user instructions (scenarios, workflow design, AI actions, saving versions) see: [User Guide](./docs/USER_GUIDE.md)
+
 ## Generate a PRD from your workflow
 
 - In Operator Console, write your numbered steps and optionally build a Mermaid flowchart (AI Diagram Assist can help).
 - Under "Generate PRD":
-   - Choose a platform: Microsoft 365, Google Workspace, or Custom App.
+   - Choose a platform: Microsoft 365, Google Workspace, Custom App, Custom Prompt(s), Assistant(s), or Combination.
    - Click "Generate PRD" to create a platform-tailored Product Requirements Document.
 - In the PRD preview modal, you can copy the Markdown or download it as a .md file.

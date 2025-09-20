@@ -9,22 +9,24 @@ import Header from './components/Header';
 import DashboardView from './components/DashboardView';
 import TrainingView from './components/TrainingView';
 import OperatorConsole from './components/OperatorConsole';
+import RightSidebar from './components/RightSidebar';
 // import LoginView from './components/LoginView';
 import PublicLanding from './components/PublicLanding';
 import LoadingScreen from './components/LoadingScreen';
-import HistoryView from './components/HistoryView';
 import AdminDashboard from './components/AdminDashboard';
-import RightSidebar from './components/RightSidebar';
+import WorkflowDetailView from './components/WorkflowDetailView';
 import { ALL_SCENARIOS } from './constants';
 import { I18nProvider } from './i18n';
 
-type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'HISTORY' | 'ADMIN';
+type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'ADMIN' | 'WORKFLOW_DETAIL';
 
 const App: React.FC = () => {
-  const [view, setView] = useState<View>('DASHBOARD');
+  const [view, setView] = useState<View>('TRAINING');
   const [activeScenario, setActiveScenario] = useState<Scenario | null>(null);
+  const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(null);
   const [user, setUser] = useState<firebase.User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [isWorkflowDrawerOpen, setIsWorkflowDrawerOpen] = useState(false);
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [highScores, setHighScores] = useState<Record<string, number>>({});
@@ -41,9 +43,9 @@ const App: React.FC = () => {
       
       if (currentUser) {
         try {
-      const profile = await getUserProfile(currentUser.uid);
-      if (profile && profile.preferredLanguage) setInitialLang(profile.preferredLanguage as 'English' | 'Spanish');
-      if (profile && profile.role) setRole(profile.role);
+          const profile = await getUserProfile(currentUser.uid);
+          if (profile && profile.preferredLanguage) setInitialLang(profile.preferredLanguage as 'English' | 'Spanish');
+          if (profile && profile.role) setRole(profile.role);
         } catch (e) {
           // ignore
         }
@@ -117,23 +119,44 @@ const App: React.FC = () => {
   }, []);
 
 
-  const handleNavigate = useCallback((newView: 'DASHBOARD' | 'TRAINING' | 'HISTORY' | 'ADMIN') => {
+  const handleNavigate = useCallback((newView: 'DASHBOARD' | 'TRAINING' | 'ADMIN') => {
     setActiveScenario(null);
     setView(newView);
   }, []);
 
-  const handleStartTraining = useCallback(() => {
-    setView('TRAINING');
+  const handleStartTraining = useCallback((scenario?: Scenario) => {
+    if (scenario) {
+      setActiveScenario(scenario);
+      setView('SCENARIO');
+    } else {
+      setView('TRAINING');
+    }
   }, []);
+
+  const handleNavigateToScenario = useCallback((scenarioId: string) => {
+    const scenario = scenarios.find(s => s.id === scenarioId);
+    if (scenario) {
+      setActiveScenario(scenario);
+      setView('SCENARIO');
+    }
+  }, [scenarios]);
   
   const handleSelectScenario = useCallback((scenario: Scenario) => {
     setActiveScenario(scenario);
     setView('SCENARIO');
   }, []);
 
+  const handleSelectWorkflow = useCallback((workflowId: string) => {
+    setActiveWorkflowId(workflowId);
+    setView('WORKFLOW_DETAIL');
+  }, []);
+
   const handleBack = useCallback(() => {
     setActiveScenario(null);
+    setActiveWorkflowId(null);
     if (view === 'SCENARIO') {
+        setView('TRAINING');
+    } else if (view === 'WORKFLOW_DETAIL') {
         setView('TRAINING');
     } else {
         setView('DASHBOARD');
@@ -187,16 +210,23 @@ const App: React.FC = () => {
                  />;
         }
         return null;
-      case 'HISTORY':
-        if (user) {
-            return <HistoryView user={user} />;
+      case 'WORKFLOW_DETAIL':
+        if (activeWorkflowId && user) {
+          return <WorkflowDetailView
+                    workflowId={activeWorkflowId}
+                    userId={user.uid}
+                    onBack={handleBack}
+                 />;
         }
         return null;
       case 'DASHBOARD':
       default:
         return <DashboardView 
                     user={user!}
-                    onStartTraining={handleStartTraining} 
+                    onStartTraining={handleStartTraining}
+                    onNavigateToScenario={handleNavigateToScenario}
+                    onViewWorkflow={handleSelectWorkflow}
+                    onScenarioCreated={handleScenarioCreated}
                />;
       case 'ADMIN':
         if (user) {
@@ -213,30 +243,46 @@ const App: React.FC = () => {
   return (
     <I18nProvider initial={initialLang}>
     <div className="min-h-screen bg-slate-900 font-sans">
-  <Header onNavigate={handleNavigate} user={user} userRole={role} />
-        {error && (
-            <div className="bg-yellow-900/30 border-l-4 border-yellow-500 text-yellow-300 p-4 mx-4 my-6 sm:mx-6 md:mx-8 rounded-r-lg shadow-lg animate-fade-in" role="alert">
-                <div className="flex">
-                    <div className="py-1">
-                        <svg className="fill-current h-6 w-6 text-yellow-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zM9 5v6h2V5H9zm0 8v2h2v-2H9z"/></svg>
-                    </div>
-                    <div>
-                        <p className="font-bold">Offline Mode Activated</p>
-                        <p className="text-sm">{error}</p>
-                    </div>
-                </div>
+      <Header 
+        onNavigate={handleNavigate} 
+        user={user} 
+        userRole={role} 
+        onOpenWorkflowDrawer={() => setIsWorkflowDrawerOpen(true)}
+      />
+      {error && (
+        <div className="bg-yellow-900/30 border-l-4 border-yellow-500 text-yellow-300 p-4 mx-4 my-6 sm:mx-6 md:mx-8 rounded-r-lg shadow-lg animate-fade-in" role="alert">
+          <div className="flex">
+            <div className="py-1">
+              <svg className="fill-current h-6 w-6 text-yellow-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zM9 5v6h2V5H9zm0 8v2h2v-2H9z"/></svg>
             </div>
-      )}
-  <div className="md:flex md:items-start md:space-x-6 p-4 sm:p-6 md:p-8">
-            <main className={`flex-1 ${error ? 'pt-0' : ''}`}>
-              {user ? renderAppContent() : (
-                <PublicLanding />
-              )}
-            </main>
-            <div className="mt-6 lg:mt-0">
-              {user && <RightSidebar user={user} />}
+            <div>
+              <p className="font-bold">Offline Mode Activated</p>
+              <p className="text-sm">{error}</p>
             </div>
           </div>
+        </div>
+      )}
+      <div className="p-4 sm:p-6 md:p-8">
+        {user ? (
+          <div className="flex flex-col lg:flex-row gap-8 items-start">
+            <main className={`flex-1 w-full ${error ? 'pt-0' : ''}`}>
+              {renderAppContent()}
+            </main>
+            <div className="w-full lg:w-auto lg:shrink-0">
+              <RightSidebar 
+                user={user} 
+                onSelectWorkflow={handleSelectWorkflow}
+                isOpen={isWorkflowDrawerOpen}
+                onClose={() => setIsWorkflowDrawerOpen(false)}
+              />
+            </div>
+          </div>
+        ) : (
+          <main className={`${error ? 'pt-0' : ''}`}>
+            <PublicLanding />
+          </main>
+        )}
+      </div>
     </div>
   </I18nProvider>
   );

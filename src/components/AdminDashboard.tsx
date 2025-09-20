@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type firebase from 'firebase/compat/app';
-import { listAllUsers, setUserRole, getGlobalLeaderboard, getScenarios } from '../services/firebaseService';
+import { listAllUsers, setUserRole, deleteUser, getGlobalLeaderboard, getScenarios } from '../services/firebaseService';
 import type { Role, Scenario, LeaderboardEntry, UserProfile } from '../types';
 import { Icons } from '../constants';
 
@@ -18,6 +18,7 @@ const RoleBadge: React.FC<{ role?: Role | null }> = ({ role }) => {
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -57,6 +58,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
     }
   };
 
+  const onDeleteUser = async (uid: string, userEmail: string) => {
+    // Confirm deletion
+    const confirmMessage = `Are you sure you want to delete user "${userEmail}"? This will permanently delete all their data including scenarios, workflows, and evaluations. This action cannot be undone.`;
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    // Prevent self-deletion
+    if (uid === currentUser.uid) {
+      setError('You cannot delete your own account.');
+      return;
+    }
+
+    setDeleting(uid);
+    setError(null);
+    try {
+      const ok = await deleteUser(currentUser.uid, uid);
+      if (!ok) throw new Error('delete-failed');
+      setUsers(prev => prev.filter(u => u.uid !== uid));
+    } catch (e) {
+      setError('Could not delete user.');
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  // Get current user's role to determine permissions
+  const currentUserProfile = users.find(u => u.uid === currentUser.uid);
+  const currentUserRole = currentUserProfile?.role || 'USER';
+  const canDeleteUsers = currentUserRole === 'SUPER_ADMIN' || currentUserRole === 'ADMIN';
+
   return (
     <div className="space-y-8">
       <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
@@ -82,6 +114,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
 
       <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
         <h2 className="text-xl font-bold text-white mb-4">Users & Roles</h2>
+        {canDeleteUsers && (
+          <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3 mb-4">
+            <div className="flex items-center gap-2 text-red-300 text-sm">
+              <Icons.Star />
+              <span className="font-medium">Admin Warning:</span>
+            </div>
+            <p className="text-red-200 text-sm mt-1">
+              Deleting a user will permanently remove all their data including scenarios, workflows, and evaluations. This action cannot be undone.
+            </p>
+          </div>
+        )}
         <div className="overflow-auto">
           <table className="min-w-full text-sm">
             <thead>
@@ -89,7 +132,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
                 <th className="text-left py-2 pr-4">Name</th>
                 <th className="text-left py-2 pr-4">Email</th>
                 <th className="text-left py-2 pr-4">Role</th>
-                <th className="text-left py-2">Actions</th>
+                <th className="text-left py-2 pr-4">Role Actions</th>
+                {canDeleteUsers && <th className="text-left py-2">Delete</th>}
               </tr>
             </thead>
             <tbody>
@@ -98,7 +142,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
                   <td className="py-2 pr-4 text-slate-200">{u.displayName || '-'}</td>
                   <td className="py-2 pr-4 text-slate-400">{u.email || '-'}</td>
                   <td className="py-2 pr-4"><RoleBadge role={u.role || 'USER'} /></td>
-                  <td className="py-2">
+                  <td className="py-2 pr-4">
                     <select
                       className="bg-slate-900 border border-slate-700 text-slate-200 rounded px-2 py-1"
                       value={(u.role as Role) || 'USER'}
@@ -110,6 +154,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
                       ))}
                     </select>
                   </td>
+                  {canDeleteUsers && (
+                    <td className="py-2">
+                      <button
+                        onClick={() => onDeleteUser(u.uid, u.email || u.displayName || 'Unknown User')}
+                        disabled={deleting === u.uid || u.uid === currentUser.uid}
+                        className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-xs flex items-center gap-1"
+                        title={u.uid === currentUser.uid ? "Cannot delete your own account" : "Delete user and all their data"}
+                      >
+                        {deleting === u.uid ? (
+                          <>
+                            <div className="animate-spin rounded-full h-3 w-3 border-b border-white"></div>
+                            Deleting...
+                          </>
+                        ) : (
+                          <>
+                            <Icons.Trash />
+                            Delete
+                          </>
+                        )}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

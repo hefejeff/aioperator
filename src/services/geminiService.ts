@@ -132,7 +132,7 @@ export async function generatePRD(
   goal: string,
   stepsText: string,
   mermaidCode: string | null,
-  platform: Platform
+  platforms: Platform[]
 ): Promise<PRD> {
   const platformGuidance: Record<Platform, string> = {
     MS365:
@@ -140,12 +140,26 @@ export async function generatePRD(
     GOOGLE:
       'Target Google Workspace. Prefer Apps Script/Vertex AI, AppSheet for UI, Sheets/Drive for data, Gmail/Calendar/Chat integrations.',
     CUSTOM:
-      'Target a custom web application. Recommend a modern stack (e.g., React + Node/Cloud Functions + Firebase/Firestore) and any ML integration where helpful.'
+      'Target a custom web application. Recommend a modern stack (e.g., React + Node/Cloud Functions + Firebase/Firestore) and any ML integration where helpful.',
+    CUSTOM_PROMPT:
+      'Use custom prompt-based automation. There is no specific platform; tailor prompts to your chosen environment or API.',
+    ASSISTANT:
+      'Target AI assistant integration. Design for conversational interfaces (e.g., chatbots) and leverage platforms like Dialogflow or Azure Bot Service.',
+    COMBINATION:
+      'Combine custom prompts with assistant capabilities. Support both batch workflows and conversational interactions as needed.'
   };
 
-  const systemInstruction = `You are a senior product manager. Produce a crisp, complete Product Requirements Document (PRD) based on the user goal, steps, and optional Mermaid flowchart. Keep scope pragmatic and shippable in 2-3 iterations. Use clear bullet points. Incorporate platform-specific implementation notes.`;
+  const multiPlatformGuidance = platforms.length > 1 
+    ? `Multiple Platform Implementation: Generate separate implementation options for each platform. Format as "Option 1: [Platform Name]", "Option 2: [Platform Name]", etc. for each section that differs by platform.`
+    : '';
 
-  const userContent = `Inputs:\n- Goal: ${goal}\n- Steps:\n${stepsText}\n${mermaidCode ? `- Mermaid Flowchart:\n${mermaidCode}` : ''}\n- Target Platform: ${platform}\n- Platform Guidance: ${platformGuidance[platform]}`;
+  const platformsList = platforms.map((p, index) => 
+    `${index + 1}. ${p}: ${platformGuidance[p]}`
+  ).join('\n');
+
+  const systemInstruction = `You are a senior product manager. Produce a crisp, complete Product Requirements Document (PRD) based on the user goal, steps, and optional Mermaid flowchart. Keep scope pragmatic and shippable in 2-3 iterations. Use clear bullet points. ${multiPlatformGuidance}`;
+
+  const userContent = `Inputs:\n- Goal: ${goal}\n- Steps:\n${stepsText}\n${mermaidCode ? `- Mermaid Flowchart:\n${mermaidCode}` : ''}\n- Target Platforms:\n${platformsList}`;
 
   try {
     const response = await ai.models.generateContent({
@@ -193,7 +207,7 @@ export async function generatePRD(
       goals: [goal],
       requirements: { functional: [], nonFunctional: [] },
       successMetrics: [],
-      techPlan: `Target: ${platform}`
+      techPlan: `Target: ${platforms.join(', ')}`
     };
   }
 }
@@ -262,16 +276,24 @@ export interface ElevatorPitch {
 
 export async function generateElevatorPitch(
   goal: string,
-  stepsText: string
+  stepsText: string,
+  platforms?: Platform[]
 ): Promise<ElevatorPitch> {
+  const multiPlatformGuidance = platforms && platforms.length > 1 
+    ? `Multiple Platform Implementation: Mention that this solution can be implemented across ${platforms.length} different platforms (${platforms.join(', ')}), providing flexibility for different technology stacks.`
+    : platforms && platforms.length === 1
+    ? `Target Platform: This solution is designed for ${platforms[0]}.`
+    : '';
+
   const systemInstruction = `You are a pitch coach. Create a punchy, credible elevator pitch from the user's goal and workflow steps.
 Rules:
 - Be specific and concrete. Avoid fluff.
 - Highlight audience, problem, solution, differentiation, and outcomes.
 - Produce two variants: 30s and 90s.
-- Keep jargon minimal.`;
+- Keep jargon minimal.
+${multiPlatformGuidance}`;
 
-  const userContent = `Inputs:\n- Goal: ${goal}\n- Steps:\n${stepsText}`;
+  const userContent = `Inputs:\n- Goal: ${goal}\n- Steps:\n${stepsText}${platforms ? `\n- Target Platforms: ${platforms.join(', ')}` : ''}`;
 
   try {
     const response = await ai.models.generateContent({
