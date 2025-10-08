@@ -76,15 +76,25 @@ export interface PendingInvitation {
   token: string; // unique invitation token
 }
 
-// Target platform for PRD generation
-// Target platform for PRD generation and workflow mode
-export type Platform =
-  | 'MS365'
-  | 'GOOGLE'
-  | 'CUSTOM'
+// Core platforms (base options)
+export type CorePlatform = 'MS365' | 'GOOGLE' | 'CUSTOM';
+
+// Individual approaches within platforms
+export type PlatformApproach = 
+  // Power Platform approaches
+  | 'POWER_APPS'
+  | 'POWER_AUTOMATE'
+  | 'POWER_BI'
+  | 'POWER_VIRTUAL_AGENTS'
+  // Google Workspace approaches
+  | 'APP_SHEETS'
+  // Common approaches
   | 'CUSTOM_PROMPT'
   | 'ASSISTANT'
   | 'COMBINATION';
+
+// Combined type for backward compatibility
+export type Platform = CorePlatform | PlatformApproach;
 
 // Saved PRD document
 export interface SavedPrd {

@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import type firebase from 'firebase/compat/app';
+import type { User } from 'firebase/auth';
 import { listAllUsers, setUserRole, deleteUser, getGlobalLeaderboard, getScenarios } from '../services/firebaseService';
 import type { Role, Scenario, LeaderboardEntry, UserProfile } from '../types';
 import { Icons } from '../constants';
+import DomainManagement from './domain/DomainManagement';
 
 interface AdminDashboardProps {
-  currentUser: firebase.User;
+  currentUser: User;
 }
 
 const ROLE_OPTIONS: Role[] = ['SUPER_ADMIN', 'ADMIN', 'PRO_USER', 'USER'];
@@ -15,6 +16,131 @@ const RoleBadge: React.FC<{ role?: Role | null }> = ({ role }) => {
   return <span className={`text-xs ${color} text-white px-2 py-0.5 rounded`}>{role || 'USER'}</span>;
 };
 
+const UsersTab: React.FC<{
+  users: UserProfile[];
+  totalUsers: number;
+  totalScenarios: number;
+  leaderboard: LeaderboardEntry[];
+  canDeleteUsers: boolean;
+  currentUser: firebase.User;
+  saving: string | null;
+  deleting: string | null;
+  onChangeRole: (uid: string, newRole: Role) => void;
+  onDeleteUser: (uid: string, userEmail: string) => void;
+}> = ({
+  users,
+  totalUsers,
+  totalScenarios,
+  leaderboard,
+  canDeleteUsers,
+  currentUser,
+  saving,
+  deleting,
+  onChangeRole,
+  onDeleteUser,
+}) => (
+  <>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+        <p className="text-slate-400 text-sm">Users</p>
+        <p className="text-3xl font-bold text-white">{totalUsers}</p>
+      </div>
+      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+        <p className="text-slate-400 text-sm">Scenarios</p>
+        <p className="text-3xl font-bold text-white">{totalScenarios}</p>
+      </div>
+      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+        <p className="text-slate-400 text-sm">Top Operators (avg)</p>
+        <p className="text-3xl font-bold text-white">{leaderboard.length}</p>
+      </div>
+    </div>
+
+    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
+      <h2 className="text-xl font-bold text-white mb-4">Users & Roles</h2>
+      {canDeleteUsers && (
+        <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3 mb-4">
+          <div className="flex items-center gap-2 text-red-300 text-sm">
+            <Icons.Star />
+            <span className="font-medium">Admin Warning:</span>
+          </div>
+          <p className="text-red-200 text-sm mt-1">
+            Deleting a user will permanently remove all their data including scenarios, workflows, and evaluations. This action cannot be undone.
+          </p>
+        </div>
+      )}
+      <div className="overflow-auto">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="text-slate-300 border-b border-slate-700">
+              <th className="text-left py-2 pr-4">Name</th>
+              <th className="text-left py-2 pr-4">Email</th>
+              <th className="text-left py-2 pr-4">Role</th>
+              <th className="text-left py-2 pr-4">Role Actions</th>
+              {canDeleteUsers && <th className="text-left py-2">Delete</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.uid} className="border-b border-slate-800">
+                <td className="py-2 pr-4 text-slate-200">{u.displayName || '-'}</td>
+                <td className="py-2 pr-4 text-slate-400">{u.email || '-'}</td>
+                <td className="py-2 pr-4"><RoleBadge role={u.role || 'USER'} /></td>
+                <td className="py-2 pr-4">
+                  <select
+                    className="bg-slate-900 border border-slate-700 text-slate-200 rounded px-2 py-1"
+                    value={(u.role as Role) || 'USER'}
+                    disabled={saving === u.uid}
+                    onChange={(e) => onChangeRole(u.uid, e.target.value as Role)}
+                  >
+                    {ROLE_OPTIONS.map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </td>
+                {canDeleteUsers && (
+                  <td className="py-2">
+                    <button
+                      onClick={() => onDeleteUser(u.uid, u.email || u.displayName || 'Unknown User')}
+                      disabled={deleting === u.uid || u.uid === currentUser.uid}
+                      className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-xs flex items-center gap-1"
+                      title={u.uid === currentUser.uid ? "Cannot delete your own account" : "Delete user and all their data"}
+                    >
+                      {deleting === u.uid ? (
+                        <>
+                          <div className="animate-spin rounded-full h-3 w-3 border-b border-white"></div>
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <Icons.Trash />
+                          Delete
+                        </>
+                      )}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
+      <h2 className="text-xl font-bold text-white mb-4">Top Operators</h2>
+      <ul className="space-y-2">
+        {leaderboard.map(entry => (
+          <li key={entry.uid} className="flex justify-between text-slate-300">
+            <span>{entry.displayName} ({entry.uid.substring(0,6)}…)</span>
+            <span className="text-sky-400 font-semibold">{entry.score}</span>
+          </li>
+        ))}
+        {leaderboard.length === 0 && <li className="text-slate-500">No data</li>}
+      </ul>
+    </div>
+  </>
+);
+
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
@@ -22,6 +148,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
   const [error, setError] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [activeTab, setActiveTab] = useState<'users' | 'domains'>('users');
 
   useEffect(() => {
     (async () => {
@@ -92,109 +219,56 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
   return (
     <div className="space-y-8">
       <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-  <h1 className="text-2xl font-bold text-white mb-2 flex items-center gap-2"><Icons.ChartBar /> Admin Dashboard</h1>
-        <p className="text-slate-400">Manage roles and see top stats.</p>
+        <h1 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+          <Icons.ChartBar /> Admin Dashboard
+        </h1>
+        <p className="text-slate-400">Manage users, roles, and domains.</p>
         {error && <p className="text-red-400 mt-2">{error}</p>}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-          <p className="text-slate-400 text-sm">Users</p>
-          <p className="text-3xl font-bold text-white">{totalUsers}</p>
-        </div>
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-          <p className="text-slate-400 text-sm">Scenarios</p>
-          <p className="text-3xl font-bold text-white">{totalScenarios}</p>
-        </div>
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-          <p className="text-slate-400 text-sm">Top Operators (avg)</p>
-          <p className="text-3xl font-bold text-white">{leaderboard.length}</p>
-        </div>
-      </div>
-
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-        <h2 className="text-xl font-bold text-white mb-4">Users & Roles</h2>
-        {canDeleteUsers && (
-          <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3 mb-4">
-            <div className="flex items-center gap-2 text-red-300 text-sm">
-              <Icons.Star />
-              <span className="font-medium">Admin Warning:</span>
-            </div>
-            <p className="text-red-200 text-sm mt-1">
-              Deleting a user will permanently remove all their data including scenarios, workflows, and evaluations. This action cannot be undone.
-            </p>
-          </div>
-        )}
-        <div className="overflow-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-slate-300 border-b border-slate-700">
-                <th className="text-left py-2 pr-4">Name</th>
-                <th className="text-left py-2 pr-4">Email</th>
-                <th className="text-left py-2 pr-4">Role</th>
-                <th className="text-left py-2 pr-4">Role Actions</th>
-                {canDeleteUsers && <th className="text-left py-2">Delete</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {users.map(u => (
-                <tr key={u.uid} className="border-b border-slate-800">
-                  <td className="py-2 pr-4 text-slate-200">{u.displayName || '-'}</td>
-                  <td className="py-2 pr-4 text-slate-400">{u.email || '-'}</td>
-                  <td className="py-2 pr-4"><RoleBadge role={u.role || 'USER'} /></td>
-                  <td className="py-2 pr-4">
-                    <select
-                      className="bg-slate-900 border border-slate-700 text-slate-200 rounded px-2 py-1"
-                      value={(u.role as Role) || 'USER'}
-                      disabled={saving === u.uid}
-                      onChange={(e) => onChangeRole(u.uid, e.target.value as Role)}
-                    >
-                      {ROLE_OPTIONS.map(r => (
-                        <option key={r} value={r}>{r}</option>
-                      ))}
-                    </select>
-                  </td>
-                  {canDeleteUsers && (
-                    <td className="py-2">
-                      <button
-                        onClick={() => onDeleteUser(u.uid, u.email || u.displayName || 'Unknown User')}
-                        disabled={deleting === u.uid || u.uid === currentUser.uid}
-                        className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-xs flex items-center gap-1"
-                        title={u.uid === currentUser.uid ? "Cannot delete your own account" : "Delete user and all their data"}
-                      >
-                        {deleting === u.uid ? (
-                          <>
-                            <div className="animate-spin rounded-full h-3 w-3 border-b border-white"></div>
-                            Deleting...
-                          </>
-                        ) : (
-                          <>
-                            <Icons.Trash />
-                            Delete
-                          </>
-                        )}
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        
+        <div className="mt-4 border-b border-slate-700">
+          <nav className="-mb-px flex gap-4">
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`pb-3 px-1 inline-flex items-center gap-2 text-sm font-medium ${
+                activeTab === 'users'
+                  ? 'border-b-2 border-indigo-500 text-indigo-400'
+                  : 'text-slate-400 hover:text-slate-300'
+              }`}
+            >
+              <Icons.Users />
+              Users & Roles
+            </button>
+            <button
+              onClick={() => setActiveTab('domains')}
+              className={`pb-3 px-1 inline-flex items-center gap-2 text-sm font-medium ${
+                activeTab === 'domains'
+                  ? 'border-b-2 border-indigo-500 text-indigo-400'
+                  : 'text-slate-400 hover:text-slate-300'
+              }`}
+            >
+              <Icons.Building />
+              Domains
+            </button>
+          </nav>
         </div>
       </div>
 
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-        <h2 className="text-xl font-bold text-white mb-4">Top Operators</h2>
-        <ul className="space-y-2">
-          {leaderboard.map(entry => (
-            <li key={entry.uid} className="flex justify-between text-slate-300">
-              <span>{entry.displayName} ({entry.uid.substring(0,6)}…)</span>
-              <span className="text-sky-400 font-semibold">{entry.score}</span>
-            </li>
-          ))}
-          {leaderboard.length === 0 && <li className="text-slate-500">No data</li>}
-        </ul>
-      </div>
+      {activeTab === 'users' ? (
+        <UsersTab
+          users={users}
+          totalUsers={totalUsers}
+          totalScenarios={totalScenarios}
+          leaderboard={leaderboard}
+          canDeleteUsers={canDeleteUsers}
+          currentUser={currentUser}
+          saving={saving}
+          deleting={deleting}
+          onChangeRole={onChangeRole}
+          onDeleteUser={onDeleteUser}
+        />
+      ) : (
+        <DomainManagement currentUser={currentUser} />
+      )}
     </div>
   );
 };

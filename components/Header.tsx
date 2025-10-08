@@ -40,7 +40,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
             onClick={() => onNavigate('DASHBOARD')}
           >
             <Icons.Sparkles />
-            <span className="text-xl font-bold text-sky-400">AI Operator Hub</span>
+            <span className="text-xl font-bold text-sky-400">Workflow Assistant</span>
           </div>
           {user && (
             <div className="flex items-center space-x-4">

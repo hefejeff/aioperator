@@ -1,5 +1,5 @@
 {
-  "name": "AI Operator Training Hub",
+  "name": "Workflow Assistant",
   "description": "An application designed to train and evaluate AI operators. Users can practice with various scenarios and receive AI-powered feedback on their performance.",
   "requestFramePermissions": [],
   "prompt": ""

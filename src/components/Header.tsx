@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type firebase from 'firebase/compat/app';
-import { auth } from '../firebaseConfig';
+import type { User } from 'firebase/auth';
+import { auth } from '../services/firebaseInit';
+import { signOut } from 'firebase/auth';
 import { Icons } from '../constants';
 import brainIcon from '../assets/brain_icon.png';
 import ProfileModal from './ProfileModal';
@@ -9,12 +10,12 @@ import LoginView from './LoginView';
 
 interface HeaderProps {
   onNavigate: (view: 'DASHBOARD' | 'TRAINING' | 'ADMIN') => void;
-  user: firebase.User | null;
+  user: User | null;
   userRole?: 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER' | null;
   onOpenWorkflowDrawer?: () => void;
 }
 
-  const Avatar: React.FC<{ user: firebase.User; onClick?: () => void }> = ({ user, onClick }) => {
+  const Avatar: React.FC<{ user: User; onClick?: () => void }> = ({ user, onClick }) => {
   const initials = user.displayName
     ? user.displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
     : user.email ? user.email[0].toUpperCase() : '?';
@@ -41,7 +42,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
 
   const handleLogout = () => {
-    auth.signOut().catch(error => console.error('Logout Error:', error));
+    signOut(auth).catch(error => console.error('Logout Error:', error));
   };
 
   const handleMobileNav = (view: 'DASHBOARD' | 'TRAINING' | 'ADMIN') => {

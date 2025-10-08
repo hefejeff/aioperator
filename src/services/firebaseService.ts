@@ -1,7 +1,8 @@
-import { db } from '../firebaseConfig';
+import { db } from './firebaseInit';
 import type firebase from 'firebase/compat/app';
 import type { EvaluationResult, Scenario, StoredEvaluationResult, AggregatedEvaluationResult, LeaderboardEntry, UserProfile, Role, Platform, SavedPrd, SavedPitch, WorkflowVersion } from '../types';
 import { ALL_SCENARIOS } from '../constants';
+import { ref, get, push, set, update, remove, query, orderByChild, equalTo } from 'firebase/database';
 
 // For performance at scale, you should add indexes to your database rules file (e.g., database.rules.json):
 // { "rules": { "evaluations": { "$uid": { ".indexOn": "scenarioId" } } } }
@@ -9,10 +10,10 @@ import { ALL_SCENARIOS } from '../constants';
 // Function to store or update user profile information
 export const updateUserProfile = async (user: firebase.User): Promise<void> => {
   try {
-    const userRef = db.ref(`users/${user.uid}`);
+    const userRef = ref(db, `users/${user.uid}`);
     // Use update to avoid overwriting other potential user-related data
     // Fetch existing profile to preserve preferences like preferredLanguage
-    const snapshot = await userRef.get();
+    const snapshot = await get(userRef);
     const existing = snapshot.exists() ? snapshot.val() : {};
     // Build an updates object only with defined values to avoid Firebase errors
     const updates: Record<string, any> = {};
@@ -24,7 +25,7 @@ export const updateUserProfile = async (user: firebase.User): Promise<void> => {
     }
     updates.preferredLanguage = existing.preferredLanguage ?? 'English';
 
-    await userRef.update(updates);
+    await update(userRef, updates);
   } catch (error) {
     console.error("Error updating user profile:", error);
     // Non-critical, so we don't throw
@@ -33,10 +34,10 @@ export const updateUserProfile = async (user: firebase.User): Promise<void> => {
 
 export const getUserProfile = async (uid: string): Promise<import('../types').UserProfile | null> => {
   try {
-    const userRef = db.ref(`users/${uid}`);
-    const snapshot = await userRef.get();
+    const userRef = ref(db, `users/${uid}`);
+    const snapshot = await get(userRef);
     if (!snapshot.exists()) return null;
-  return { uid, ...(snapshot.val() as Omit<UserProfile, 'uid'>) } as UserProfile;
+    return { uid, ...(snapshot.val() as Omit<UserProfile, 'uid'>) } as UserProfile;
   } catch (error) {
     console.error('Failed to fetch user profile:', error);
     return null;
@@ -45,8 +46,8 @@ export const getUserProfile = async (uid: string): Promise<import('../types').Us
 
 export const setUserPreferences = async (uid: string, prefs: { displayName?: string | null; photoURL?: string | null; preferredLanguage?: 'English' | 'Spanish' | null; }) => {
   try {
-    const userRef = db.ref(`users/${uid}`);
-    await userRef.update(prefs);
+    const userRef = ref(db, `users/${uid}`);
+    await update(userRef, prefs);
     return true;
   } catch (error) {
     console.error('Failed to save user preferences:', error);
@@ -57,15 +58,15 @@ export const setUserPreferences = async (uid: string, prefs: { displayName?: str
 // Function to seed the database with initial scenarios if they don't exist
 export const seedScenarios = async (): Promise<void> => {
     try {
-        const scenariosRef = db.ref('scenarios');
-        const snapshot = await scenariosRef.get();
+        const scenariosRef = ref(db, 'scenarios');
+        const snapshot = await get(scenariosRef);
         if (!snapshot.exists()) {
             console.log('No scenarios found. Seeding database...');
             const updates: { [key: string]: Scenario } = {};
             ALL_SCENARIOS.forEach(scenario => {
                 updates[scenario.id] = scenario;
             });
-            await scenariosRef.set(updates);
+            await set(scenariosRef, updates);
             console.log('Database seeded successfully.');
         }
     } catch (error) {
@@ -77,8 +78,8 @@ export const seedScenarios = async (): Promise<void> => {
 // Function to fetch all scenarios, including user-created ones
 export const getScenarios = async (userId?: string): Promise<Scenario[]> => {
     try {
-        const scenariosRef = db.ref('scenarios');
-        const snapshot = await scenariosRef.get();
+        const scenariosRef = ref(db, 'scenarios');
+        const snapshot = await get(scenariosRef);
         let scenarios: Scenario[] = [];
         if (snapshot.exists()) {
             const data = snapshot.val();
@@ -89,8 +90,8 @@ export const getScenarios = async (userId?: string): Promise<Scenario[]> => {
 
         // Fetch user-specific scenarios if a userId is provided
         if (userId) {
-            const userScenariosRef = db.ref(`userScenarios/${userId}`);
-            const userSnapshot = await userScenariosRef.get();
+            const userScenariosRef = ref(db, `userScenarios/${userId}`);
+            const userSnapshot = await get(userScenariosRef);
             if (userSnapshot.exists()) {
                 const userData = userSnapshot.val();
                 scenarios.push(...Object.values(userData) as Scenario[]);
@@ -106,15 +107,15 @@ export const getScenarios = async (userId?: string): Promise<Scenario[]> => {
 // Function to save a new user-created scenario
 export const saveUserScenario = async (userId: string, scenarioData: Omit<Scenario, 'id' | 'type' | 'userId'>): Promise<Scenario> => {
     try {
-        const userScenariosRef = db.ref(`userScenarios/${userId}`);
-        const newScenarioRef = userScenariosRef.push();
+        const userScenariosRef = ref(db, `userScenarios/${userId}`);
+        const newScenarioRef = push(userScenariosRef);
         const newScenario: Scenario = {
             ...scenarioData,
             id: newScenarioRef.key!,
             type: 'TRAINING', // All user-created scenarios are for training
             userId: userId,
         };
-        await newScenarioRef.set(newScenario);
+        await set(newScenarioRef, newScenario);
         return newScenario;
     } catch (error) {
         console.error("Error saving user scenario:", error);
@@ -126,8 +127,8 @@ export const saveUserScenario = async (userId: string, scenarioData: Omit<Scenar
 export const updateScenario = async (scenario: Scenario): Promise<void> => {
   try {
     if (scenario.userId) {
-      const ref = db.ref(`userScenarios/${scenario.userId}/${scenario.id}`);
-      await ref.update(scenario as any);
+      const scenarioRef = ref(db, `userScenarios/${scenario.userId}/${scenario.id}`);
+      await update(scenarioRef, scenario as any);
     } else {
       // Seeded scenario (no userId): do not update the global seeded copy.
       // Callers should use createUserScenarioOverride(userId, scenarioId, data) instead.
@@ -146,12 +147,12 @@ export const updateScenario = async (scenario: Scenario): Promise<void> => {
 // `userScenarios/{userId}/{scenarioId}` and sets userId so the UI treats it as custom.
 export const createUserScenarioOverride = async (userId: string, scenarioId: string, data: Partial<Scenario>): Promise<void> => {
   try {
-    const ref = db.ref(`userScenarios/${userId}/${scenarioId}`);
+    const scenarioRef = ref(db, `userScenarios/${userId}/${scenarioId}`);
     // Ensure the override includes id and userId so it behaves like a user-created scenario
-  // Build payload but remove any keys with undefined values to satisfy Realtime DB set constraints
-  const rawPayload = { id: scenarioId, userId, ...data } as Record<string, any>;
-  const payload = Object.fromEntries(Object.entries(rawPayload).filter(([_, v]) => typeof v !== 'undefined')) as any;
-  await ref.set(payload);
+    // Build payload but remove any keys with undefined values to satisfy Realtime DB set constraints
+    const rawPayload = { id: scenarioId, userId, ...data } as Record<string, any>;
+    const payload = Object.fromEntries(Object.entries(rawPayload).filter(([_, v]) => typeof v !== 'undefined')) as any;
+    await set(scenarioRef, payload);
   } catch (error) {
     console.error(`Failed to create user scenario override for ${scenarioId}:`, error);
     throw error;
@@ -160,8 +161,8 @@ export const createUserScenarioOverride = async (userId: string, scenarioId: str
 
 export const deleteUserScenario = async (userId: string, scenarioId: string): Promise<void> => {
   try {
-    const scenarioRef = db.ref(`userScenarios/${userId}/${scenarioId}`);
-    await scenarioRef.remove();
+    const scenarioRef = ref(db, `userScenarios/${userId}/${scenarioId}`);
+    await remove(scenarioRef);
   } catch (error) {
     console.error(`Failed to delete scenario ${scenarioId} for user ${userId}:`, error);
     throw error;
@@ -172,13 +173,13 @@ export const deleteUserScenario = async (userId: string, scenarioId: string): Pr
 export const toggleFavoriteScenario = async (userId: string, scenario: Scenario): Promise<boolean> => {
   try {
     const path = scenario.userId ? `userScenarios/${scenario.userId}/${scenario.id}` : `scenarios/${scenario.id}`;
-    const ref = db.ref(path + `/favoritedBy/${userId}`);
-    const snap = await ref.get();
+    const favoriteRef = ref(db, path + `/favoritedBy/${userId}`);
+    const snap = await get(favoriteRef);
     if (snap.exists()) {
-      await ref.remove();
+      await remove(favoriteRef);
       return false; // now unfavorited
     } else {
-      await ref.set(true);
+      await set(favoriteRef, true);
       return true; // now favorited
     }
   } catch (e) {
@@ -219,17 +220,18 @@ export const saveEvaluation = async (
   };
 
   try {
-    const userEvaluationsRef = db.ref(`evaluations/${userId}`).push();
-    await userEvaluationsRef.set(evaluationData);
+    const userEvaluationsRef = ref(db, `evaluations/${userId}`);
+    const newEvaluationRef = push(userEvaluationsRef);
+    await set(newEvaluationRef, evaluationData);
     
     // After successful save, update leaderboard if it's a new high score
     if (displayName) { // Only update if display name is available
-      const leaderboardRef = db.ref(`leaderboards/${scenarioId}/${userId}`);
-      const snapshot = await leaderboardRef.get();
+      const leaderboardRef = ref(db, `leaderboards/${scenarioId}/${userId}`);
+      const snapshot = await get(leaderboardRef);
       const currentBestScore = snapshot.exists() ? snapshot.val().score : 0;
 
       if (evaluation.score > currentBestScore) {
-          await leaderboardRef.set({
+          await set(leaderboardRef, {
             score: evaluation.score,
             displayName: displayName,
             uid: userId,
@@ -254,8 +256,8 @@ export const saveEvaluation = async (
 // Aggregate per-user averages across all scenarios and return the top N operators.
 export const getGlobalLeaderboard = async (topN = 5): Promise<LeaderboardEntry[]> => {
   try {
-    const leaderboardsRef = db.ref('leaderboards');
-    const snapshot = await leaderboardsRef.get();
+    const leaderboardsRef = ref(db, 'leaderboards');
+    const snapshot = await get(leaderboardsRef);
     if (!snapshot.exists()) return [];
 
     const data = snapshot.val();
@@ -292,8 +294,8 @@ export const getGlobalLeaderboard = async (topN = 5): Promise<LeaderboardEntry[]
 // Admin: list all user profiles (requires permissive DB rules or admin backend)
 export const listAllUsers = async (): Promise<UserProfile[]> => {
   try {
-    const usersRef = db.ref('users');
-    const snapshot = await usersRef.get();
+    const usersRef = ref(db, 'users');
+    const snapshot = await get(usersRef);
     if (!snapshot.exists()) return [];
     const data = snapshot.val();
     return Object.entries<any>(data).map(([uid, profile]) => ({ uid, ...(profile as Omit<UserProfile, 'uid'>) }));
@@ -307,8 +309,8 @@ export const listAllUsers = async (): Promise<UserProfile[]> => {
 export const setUserRole = async (_authorizerUid: string, targetUid: string, newRole: Role): Promise<boolean> => {
   try {
     // Client-side gating is best-effort; enforce with DB rules or Cloud Functions in production
-    const ref = db.ref(`users/${targetUid}/role`);
-    await ref.set(newRole);
+    const userRoleRef = ref(db, `users/${targetUid}/role`);
+    await set(userRoleRef, newRole);
     return true;
   } catch (error) {
     console.error('Failed to set user role:', error);
@@ -335,7 +337,8 @@ export const deleteUser = async (_authorizerUid: string, targetUid: string): Pro
     updates[`evaluations/${targetUid}`] = null;
     
     // Apply all deletions atomically
-    await db.ref().update(updates);
+    const dbRoot = ref(db);
+    await update(dbRoot, updates);
     
     console.log(`Successfully deleted user ${targetUid} and all associated data`);
     return true;
@@ -347,9 +350,9 @@ export const deleteUser = async (_authorizerUid: string, targetUid: string): Pro
 
 export const getEvaluations = async (userId: string, scenarioId: string): Promise<StoredEvaluationResult[]> => {
   try {
-    const userEvaluationsRef = db.ref(`evaluations/${userId}`);
-    const evaluationsQuery = userEvaluationsRef.orderByChild('scenarioId').equalTo(scenarioId);
-    const snapshot = await evaluationsQuery.get();
+    const userEvaluationsRef = ref(db, `evaluations/${userId}`);
+    const evaluationsQuery = query(userEvaluationsRef, orderByChild('scenarioId'), equalTo(scenarioId));
+    const snapshot = await get(evaluationsQuery);
     if (snapshot.exists()) {
       const data = snapshot.val();
       // Convert object to array and reverse to show newest first
@@ -364,8 +367,8 @@ export const getEvaluations = async (userId: string, scenarioId: string): Promis
 
 export const getAllUserEvaluations = async (userId: string): Promise<AggregatedEvaluationResult[]> => {
   try {
-    const userEvaluationsRef = db.ref(`evaluations/${userId}`);
-    const snapshot = await userEvaluationsRef.get();
+    const userEvaluationsRef = ref(db, `evaluations/${userId}`);
+    const snapshot = await get(userEvaluationsRef);
 
     if (!snapshot.exists()) {
       return [];
@@ -383,7 +386,6 @@ export const getAllUserEvaluations = async (userId: string): Promise<AggregatedE
             scenarioMap.set(s.id, s.title);
         }
     });
-
 
     for (const pushId in data) {
       const evaluation = data[pushId] as Omit<StoredEvaluationResult, 'id'>;
@@ -407,15 +409,15 @@ export const getAllUserEvaluations = async (userId: string): Promise<AggregatedE
 
 export const getLeaderboardForScenario = async (scenarioId: string): Promise<LeaderboardEntry[]> => {
   try {
-    const leaderboardRef = db.ref(`leaderboards/${scenarioId}`);
+    const leaderboardRef = ref(db, `leaderboards/${scenarioId}`);
     // Order by score (ascending) and take the last 5 for the top scores.
-    const query = leaderboardRef.orderByChild('score').limitToLast(5);
-    const snapshot = await query.get();
+    const leaderboardQuery = query(leaderboardRef, orderByChild('score'));
+    const snapshot = await get(leaderboardQuery);
     if (snapshot.exists()) {
       const data = snapshot.val();
       const entries: LeaderboardEntry[] = Object.values(data);
-      // Firebase returns ascending, so we reverse to get descending order.
-      return entries.sort((a, b) => b.score - a.score);
+      // Sort descending and take top 5
+      return entries.sort((a, b) => b.score - a.score).slice(0, 5);
     }
     return [];
   } catch (error) {
@@ -435,7 +437,8 @@ export const savePrd = async (
 ): Promise<string> => {
   try {
     console.log('Attempting to save PRD:', { userId, scenarioId, platform, scenarioTitle });
-    const prdRef = db.ref(`prds/${userId}`).push();
+    const prdsRef = ref(db, `prds/${userId}`);
+    const newPrdRef = push(prdsRef);
     const payload = {
       userId,
       scenarioId,
@@ -445,9 +448,9 @@ export const savePrd = async (
       timestamp: Date.now(),
     };
     console.log('PRD payload:', payload);
-    await prdRef.set(payload);
-    console.log('PRD saved successfully with key:', prdRef.key);
-    return prdRef.key as string;
+    await set(newPrdRef, payload);
+    console.log('PRD saved successfully with key:', newPrdRef.key);
+    return newPrdRef.key as string;
   } catch (error) {
     console.error('Failed to save PRD:', error);
     throw error;
@@ -463,7 +466,8 @@ export const savePitch = async (
 ): Promise<string> => {
   try {
     console.log('Attempting to save Pitch:', { userId, scenarioId, scenarioTitle });
-    const pitchRef = db.ref(`pitches/${userId}`).push();
+    const pitchesRef = ref(db, `pitches/${userId}`);
+    const newPitchRef = push(pitchesRef);
     const payload = {
       userId,
       scenarioId,
@@ -472,9 +476,9 @@ export const savePitch = async (
       timestamp: Date.now(),
     };
     console.log('Pitch payload:', payload);
-    await pitchRef.set(payload);
-    console.log('Pitch saved successfully with key:', pitchRef.key);
-    return pitchRef.key as string;
+    await set(newPitchRef, payload);
+    console.log('Pitch saved successfully with key:', newPitchRef.key);
+    return newPitchRef.key as string;
   } catch (error) {
     console.error('Failed to save Elevator Pitch:', error);
     throw error;
@@ -492,16 +496,17 @@ export const saveWorkflowVersion = async (
     pitchMarkdown?: string | null;
     evaluationScore?: number | null;
     evaluationFeedback?: string | null;
-  versionTitle?: string | null;
-  mermaidCode?: string | null;
-  mermaidSvg?: string | null;
-  imageBase64?: string | null;
-  imageMimeType?: string | null;
+    versionTitle?: string | null;
+    mermaidCode?: string | null;
+    mermaidSvg?: string | null;
+    imageBase64?: string | null;
+    imageMimeType?: string | null;
   }
 ): Promise<string> => {
   try {
     console.log('Attempting to save Workflow Version:', { userId, scenarioId, versionTitle: options?.versionTitle });
-    const ref = db.ref(`workflowVersions/${userId}/${scenarioId}`).push();
+    const workflowsRef = ref(db, `workflowVersions/${userId}/${scenarioId}`);
+    const newWorkflowRef = push(workflowsRef);
     const payload = {
       userId,
       scenarioId,
@@ -511,17 +516,17 @@ export const saveWorkflowVersion = async (
       pitchMarkdown: options?.pitchMarkdown ?? null,
       evaluationScore: options?.evaluationScore ?? null,
       evaluationFeedback: options?.evaluationFeedback ?? null,
-  versionTitle: options?.versionTitle ?? null,
-  mermaidCode: options?.mermaidCode ?? null,
-  mermaidSvg: options?.mermaidSvg ?? null,
-  imageBase64: options?.imageBase64 ?? null,
-  imageMimeType: options?.imageMimeType ?? null,
+      versionTitle: options?.versionTitle ?? null,
+      mermaidCode: options?.mermaidCode ?? null,
+      mermaidSvg: options?.mermaidSvg ?? null,
+      imageBase64: options?.imageBase64 ?? null,
+      imageMimeType: options?.imageMimeType ?? null,
       timestamp: Date.now(),
     };
     console.log('Workflow Version payload:', payload);
-    await ref.set(payload);
-    console.log('Workflow Version saved successfully with key:', ref.key);
-    return ref.key as string;
+    await set(newWorkflowRef, payload);
+    console.log('Workflow Version saved successfully with key:', newWorkflowRef.key);
+    return newWorkflowRef.key as string;
   } catch (error) {
     console.error('Failed to save workflow version:', error);
     throw error;
@@ -531,8 +536,8 @@ export const saveWorkflowVersion = async (
 // Get saved PRDs for a user
 export const getSavedPrds = async (userId: string): Promise<SavedPrd[]> => {
   try {
-    const ref = db.ref(`prds/${userId}`);
-    const snap = await ref.get();
+    const prdsRef = ref(db, `prds/${userId}`);
+    const snap = await get(prdsRef);
     if (!snap.exists()) return [];
     const data = snap.val();
     return Object.entries<any>(data)
@@ -547,8 +552,8 @@ export const getSavedPrds = async (userId: string): Promise<SavedPrd[]> => {
 // Get saved Elevator Pitches for a user
 export const getSavedPitches = async (userId: string): Promise<SavedPitch[]> => {
   try {
-    const ref = db.ref(`pitches/${userId}`);
-    const snap = await ref.get();
+    const pitchesRef = ref(db, `pitches/${userId}`);
+    const snap = await get(pitchesRef);
     if (!snap.exists()) return [];
     const data = snap.val();
     return Object.entries<any>(data)
@@ -563,9 +568,9 @@ export const getSavedPitches = async (userId: string): Promise<SavedPitch[]> => 
 // Get latest PRD for a user + scenario
 export const getLatestPrdForScenario = async (userId: string, scenarioId: string): Promise<SavedPrd | null> => {
   try {
-    const ref = db.ref(`prds/${userId}`);
+    const prdsRef = ref(db, `prds/${userId}`);
     // Query by scenarioId (client-side filter since RTDB per-path index not yet defined)
-    const snap = await ref.get();
+    const snap = await get(prdsRef);
     if (!snap.exists()) return null;
     const data = snap.val();
     const matches: (SavedPrd & { id: string })[] = [];
@@ -587,8 +592,8 @@ export const getLatestPrdForScenario = async (userId: string, scenarioId: string
 // Get latest Pitch for a user + scenario
 export const getLatestPitchForScenario = async (userId: string, scenarioId: string): Promise<SavedPitch | null> => {
   try {
-    const ref = db.ref(`pitches/${userId}`);
-    const snap = await ref.get();
+    const pitchesRef = ref(db, `pitches/${userId}`);
+    const snap = await get(pitchesRef);
     if (!snap.exists()) return null;
     const data = snap.val();
     const matches: (SavedPitch & { id: string })[] = [];
@@ -610,8 +615,8 @@ export const getLatestPitchForScenario = async (userId: string, scenarioId: stri
 // Get workflow versions for a user & scenario
 export const getWorkflowVersions = async (userId: string, scenarioId: string): Promise<WorkflowVersion[]> => {
   try {
-    const ref = db.ref(`workflowVersions/${userId}/${scenarioId}`);
-    const snap = await ref.get();
+    const workflowsRef = ref(db, `workflowVersions/${userId}/${scenarioId}`);
+    const snap = await get(workflowsRef);
     if (!snap.exists()) return [];
     const data = snap.val();
     return Object.entries<any>(data)
@@ -626,8 +631,8 @@ export const getWorkflowVersions = async (userId: string, scenarioId: string): P
 // Get all workflow versions for a user across all scenarios
 export const getAllUserWorkflowVersions = async (userId: string): Promise<WorkflowVersion[]> => {
   try {
-    const ref = db.ref(`workflowVersions/${userId}`);
-    const snap = await ref.get();
+    const workflowsRef = ref(db, `workflowVersions/${userId}`);
+    const snap = await get(workflowsRef);
     if (!snap.exists()) return [];
     const data = snap.val();
     const allVersions: WorkflowVersion[] = [];

@@ -1,4 +1,4 @@
-# AI Operator Training Hub – Technical Overview
+# Workflow Assistant – Technical Overview
 
 ## 1. Purpose
 End-to-end workspace for designing, evaluating, and packaging AI-augmented business workflows (workflow text → diagram → PRD / Pitch → evaluation → version snapshots).

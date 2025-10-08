@@ -1,8 +1,9 @@
 
 
 import React, { useState, useCallback, useEffect } from 'react';
-import type firebase from 'firebase/compat/app';
-import { auth } from './firebaseConfig';
+import type { User } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from './services/firebaseInit';
 import type { Scenario } from './types';
 import { getScenarios, seedScenarios, updateUserProfile, getAllUserEvaluations, getUserProfile } from './services/firebaseService';
 import Header from './components/Header';
@@ -24,7 +25,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<View>('TRAINING');
   const [activeScenario, setActiveScenario] = useState<Scenario | null>(null);
   const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(null);
-  const [user, setUser] = useState<firebase.User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isWorkflowDrawerOpen, setIsWorkflowDrawerOpen] = useState(false);
 
@@ -37,8 +38,8 @@ const App: React.FC = () => {
   const [role, setRole] = useState<'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER' | null>(null);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
-    setUser(currentUser);
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
       setIsLoadingAuth(false);
       
       if (currentUser) {
@@ -262,7 +263,7 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-      <div className="p-4 sm:p-6 md:p-8">
+      <div className="container mx-auto px-4 sm:px-6 md:px-8 py-4 sm:py-6 md:py-8">
         {user ? (
           <div className="flex flex-col lg:flex-row gap-8 items-start">
             <main className={`flex-1 w-full ${error ? 'pt-0' : ''}`}>

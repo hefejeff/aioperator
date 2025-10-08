@@ -221,7 +221,7 @@ const PublicLanding: React.FC<PublicLandingProps> = () => {
 
       {/* Footer */}
       <footer className="px-4 sm:px-6 md:px-8 py-10 border-t border-slate-800 text-center text-slate-500 text-sm">
-        <p>© {new Date().getFullYear()} AI Operator Training Hub</p>
+        <p>© {new Date().getFullYear()} Workflow Assistant</p>
       </footer>
 
       {/* Auth modal for guests */}

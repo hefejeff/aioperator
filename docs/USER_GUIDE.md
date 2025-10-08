@@ -1,4 +1,4 @@
-# AI Operator Hub – User Guide
+# Workflow Assistant – User Guide
 
 ## 1. What It Does
 Turn a business problem into:

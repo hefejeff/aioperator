@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import type { User } from 'firebase/auth';
-import { getAllUserEvaluations, getScenarios, getAllUserWorkflowVersions, saveUserScenario, toggleFavoriteScenario } from '../services/firebaseService';
+import type firebase from 'firebase/compat/app';
+import { getAllUserEvaluations, getScenarios, getAllUserWorkflowVersions, saveUserScenario } from '../services/firebaseService';
 import { Icons } from '../constants';
+import { useTranslation } from '../i18n';
 import type { Scenario, WorkflowVersion, AggregatedEvaluationResult } from '../types';
 import WorkflowCard from './WorkflowCard';
 import brainIcon from '../assets/brain_icon.png';
 
 interface DashboardViewProps {
-  user: User;
+  user: firebase.User;
   onStartTraining: (scenario?: Scenario) => void;
   onNavigateToScenario: (scenarioId: string) => void;
   onViewWorkflow: (workflowId: string) => void;
@@ -15,6 +16,7 @@ interface DashboardViewProps {
 }
 
 const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, onNavigateToScenario, onViewWorkflow, onScenarioCreated }) => {
+  const { t } = useTranslation();
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [workflowVersions, setWorkflowVersions] = useState<WorkflowVersion[]>([]);
   const [evaluations, setEvaluations] = useState<AggregatedEvaluationResult[]>([]);
@@ -29,7 +31,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
   const [isSubmittingProblem, setIsSubmittingProblem] = useState(false);
   
   const [isGeneratingExample, setIsGeneratingExample] = useState(false);
-  const [showStarredOnly, setShowStarredOnly] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -63,6 +64,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
     fetchData();
   }, [user]);
 
+  const firstName = user.displayName?.split(' ')[0] || 'Operator';
+
   // Group workflow versions by scenario
   const workflowsByScenario = workflowVersions.reduce((acc, workflow) => {
     if (!acc[workflow.scenarioId]) {
@@ -77,39 +80,12 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
     workflowsByScenario[scenario.id] && workflowsByScenario[scenario.id].length > 0
   );
 
-  // Apply star filter
-  const filteredScenarios = showStarredOnly 
-    ? scenariosWithWorkflows.filter(scenario => scenario.favoritedBy?.[user.uid])
-    : scenariosWithWorkflows;
-
   const handleViewDetails = (scenarioId: string) => {
     onNavigateToScenario(scenarioId);
   };
 
   const handleStartTraining = (scenario: Scenario) => {
     onStartTraining(scenario);
-  };
-
-  const handleToggleFavorite = async (scenario: Scenario) => {
-    try {
-      const newFavoriteState = await toggleFavoriteScenario(user.uid, scenario);
-      
-      // Update the scenarios state to reflect the change
-      setScenarios(prevScenarios => 
-        prevScenarios.map(s => 
-          s.id === scenario.id 
-            ? {
-                ...s,
-                favoritedBy: newFavoriteState 
-                  ? { ...s.favoritedBy, [user.uid]: true }
-                  : Object.fromEntries(Object.entries(s.favoritedBy || {}).filter(([key]) => key !== user.uid))
-              }
-            : s
-        )
-      );
-    } catch (error) {
-      console.error('Failed to toggle favorite:', error);
-    }
   };
 
   const handleSubmitProblem = async (e: React.FormEvent) => {
@@ -426,108 +402,120 @@ Make this example specific to ${problemDomain} with realistic details, metrics, 
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-sky-500/10 via-blue-500/5 to-emerald-500/10"></div>
+        <div className="relative px-6 py-12 sm:px-12 lg:px-16">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center mb-16">
+              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-blue-400 to-emerald-400 mb-6 leading-tight">
+                Welcome Back
+              </h1>
+              <p className="text-xl sm:text-2xl text-slate-300 max-w-3xl mx-auto leading-relaxed">
+                Transform your workflows with AI-powered automation. Create, test, and deploy intelligent solutions.
+              </p>
+            </div>
+
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+              <div className="group bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 hover:shadow-2xl hover:shadow-sky-500/10 transition-all duration-300 hover:-translate-y-1">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-slate-400 text-sm font-medium uppercase tracking-wider">Total Workflows</p>
+                    <p className="text-3xl font-bold text-white mt-1">{scenarios.length}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <Icons.Document />
+                  </div>
+                </div>
+              </div>
+
+              <div className="group bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 hover:shadow-2xl hover:shadow-emerald-500/10 transition-all duration-300 hover:-translate-y-1">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-slate-400 text-sm font-medium uppercase tracking-wider">Completed</p>
+                    <p className="text-3xl font-bold text-white mt-1">{scenariosWithWorkflows.length}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <Icons.Check />
+                  </div>
+                </div>
+              </div>
+
+              <div className="group bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-300 hover:-translate-y-1">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-slate-400 text-sm font-medium uppercase tracking-wider">Evaluations</p>
+                    <p className="text-3xl font-bold text-white mt-1">{evaluations.length}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <Icons.ChartBar />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Main Content Grid */}
-      <div className="container mx-auto px-4 sm:px-6 md:px-8 py-16">
+      <div className="max-w-7xl mx-auto px-6 sm:px-12 lg:px-16 pb-16">
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
           
           {/* Workflows Section */}
           <div className="xl:col-span-2">
-            <div className="mb-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-3xl font-bold text-white mb-2">Your Workflows</h2>
-                  <p className="text-slate-400">Manage and monitor your AI automation pipelines</p>
-                </div>
-                
-                {/* Filters */}
-                <div className="flex items-center gap-4">
-                  <span className="text-sm font-medium text-slate-300">Filters</span>
-                  <button
-                    onClick={() => setShowStarredOnly(!showStarredOnly)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
-                      showStarredOnly
-                        ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                        : 'bg-slate-700/50 text-slate-400 border border-slate-600/50 hover:bg-slate-600/50 hover:text-slate-300'
-                    }`}
-                  >
-                    <svg
-                      className={`w-4 h-4 transition-all duration-200 ${
-                        showStarredOnly ? 'fill-current' : 'fill-none stroke-current'
-                      }`}
-                      viewBox="0 0 24 24"
-                      strokeWidth="2"
-                    >
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                    </svg>
-                    <span className="text-sm font-medium">
-                      {showStarredOnly ? 'Starred' : 'All'}
-                    </span>
-                  </button>
-                </div>
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h2 className="text-3xl font-bold text-white mb-2">Your Workflows</h2>
+                <p className="text-slate-400">Manage and monitor your AI automation pipelines</p>
               </div>
+              <button
+                onClick={() => onStartTraining()}
+                className="group px-6 py-3 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-sky-500/25 transition-all duration-300 hover:-translate-y-0.5"
+              >
+                <span className="flex items-center gap-2">
+                  <Icons.Plus />
+                  New Workflow
+                </span>
+              </button>
             </div>
 
             {/* Workflow Cards Grid */}
-            {filteredScenarios.length > 0 ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in duration-500">
-                {filteredScenarios.map((scenario, index) => (
-                  <div 
+            {scenariosWithWorkflows.length > 0 ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {scenariosWithWorkflows.map((scenario) => (
+                  <WorkflowCard
                     key={scenario.id}
-                    className="animate-in slide-in-from-bottom duration-300"
-                    style={{ animationDelay: `${index * 100}ms` }}
-                  >
-                    <WorkflowCard
-                      scenario={scenario}
-                      workflowVersions={workflowsByScenario[scenario.id] || []}
-                      evaluations={evaluations}
-                      onViewDetails={handleViewDetails}
-                      onViewWorkflow={onViewWorkflow}
-                      onStartTraining={handleStartTraining}
-                      onToggleFavorite={handleToggleFavorite}
-                      user={user}
-                    />
-                  </div>
+                    scenario={scenario}
+                    workflowVersions={workflowsByScenario[scenario.id] || []}
+                    evaluations={evaluations}
+                    onViewDetails={handleViewDetails}
+                    onViewWorkflow={onViewWorkflow}
+                    onStartTraining={handleStartTraining}
+                  />
                 ))}
               </div>
             ) : (
-              <div className="text-center py-20 animate-in fade-in duration-700">
-                <div className="relative max-w-md mx-auto">
-                  {/* Background glow effect */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-sky-500/10 via-blue-500/10 to-emerald-500/10 rounded-3xl blur-2xl animate-pulse"></div>
-                  
-                  {/* Icon container */}
-                  <div className="relative w-32 h-32 bg-gradient-to-br from-slate-800/60 to-slate-900/60 backdrop-blur-xl rounded-3xl flex items-center justify-center mx-auto mb-8 border border-slate-700/50 group hover:border-sky-500/30 transition-all duration-500">
-                    <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                    <div className="relative text-slate-400 group-hover:text-sky-400 transition-colors duration-300">
-                      <Icons.LightBulb />
-                    </div>
-                  </div>
-                  
-                  {/* Content */}
-                  <div className="relative">
-                    <h3 className="text-3xl font-bold text-white mb-4 bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-                      {showStarredOnly ? 'No Starred Workflows Yet' : 'Ready to Build Something Amazing?'}
-                    </h3>
-                    <p className="text-lg text-slate-400 mb-10 max-w-sm mx-auto leading-relaxed">
-                      {showStarredOnly 
-                        ? 'Star your favorite workflows to keep them organized and easily accessible.'
-                        : 'Create your first AI workflow and start automating your processes today.'
-                      }
-                    </p>
-                    {!showStarredOnly && (
-                      <button
-                        onClick={() => onStartTraining()}
-                        className="group relative px-10 py-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-semibold rounded-2xl hover:shadow-2xl hover:shadow-sky-500/25 transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm border border-sky-400/20 hover:border-sky-300/40"
-                      >
-                        <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                        <span className="relative flex items-center gap-3">
-                          <Icons.Plus />
-                          <span className="text-lg">Create Your First Workflow</span>
-                        </span>
-                      </button>
-                    )}
+              <div className="text-center py-16">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-r from-sky-500/20 to-emerald-500/20 rounded-full blur-xl"></div>
+                  <div className="relative w-24 h-24 bg-gradient-to-br from-slate-700 to-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-slate-600">
+                    <Icons.LightBulb />
                   </div>
                 </div>
+                <h3 className="text-2xl font-bold text-white mb-4">Ready to Build Something Amazing?</h3>
+                <p className="text-lg text-slate-400 mb-8 max-w-md mx-auto">
+                  Create your first AI workflow and start automating your processes today.
+                </p>
+                <button
+                  onClick={() => onStartTraining()}
+                  className="group px-8 py-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-sky-500/25 transition-all duration-300 hover:-translate-y-0.5"
+                >
+                  <span className="flex items-center gap-3">
+                    <Icons.Plus />
+                    Create Your First Workflow
+                  </span>
+                </button>
               </div>
             )}
           </div>
@@ -656,6 +644,103 @@ Make this example specific to ${problemDomain} with realistic details, metrics, 
                 </form>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+            <form onSubmit={handleSubmitProblem} className="space-y-4">
+              {/* Domain Selection with AI Example */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-slate-300">Domain</label>
+                  <button
+                    type="button"
+                    onClick={generateAiExample}
+                    disabled={isGeneratingExample || !problemDomain}
+                    className="text-xs px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium tracking-wide transition-colors"
+                  >
+                    {isGeneratingExample ? 'Generating...' : 'AI Example'}
+                  </button>
+                </div>
+                <select
+                  value={problemDomain}
+                  onChange={(e) => {
+                    setProblemDomain(e.target.value);
+                  }}
+                  className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
+                >
+                  <option value="">Select a domain...</option>
+                  {['Sales','HR','Finance','Operations','Logistics','Healthcare','Manufacturing','Legal','Procurement','Marketing','IT','Customer Support'].map(domain => (
+                    <option key={domain} value={domain}>{domain}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Scenario Title */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Scenario Title</label>
+                <input
+                  type="text"
+                  value={scenarioTitle}
+                  onChange={(e) => setScenarioTitle(e.target.value)}
+                  placeholder="Enter a title for your workflow scenario..."
+                  className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
+                />
+              </div>
+
+              {/* Problem Description */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Your Problem</label>
+                <textarea
+                  value={problemDescription}
+                  onChange={(e) => setProblemDescription(e.target.value)}
+                  rows={4}
+                  placeholder="Describe the challenge or inefficiency you're facing..."
+                  className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow resize-none"
+                />
+              </div>
+
+              {/* Target/Goal */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Target Outcome</label>
+                <textarea
+                  value={problemTarget}
+                  onChange={(e) => setProblemTarget(e.target.value)}
+                  rows={3}
+                  placeholder="What would success look like? What do you want to achieve?"
+                  className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={clearForm}
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-slate-700 text-slate-300 font-medium rounded-lg hover:bg-slate-600 transition-colors"
+                >
+                  Clear Form
+                </button>
+                <button
+                  type="submit"
+                  disabled={!problemDescription.trim() || !problemTarget.trim() || isSubmittingProblem}
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-sky-600 text-white font-medium rounded-lg hover:bg-sky-500 transition-colors disabled:bg-slate-700 disabled:cursor-not-allowed"
+                >
+                  {isSubmittingProblem ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Icons.Plus />
+                      Create Workflow
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </div>

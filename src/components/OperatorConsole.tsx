@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import type firebase from 'firebase/compat/app';
 import type { Scenario, EvaluationResult, StoredEvaluationResult, Platform } from '../types';
+import type { AIActionsPlatform, AIActionsApproach } from './AIActionsPanel';
 import { generateText, generatePRD, prdToMarkdown, generateElevatorPitch, elevatorPitchToMarkdown } from '../services/geminiService';
 import { getEvaluations, savePrd, savePitch, saveWorkflowVersion, getWorkflowVersions, getLatestPrdForScenario, getLatestPitchForScenario } from '../services/firebaseService';
 import { evaluateOperatorPerformance } from '../services/geminiService';
@@ -892,8 +893,10 @@ Return only the steps.`;
             {/* Consolidated AI Actions Panel */}
             <div className="mt-10">
               <AIActionsPanel
-                platforms={prdPlatforms}
-                onPlatformsChange={(platforms) => setPrdPlatforms(platforms)}
+                platforms={[prdPlatforms[0] as AIActionsPlatform || 'MS365']}
+                approaches={prdPlatforms.filter(p => !['MS365', 'GOOGLE', 'CUSTOM'].includes(p)) as AIActionsApproach[]}
+                onPlatformChange={(platform) => setPrdPlatforms([platform])}
+                onApproachesChange={(approaches) => setPrdPlatforms([prdPlatforms[0], ...approaches])}
                 workflowExplanation={workflowExplanation}
                 onGeneratePrd={handleGeneratePrd}
                 onGeneratePitch={handleGeneratePitch}

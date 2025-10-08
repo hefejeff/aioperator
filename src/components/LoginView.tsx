@@ -1,6 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
-import { auth } from '../firebaseConfig';
+import { auth } from '../services/firebaseInit';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { Icons } from '../constants';
 import { LoadingSpinner } from './OperatorConsole';
 
@@ -31,16 +32,16 @@ const LoginView: React.FC<LoginViewProps> = ({ mode = 'login' }) => {
         if (!displayName.trim()) {
           throw new Error("Display Name is required.");
         }
-        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         if (userCredential.user) {
-          await userCredential.user.updateProfile({
+          await updateProfile(userCredential.user, {
             displayName: displayName.trim(),
           });
           // onAuthStateChanged in App.tsx will handle the rest
         }
       } else {
         // Handle Login
-        await auth.signInWithEmailAndPassword(email, password);
+        await signInWithEmailAndPassword(auth, email, password);
       }
     } catch (err: any) {
       // Map common Firebase auth errors to more user-friendly messages

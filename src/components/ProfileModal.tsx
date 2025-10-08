@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import type firebase from 'firebase/compat/app';
+import type { User } from 'firebase/auth';
+import { updateProfile } from 'firebase/auth';
 import { getUserProfile, setUserPreferences } from '../services/firebaseService';
 import { LoadingSpinner } from './OperatorConsole';
 import { useTranslation } from '../i18n';
 
 interface Props {
-  user: firebase.User;
+  user: User;
   onClose: () => void;
   onSaved?: () => void;
 }
@@ -43,9 +44,10 @@ const ProfileModal: React.FC<Props> = ({ user, onClose, onSaved }) => {
     if (success) {
       try {
         // Update the Firebase auth user profile so UI tied to auth updates immediately
-        if (user && user.updateProfile) {
-          await user.updateProfile({ displayName: displayName || undefined, photoURL: photoURL || undefined });
-        }
+        await updateProfile(user, { 
+          displayName: displayName || null,
+          photoURL: photoURL || null
+        });
       } catch (err) {
         // Non-fatal: we still proceed to close and notify
         console.warn('Could not update auth profile:', err);

@@ -4,7 +4,7 @@ export type Lang = 'English' | 'Spanish';
 
 const resources: Record<string, Record<string, string>> = {
   English: {
-    'app.title': 'AI Operator Hub',
+    'app.title': 'Workflow Assistant',
     'nav.dashboard': 'Dashboard',
     'nav.playground': 'Playground',
     'nav.home': 'Home',
