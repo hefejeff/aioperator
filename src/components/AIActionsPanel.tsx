@@ -204,21 +204,21 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
       <div className="grid gap-3 sm:grid-cols-3" role="group" aria-label="AI generation actions">
         <button
           type="button"
-          onClick={onGeneratePitch}
-          disabled={baseDisabled || !!pitchLoading}
-          aria-disabled={baseDisabled || !!pitchLoading}
-          className={clsTeal}
-        >
-          {pitchLoading ? t('loading') : t('pitch.generateShort')}
-        </button>
-        <button
-          type="button"
           onClick={onGeneratePrd}
           disabled={baseDisabled || !!prdLoading}
           aria-disabled={baseDisabled || !!prdLoading}
           className={clsIndigo}
         >
           {prdLoading ? t('loading') : t('prd.generateShort')}
+        </button>
+        <button
+          type="button"
+          onClick={onGeneratePitch}
+          disabled={baseDisabled || !!pitchLoading}
+          aria-disabled={baseDisabled || !!pitchLoading}
+          className={clsTeal}
+        >
+          {pitchLoading ? t('loading') : t('pitch.generateShort')}
         </button>
         <button
           type="button"

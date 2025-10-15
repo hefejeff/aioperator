@@ -1,7 +1,8 @@
 
 
-import React, { useState, useCallback, useEffect } from 'react';
-import type { User } from 'firebase/auth';
+import React, { useCallback, useEffect, useState } from 'react';
+import { User } from 'firebase/auth';
+import { getWorkflowVersion } from './services/firebaseService';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './services/firebaseInit';
 import type { Scenario } from './types';
@@ -23,6 +24,7 @@ type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'ADMIN' | 'WORKFLOW_DETAIL';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('TRAINING');
+  const [previousView, setPreviousView] = useState<View>('TRAINING');
   const [activeScenario, setActiveScenario] = useState<Scenario | null>(null);
   const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -121,48 +123,81 @@ const App: React.FC = () => {
 
 
   const handleNavigate = useCallback((newView: 'DASHBOARD' | 'TRAINING' | 'ADMIN') => {
+    setPreviousView(view);
     setActiveScenario(null);
     setView(newView);
-  }, []);
+  }, [view]);
 
   const handleStartTraining = useCallback((scenario?: Scenario) => {
+    setPreviousView(view);
     if (scenario) {
       setActiveScenario(scenario);
       setView('SCENARIO');
     } else {
       setView('TRAINING');
     }
-  }, []);
+  }, [view]);
 
   const handleNavigateToScenario = useCallback((scenarioId: string) => {
     const scenario = scenarios.find(s => s.id === scenarioId);
     if (scenario) {
+      setPreviousView(view);
       setActiveScenario(scenario);
       setView('SCENARIO');
     }
-  }, [scenarios]);
+  }, [scenarios, view]);
   
   const handleSelectScenario = useCallback((scenario: Scenario) => {
+    setPreviousView(view);
     setActiveScenario(scenario);
     setView('SCENARIO');
-  }, []);
+  }, [view]);
 
-  const handleSelectWorkflow = useCallback((workflowId: string) => {
-    setActiveWorkflowId(workflowId);
-    setView('WORKFLOW_DETAIL');
-  }, []);
+  const handleSelectWorkflow = useCallback(async (workflowId: string) => {
+    if (!user?.uid) {
+      console.error('No user logged in');
+      return;
+    }
+    
+    try {
+      // First try to find the workflow with the user's ID
+      const workflowExists = await getWorkflowVersion(workflowId, user.uid);
+      if (!workflowExists) {
+        // If not found as owner, try to find as a team member
+        const workflowAsTeamMember = await getWorkflowVersion(workflowId);
+        if (!workflowAsTeamMember) {
+          console.error(`Workflow ${workflowId} not found`);
+          return;
+        }
+      }
+      
+      // Save the current view before navigating
+      setPreviousView(view);
+      setActiveWorkflowId(workflowId);
+      setView('WORKFLOW_DETAIL');
+      
+    } catch (error) {
+      console.error('Error checking workflow:', error);
+    }
+  }, [user?.uid, view]);
 
   const handleBack = useCallback(() => {
     setActiveScenario(null);
     setActiveWorkflowId(null);
-    if (view === 'SCENARIO') {
-        setView('TRAINING');
-    } else if (view === 'WORKFLOW_DETAIL') {
-        setView('TRAINING');
-    } else {
-        setView('DASHBOARD');
+    
+    // If we're in a workflow detail view, return to the previous view
+    if (view === 'WORKFLOW_DETAIL') {
+      setView(previousView);
     }
-  }, [view]);
+    // For scenarios always go back to training view
+    else if (view === 'SCENARIO') {
+      setView('TRAINING');
+    }
+    // Default fallback to dashboard
+    else {
+      setView('DASHBOARD');
+    }
+  }, [view, previousView]);
 
   const handleScenarioCreated = (newScenario: Scenario) => {
     setScenarios(prevScenarios => [...prevScenarios, newScenario]);
@@ -208,6 +243,7 @@ const App: React.FC = () => {
                     onBack={handleBack} 
                     user={user} 
                     onEvaluationCompleted={handleEvaluationCompleted}
+                    onViewWorkflow={handleSelectWorkflow}
                  />;
         }
         return null;

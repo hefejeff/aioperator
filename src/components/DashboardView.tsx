@@ -4,6 +4,7 @@ import { getAllUserEvaluations, getScenarios, getAllUserWorkflowVersions, saveUs
 import { Icons } from '../constants';
 import type { Scenario, WorkflowVersion, AggregatedEvaluationResult } from '../types';
 import WorkflowCard from './WorkflowCard';
+import CreateScenarioForm from './CreateScenarioForm';
 import brainIcon from '../assets/brain_icon.png';
 
 interface DashboardViewProps {
@@ -30,6 +31,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
   
   const [isGeneratingExample, setIsGeneratingExample] = useState(false);
   const [showStarredOnly, setShowStarredOnly] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -88,6 +90,25 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
 
   const handleStartTraining = (scenario: Scenario) => {
     onStartTraining(scenario);
+  };
+
+  const handleScenarioCreated = async (data: { title: string; description: string; goal: string }) => {
+    try {
+      const newScenario = await saveUserScenario(user.uid, {
+        title: data.title,
+        description: data.description,
+        goal: data.goal,
+        domain: 'General'
+      });
+      
+      setShowCreateModal(false);
+      if (onScenarioCreated) {
+        onScenarioCreated(newScenario);
+      }
+      onStartTraining(newScenario);
+    } catch (error) {
+      console.error('Failed to create scenario:', error);
+    }
   };
 
   const handleToggleFavorite = async (scenario: Scenario) => {
@@ -426,6 +447,14 @@ Make this example specific to ${problemDomain} with realistic details, metrics, 
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Create Scenario Modal */}
+      {showCreateModal && (
+        <CreateScenarioForm
+          onSave={handleScenarioCreated}
+          onClose={() => setShowCreateModal(false)}
+        />
+      )}
+      
       {/* Main Content Grid */}
       <div className="container mx-auto px-4 sm:px-6 md:px-8 py-16">
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
@@ -516,7 +545,7 @@ Make this example specific to ${problemDomain} with realistic details, metrics, 
                     </p>
                     {!showStarredOnly && (
                       <button
-                        onClick={() => onStartTraining()}
+                        onClick={() => setShowCreateModal(true)}
                         className="group relative px-10 py-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-semibold rounded-2xl hover:shadow-2xl hover:shadow-sky-500/25 transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm border border-sky-400/20 hover:border-sky-300/40"
                       >
                         <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>

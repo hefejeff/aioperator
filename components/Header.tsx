@@ -3,6 +3,7 @@ import React from 'react';
 import type firebase from 'firebase/compat/app';
 import { auth } from '../firebaseConfig';
 import { Icons } from '../constants';
+import { useTranslation } from '../src/i18n';
 
 interface HeaderProps {
   onNavigate: (view: 'DASHBOARD' | 'TRAINING' | 'HISTORY') => void;
@@ -27,6 +28,8 @@ const Avatar: React.FC<{ user: firebase.User }> = ({ user }) => {
 
 
 const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
+  const { t } = useTranslation();
+  
   const handleLogout = () => {
     auth.signOut().catch(error => console.error('Logout Error:', error));
   };
@@ -40,7 +43,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
             onClick={() => onNavigate('DASHBOARD')}
           >
             <Icons.Sparkles />
-            <span className="text-xl font-bold text-sky-400">Workflow Assistant</span>
+            <span className="text-xl font-bold text-sky-400">{t('app.title')}</span>
           </div>
           {user && (
             <div className="flex items-center space-x-4">
@@ -48,19 +51,19 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
                 onClick={() => onNavigate('DASHBOARD')}
                 className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
               >
-                Home
+                {t('nav.home')}
               </button>
               <button 
                 onClick={() => onNavigate('TRAINING')}
                 className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
               >
-                Training
+                {t('nav.training')}
               </button>
               <button 
                 onClick={() => onNavigate('HISTORY')}
                 className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
               >
-                History
+                {t('nav.history')}
               </button>
               <div className="flex items-center space-x-3">
                 <Avatar user={user} />
@@ -68,7 +71,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user }) => {
                   onClick={handleLogout}
                   className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-red-500/20 hover:text-red-400 transition-colors"
                 >
-                  Logout
+                  {t('header.logout')}
                 </button>
               </div>
             </div>

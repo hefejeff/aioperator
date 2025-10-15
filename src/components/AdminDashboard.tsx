@@ -22,7 +22,7 @@ const UsersTab: React.FC<{
   totalScenarios: number;
   leaderboard: LeaderboardEntry[];
   canDeleteUsers: boolean;
-  currentUser: firebase.User;
+  currentUser: User;
   saving: string | null;
   deleting: string | null;
   onChangeRole: (uid: string, newRole: Role) => void;

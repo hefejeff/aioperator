@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type firebase from 'firebase/compat/app';
+import type { User } from 'firebase/auth';
 import { getAllUserEvaluations, getScenarios, getAllUserWorkflowVersions, saveUserScenario } from '../services/firebaseService';
 import { Icons } from '../constants';
 import { useTranslation } from '../i18n';
@@ -8,7 +8,7 @@ import WorkflowCard from './WorkflowCard';
 import brainIcon from '../assets/brain_icon.png';
 
 interface DashboardViewProps {
-  user: firebase.User;
+  user: User;
   onStartTraining: (scenario?: Scenario) => void;
   onNavigateToScenario: (scenarioId: string) => void;
   onViewWorkflow: (workflowId: string) => void;

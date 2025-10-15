@@ -15,7 +15,6 @@ interface OperatorConsoleProps {
   onBack: () => void;
   user: User;
   onEvaluationCompleted: (scenarioId: string, newScore: number) => void;
-  onViewWorkflow?: (workflowId: string) => void;
 }
 
 export const LoadingSpinner: React.FC = () => (
@@ -26,16 +25,14 @@ export const LoadingSpinner: React.FC = () => (
     </div>
 );
 
-const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, user, onEvaluationCompleted: _onEvaluationCompleted, onViewWorkflow }) => {
+const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, user, onEvaluationCompleted: _onEvaluationCompleted }) => {
   const [workflowExplanation, setWorkflowExplanation] = useState('');
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [currentImage, setCurrentImage] = useState<{ base64: string; mimeType: string; dataUrl: string } | null>(null);
-  const [proposedImage, setProposedImage] = useState<{ base64: string; mimeType: string; dataUrl: string } | null>(null);
+  const [image, setImage] = useState<{ base64: string; mimeType: string; dataUrl: string } | null>(null);
   const [pastEvaluations, setPastEvaluations] = useState<StoredEvaluationResult[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const currentImageInputRef = useRef<HTMLInputElement>(null);
-  const proposedImageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // const [role, setRole] = useState<Role | null>(null);
   const [assistLoading, setAssistLoading] = useState(false);
   const [diagramAssistLoading, setDiagramAssistLoading] = useState(false);
@@ -63,35 +60,12 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, use
   const isProOrAbove = true;
 
   // File/image handlers (placeholders)
-  const handleCurrentImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('Current workflow image change triggered');
-    const file = e.target.files?.[0];
-    if (!file) {
-      console.log('No file selected');
-      return;
-    }
-    console.log('File selected:', file.name, file.type);
-    const reader = new FileReader();
-    reader.onload = () => {
-      console.log('File read successfully');
-      setCurrentImage({
-        base64: (reader.result as string).split(',')[1],
-        mimeType: file.type,
-        dataUrl: reader.result as string,
-      });
-    };
-    reader.onerror = (error) => {
-      console.error('Error reading file:', error);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleProposedImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      setProposedImage({
+      setImage({
         base64: (reader.result as string).split(',')[1],
         mimeType: file.type,
         dataUrl: reader.result as string,
@@ -99,15 +73,13 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, use
     };
     reader.readAsDataURL(file);
   };
-
-  const handleRemoveCurrentImage = () => setCurrentImage(null);
-  const handleRemoveProposedImage = () => setProposedImage(null);
+  const handleRemoveImage = () => setImage(null);
 
   // PRD handlers (placeholders)
   const handleGeneratePrd = async () => {
     setPrdLoading(true);
     try {
-      const prd = await generatePRD(localizedGoal, workflowExplanation, proposedImage ? proposedImage.base64 : null, prdPlatforms);
+      const prd = await generatePRD(localizedGoal, workflowExplanation, image ? image.base64 : null, prdPlatforms);
       const md = prdToMarkdown(prd);
       setPrdMarkdown(md);
       setIsPrdOpen(true);
@@ -177,12 +149,12 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, use
     setIsLoading(true);
     setEvaluation(null);
     try {
-      const imagePart = proposedImage ? { base64: proposedImage.base64, mimeType: proposedImage.mimeType } : null;
+      const imagePart = image ? { base64: image.base64, mimeType: image.mimeType } : null;
       const result = await evaluateOperatorPerformance(localizedGoal, workflowExplanation, imagePart);
       setEvaluation(result);
 
       // Save evaluation to Firebase
-      const imageUrl = proposedImage?.dataUrl || null;
+      const imageUrl = image?.dataUrl || null;
       await saveEvaluation(
         user.uid,
         scenario.id, 
@@ -213,7 +185,7 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, use
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, workflowExplanation, proposedImage, localizedGoal]);
+  }, [isLoading, workflowExplanation, image, localizedGoal]);
   // Historic evaluation selection (modal removed; direct load)
   const [highlightEditor, setHighlightEditor] = useState(false);
   const [prdPlatforms, setPrdPlatforms] = useState<Platform[]>(['MS365']);
@@ -635,7 +607,7 @@ Guidelines:
 - If helpful, include brief reasoning in parentheses.
 
 Return only the steps.`;
-      const imagePart = proposedImage ? { base64: proposedImage.base64, mimeType: proposedImage.mimeType } : null;
+      const imagePart = image ? { base64: image.base64, mimeType: image.mimeType } : null;
       const suggestion = await generateText(prompt, imagePart, { temperature: 0.5 });
       if (!suggestion) {
         alert('AI Assist could not generate a suggestion right now.');
@@ -655,20 +627,13 @@ Return only the steps.`;
     } finally {
       setAssistLoading(false);
     }
-  }, [assistLoading, proposedImage, localizedGoal, workflowExplanation]);
+  }, [assistLoading, image, localizedGoal, workflowExplanation]);
 
 
   const openHistoryModal = useCallback((item: StoredEvaluationResult) => {
-    // If onViewWorkflow is provided and we have a workflow version ID, navigate to workflow details
-    if (onViewWorkflow && item.workflowVersionId) {
-      onViewWorkflow(item.workflowVersionId);
-      return;
-    }
-
-    // Fallback to loading in editor if no navigation handler or no workflow version
     console.debug('[OperatorConsole] Loading historic evaluation into editor', item?.id);
-    const text = item.workflowExplanation || '';
-    setWorkflowExplanation(text);
+  const text = item.workflowExplanation || '';
+  setWorkflowExplanation(text);
     try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
     setHighlightEditor(true);
     setTimeout(() => setHighlightEditor(false), 1200);
@@ -677,17 +642,12 @@ Return only the steps.`;
       const ta = document.getElementById('workflow');
       if (ta) (ta as HTMLTextAreaElement).focus();
     }, 350);
-  }, [onViewWorkflow]);
+  }, []);
 
   // Removed modal-specific generation callbacks (historic selection now loads directly into editor)
 
   // Using the custom hook for diagram conversion
-  const handleDiagramAsImage = useDiagramAsImage(mermaidSvg, setProposedImage, setIsMermaidOpen);
-
-  // Monitor currentImage state changes
-  React.useEffect(() => {
-    console.log('Current image state changed:', currentImage ? 'Image set' : 'No image');
-  }, [currentImage]);
+  const handleDiagramAsImage = useDiagramAsImage(mermaidSvg, setImage, setIsMermaidOpen);
 
   // Reset state when scenario changes and set initial image if it exists
   React.useEffect(() => {
@@ -696,12 +656,11 @@ Return only the steps.`;
     setEvaluation(null);
     setMermaidCode('');
     setMermaidSvg('');
-    setCurrentImage(null);
-    setProposedImage(null);
+    setImage(null);
 
     // Set initial image only if it's from the current scenario
     if (scenario?.currentWorkflowImage) {
-      setCurrentImage({
+      setImage({
         dataUrl: scenario.currentWorkflowImage,
         base64: scenario.currentWorkflowImage.split(',')[1],
         mimeType: scenario.currentWorkflowImage.split(',')[0].split(':')[1].split(';')[0]
@@ -803,8 +762,8 @@ Return only the steps.`;
           versionTitle: versionTitleInput.trim() || null,
     mermaidCode: mermaidCode || null,
     mermaidSvg: mermaidSvg || null,
-    imageBase64: proposedImage?.base64 || null,
-    imageMimeType: proposedImage?.mimeType || null,
+    imageBase64: image?.base64 || null,
+    imageMimeType: image?.mimeType || null,
         }
       );
       setIsVersionNameOpen(false);
@@ -815,7 +774,7 @@ Return only the steps.`;
     } finally {
       setSavingVersion(false);
     }
-  }, [savingVersion, user?.uid, scenario?.id, workflowExplanation, prdMarkdown, pitchMarkdown, evaluation, versionTitleInput, mermaidCode, mermaidSvg, proposedImage]);
+  }, [savingVersion, user?.uid, scenario?.id, workflowExplanation, prdMarkdown, pitchMarkdown, evaluation, versionTitleInput, mermaidCode, mermaidSvg, image]);
 
   // Load scenario history (evaluations) and latest workflow/doc artifacts for this scenario
   React.useEffect(() => {
@@ -866,26 +825,26 @@ Return only the steps.`;
               <div className="mt-3 bg-slate-900 border-2 border-dashed border-slate-600 rounded-lg p-4 hover:border-sky-500 transition-colors">
                 <input
                   type="file"
-                  ref={currentImageInputRef}
-                  onChange={handleCurrentImageChange}
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
                   accept="image/*"
                   className="hidden"
                   aria-hidden="true"
                 />
-                {!currentImage ? (
-                  <div className="cursor-pointer flex flex-col items-center justify-center" onClick={() => currentImageInputRef.current?.click()}>
+                {!image ? (
+                  <div className="cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                     <Icons.Upload />
-                    <p className="mt-2 text-sm text-slate-400 text-center">Upload a screenshot or diagram of your current process</p>
+                    <p className="mt-2 text-sm text-slate-400">Upload a screenshot or diagram of your current process</p>
                     <span className="mt-4 inline-block bg-slate-700 text-white font-bold py-2 px-4 rounded-lg hover:bg-slate-600 transition-colors">
                       Select Image
                     </span>
                   </div>
                 ) : (
-                  <div className="flex justify-center">
-                    <div className="relative">
-                      <img src={currentImage.dataUrl} alt="Current workflow preview" className="max-h-60 rounded-lg shadow-lg" />
+                  <div>
+                    <div className="relative inline-block">
+                      <img src={image.dataUrl} alt="Current workflow preview" className="max-h-60 rounded-lg mx-auto shadow-lg" />
                       <button
-                        onClick={handleRemoveCurrentImage}
+                        onClick={handleRemoveImage}
                         className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 leading-none hover:bg-red-500 transition-colors"
                         aria-label="Remove image"
                       >
@@ -958,14 +917,14 @@ Return only the steps.`;
               <div className="bg-slate-800 border-2 border-dashed border-slate-600 rounded-xl p-6 text-center transition-colors hover:border-sky-500">
                 <input
                   type="file"
-                  ref={proposedImageInputRef}
-                  onChange={handleProposedImageChange}
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
                   accept="image/*"
                   className="hidden"
                   aria-hidden="true"
                 />
-                {!proposedImage ? (
-                  <div className="cursor-pointer" onClick={() => proposedImageInputRef.current?.click()}>
+                {!image ? (
+                  <div className="cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                     <Icons.Upload />
                     <p className="mt-2 text-sm text-slate-400">{t('operator.uploadHint')}</p>
                     <span className="mt-4 inline-block bg-slate-700 text-white font-bold py-2 px-4 rounded-lg hover:bg-slate-600 transition-colors">
@@ -975,9 +934,9 @@ Return only the steps.`;
                 ) : (
                   <div>
                     <div className="relative inline-block">
-                      <img src={proposedImage.dataUrl} alt="Workflow preview" className="max-h-60 rounded-lg mx-auto shadow-lg" />
+                      <img src={image.dataUrl} alt="Workflow preview" className="max-h-60 rounded-lg mx-auto shadow-lg" />
                       <button
-                        onClick={handleRemoveProposedImage}
+                        onClick={handleRemoveImage}
                         className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 leading-none hover:bg-red-500 transition-colors"
                         aria-label="Remove image"
                       >

@@ -694,12 +694,24 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
           <button 
             onClick={onBack}
             className="text-slate-400 hover:text-white transition-colors"
+            aria-label={t('common.close')}
           >
             <Icons.ChevronLeft />
           </button>
           <h1 className="text-xl font-semibold text-white">{t('workflowDetail.error')}</h1>
         </div>
-        <p className="text-slate-300">{error || t('workflowDetail.notFound')}</p>
+        <div className="space-y-4">
+          <p className="text-slate-300">{error || t('workflowDetail.notFound')}</p>
+          
+          <div className="flex items-center gap-4 mt-4">
+            <button
+              onClick={onBack}
+              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+            >
+              {t('dashboard.back')}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -857,6 +869,19 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                 </div>
               </div>
               
+              {/* Current/Before Workflow */}
+              {scenario?.currentWorkflowImage && (
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-3">Current Workflow</h3>
+                  <img 
+                    src={scenario.currentWorkflowImage}
+                    alt="Current workflow diagram"
+                    className="max-w-full h-auto rounded-lg border border-slate-600"
+                  />
+                </div>
+              )}
+
+              {/* Mermaid Diagram */}
               {workflow.mermaidSvg && (
                 <div>
                   <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.diagram')}</h3>
@@ -866,12 +891,13 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                 </div>
               )}
               
+              {/* Proposed/After Workflow */}
               {workflow.imageBase64 && workflow.imageMimeType && (
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.image')}</h3>
+                  <h3 className="text-lg font-semibold text-white mb-3">Proposed Workflow</h3>
                   <img 
                     src={`data:${workflow.imageMimeType};base64,${workflow.imageBase64}`}
-                    alt="Workflow diagram"
+                    alt="Proposed workflow diagram"
                     className="max-w-full h-auto rounded-lg border border-slate-600"
                   />
                 </div>
@@ -927,9 +953,11 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                     {workflow.evaluationFeedback && (
                       <div>
                         <h4 className="text-white font-medium mb-2">{t('workflowDetail.feedback')}</h4>
-                        <p className="text-slate-300 whitespace-pre-wrap">
-                          {workflow.evaluationFeedback}
-                        </p>
+                        <div className="bg-slate-900/50 rounded-lg border border-slate-700 p-4">
+                          <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">
+                            {workflow.evaluationFeedback}
+                          </p>
+                        </div>
                       </div>
                     )}
                     

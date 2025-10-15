@@ -126,10 +126,10 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, isE
       </div>
       
       <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-        <h2 className="text-xl font-bold mb-4 text-white">Design Your Workflow</h2>
+        <h2 className="text-xl font-bold mb-4 text-white">Design Your Proposed Workflow</h2>
         
         <div className="mb-6">
-          <label className="text-lg font-semibold mb-2 block">1. Visual Workflow (Optional)</label>
+          <label className="text-lg font-semibold mb-2 block">1. Visual Proposed Workflow (Optional)</label>
           <div className="bg-slate-800 border-2 border-dashed border-slate-600 rounded-xl p-6 text-center transition-colors hover:border-sky-500">
               <input 
                 type="file" 
@@ -169,13 +169,13 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, isE
         </div>
 
         <div className="flex flex-col mb-6">
-            <label htmlFor="workflow" className="text-lg font-semibold mb-2">2. Explain Your Workflow</label>
+            <label htmlFor="workflow" className="text-lg font-semibold mb-2">2. Explain The Proposed Workflow</label>
             <p className="text-sm text-slate-400 mb-3">Describe the steps in your process. Specify which tasks are handled by AI and which require human intervention.</p>
             <textarea
               id="workflow"
               value={workflowExplanation}
               onChange={(e) => setWorkflowExplanation(e.target.value)}
-              placeholder="e.g., Step 1 (AI): Ingest customer email and categorize intent. Step 2 (Human): Review high-priority tickets..."
+              placeholder="e.g., Step 1 (AI): Ingest and categorize proposed workflow. Step 2 (Human): Review proposed steps and validate..."
               className="flex-grow bg-slate-900 border border-slate-600 rounded-lg p-4 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow w-full"
               rows={10}
             />

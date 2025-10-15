@@ -1,5 +1,5 @@
 import { Domain } from '../types/domain';
-import type firebase from 'firebase/compat/app';
+
 import { db } from './firebaseInit';
 import { collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc, runTransaction } from 'firebase/firestore';
 

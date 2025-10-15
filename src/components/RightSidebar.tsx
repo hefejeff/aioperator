@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Icons } from '../constants';
-import type firebase from 'firebase/compat/app';
+import type { User } from 'firebase/auth';
 import { getAllUserWorkflowVersions, getScenarios } from '../services/firebaseService';
 import type { WorkflowVersion, Scenario } from '../types';
 
 interface RightSidebarProps {
-  user: firebase.User | null;
+  user: User | null;
   onSelectWorkflow?: (workflowId: string) => void;
   isOpen?: boolean;
   onClose?: () => void;

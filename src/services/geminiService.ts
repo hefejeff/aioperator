@@ -14,6 +14,13 @@ interface ImagePart {
 
 export async function generateText(prompt: string, image: ImagePart | null, opts?: { temperature?: number; candidateCount?: number; }): Promise<string> {
   try {
+    const systemInstruction = `You are an AI workflow assistant. Your task is to help explain workflow processes clearly and comprehensively. If a workflow diagram is provided, carefully analyze it and incorporate its details into your explanation. Pay special attention to:
+- The sequence and dependencies between steps
+- Decision points and conditional flows
+- Integration points between AI and human tasks
+- Data flows and handoffs between systems
+- Error handling and edge cases`;
+
     let contents: any;
 
     if (image) {
@@ -24,7 +31,7 @@ export async function generateText(prompt: string, image: ImagePart | null, opts
             mimeType: image.mimeType,
           },
         },
-        { text: prompt },
+        { text: `Based on the provided workflow diagram and considering all its details, ${prompt}` },
       ];
       contents = { parts: parts };
     } else {
@@ -40,6 +47,9 @@ export async function generateText(prompt: string, image: ImagePart | null, opts
       if (typeof opts.temperature === 'number') request.config.temperature = opts.temperature;
       if (typeof opts.candidateCount === 'number') request.candidates = opts.candidateCount;
     }
+
+    if (!request.config) request.config = {};
+    request.config.systemInstruction = systemInstruction;
 
     const response = await ai.models.generateContent(request);
   return response.text ?? '';
@@ -146,7 +156,17 @@ export async function generatePRD(
     ASSISTANT:
       'Target AI assistant integration. Design for conversational interfaces (e.g., chatbots) and leverage platforms like Dialogflow or Azure Bot Service.',
     COMBINATION:
-      'Combine custom prompts with assistant capabilities. Support both batch workflows and conversational interactions as needed.'
+      'Combine custom prompts with assistant capabilities. Support both batch workflows and conversational interactions as needed.',
+    POWER_APPS:
+      'Focus on Microsoft Power Apps for low-code application development, leveraging built-in connectors and custom components.',
+    POWER_AUTOMATE:
+      'Design workflow automation using Microsoft Power Automate flows, integrating with Microsoft 365 and custom connectors.',
+    POWER_BI:
+      'Implement data visualization and analytics solutions using Microsoft Power BI, connecting to various data sources.',
+    POWER_VIRTUAL_AGENTS:
+      'Create chatbots and virtual agents using Microsoft Power Virtual Agents, integrating with Power Platform services.',
+    APP_SHEETS:
+      'Build no-code applications using Google App Sheets, leveraging its integration with Google Workspace services.'
   };
 
   const multiPlatformGuidance = platforms.length > 1 

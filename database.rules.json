@@ -62,10 +62,10 @@
       }
     },
     "workflowVersions": {
+      ".read": "auth != null",
+      ".indexOn": ["id"],
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
         "$scenarioId": {
-          ".read": "auth != null && auth.uid === $uid",
           ".write": "auth != null && auth.uid === $uid",
           ".indexOn": ["timestamp"]
         }

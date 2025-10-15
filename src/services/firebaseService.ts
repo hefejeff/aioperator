@@ -1,5 +1,5 @@
 import { db } from './firebaseInit';
-import type firebase from 'firebase/compat/app';
+import type { User } from 'firebase/auth';
 import type { EvaluationResult, Scenario, StoredEvaluationResult, AggregatedEvaluationResult, LeaderboardEntry, UserProfile, Role, Platform, SavedPrd, SavedPitch, WorkflowVersion } from '../types';
 import { ALL_SCENARIOS } from '../constants';
 import { ref, get, push, set, update, remove, query, orderByChild, equalTo } from 'firebase/database';
@@ -8,7 +8,7 @@ import { ref, get, push, set, update, remove, query, orderByChild, equalTo } fro
 // { "rules": { "evaluations": { "$uid": { ".indexOn": "scenarioId" } } } }
 
 // Function to store or update user profile information
-export const updateUserProfile = async (user: firebase.User): Promise<void> => {
+export const updateUserProfile = async (user: User): Promise<void> => {
   try {
     const userRef = ref(db, `users/${user.uid}`);
     // Use update to avoid overwriting other potential user-related data
@@ -209,17 +209,27 @@ export const saveEvaluation = async (
   workflowExplanation: string,
   imageUrl: string | null,
   displayName: string | null
-): Promise<void> => {
-  const evaluationData: Omit<StoredEvaluationResult, 'id'> = {
+): Promise<string> => {
+  try {
+    // First save the workflow version to get its ID
+    const workflowVersionId = await saveWorkflowVersion(userId, scenarioId, workflowExplanation, null, {
+      evaluationScore: evaluation.score,
+      evaluationFeedback: evaluation.feedback,
+      imageBase64: imageUrl ? imageUrl.split(',')[1] : null,
+      imageMimeType: imageUrl ? imageUrl.split(';')[0].split(':')[1] : null
+    });
+
+    // Now save the evaluation with a reference to the workflow version
+    const evaluationData: Omit<StoredEvaluationResult, 'id'> = {
       ...evaluation,
       userId,
       scenarioId,
       workflowExplanation,
       imageUrl,
+      workflowVersionId,
       timestamp: Date.now(),
-  };
+    };
 
-  try {
     const userEvaluationsRef = ref(db, `evaluations/${userId}`);
     const newEvaluationRef = push(userEvaluationsRef);
     await set(newEvaluationRef, evaluationData);
@@ -231,22 +241,24 @@ export const saveEvaluation = async (
       const currentBestScore = snapshot.exists() ? snapshot.val().score : 0;
 
       if (evaluation.score > currentBestScore) {
-          await set(leaderboardRef, {
-            score: evaluation.score,
-            displayName: displayName,
-            uid: userId,
-          });
-          // Notify UI that the global leaderboard may have changed so other components can refresh.
-          try {
-            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-              window.dispatchEvent(new CustomEvent('leaderboard-updated'));
-            }
-          } catch (e) {
-            // Non-fatal if the environment doesn't support window events
-            console.debug('Could not dispatch leaderboard-updated event', e);
+        await set(leaderboardRef, {
+          score: evaluation.score,
+          displayName: displayName,
+          uid: userId,
+        });
+        // Notify UI that the global leaderboard may have changed so other components can refresh.
+        try {
+          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+            window.dispatchEvent(new CustomEvent('leaderboard-updated'));
           }
+        } catch (e) {
+          // Non-fatal if the environment doesn't support window events
+          console.debug('Could not dispatch leaderboard-updated event', e);
+        }
       }
     }
+
+    return workflowVersionId; // Return the workflow version ID for reference
   } catch(error) {
     console.error("Failed to save evaluation to Firebase:", error);
     throw error; // Re-throw the error to be handled by the caller UI
@@ -659,68 +671,61 @@ export const getAllUserWorkflowVersions = async (userId: string): Promise<Workfl
 // Get a specific workflow version by ID
 export const getWorkflowVersion = async (workflowId: string, userId?: string): Promise<WorkflowVersion | null> => {
   try {
+    if (!workflowId) {
+      console.warn('No workflowId provided to getWorkflowVersion');
+      return null;
+    }
+
     console.log('Looking for workflow ID:', workflowId, 'for user:', userId);
-    
+
+    // If userId is provided, first try to find the workflow in that user's data
     if (userId) {
-      // If userId is provided, search only in that user's data
-      const ref = db.ref(`workflowVersions/${userId}`);
-      const snap = await ref.get();
-      if (!snap.exists()) {
-        console.log('No workflowVersions data exists for user:', userId);
-        return null;
-      }
-      
-      const data = snap.val();
-      console.log('User workflow data structure:', Object.keys(data));
-      
-      // Search through all scenarios for this user
-      for (const scenarioId in data) {
-        console.log(`Checking scenario ${scenarioId}, workflows:`, Object.keys(data[scenarioId]));
-        if (data[scenarioId][workflowId]) {
-          console.log('Found workflow!');
-          return {
-            id: workflowId,
-            scenarioId,
-            userId,
-            ...data[scenarioId][workflowId]
-          };
-        }
-      }
-    } else {
-      // Fallback to global search if no userId provided
-      const ref = db.ref('workflowVersions');
-      const snap = await ref.get();
-      if (!snap.exists()) {
-        console.log('No workflowVersions data exists');
-        return null;
-      }
-      
-      const data = snap.val();
-      console.log('WorkflowVersions data structure:', Object.keys(data));
-      
-      // Search through all users and scenarios
-      for (const userIdKey in data) {
-        console.log(`Checking user ${userIdKey}, scenarios:`, Object.keys(data[userIdKey]));
-        for (const scenarioId in data[userIdKey]) {
-          console.log(`Checking scenario ${scenarioId}, workflows:`, Object.keys(data[userIdKey][scenarioId]));
-          if (data[userIdKey][scenarioId][workflowId]) {
-            console.log('Found workflow!');
+      const userWorkflows = await get(ref(db, `workflowVersions/${userId}`));
+      if (userWorkflows.exists()) {
+        const userWorkflowsData = userWorkflows.val();
+        for (const scenarioId in userWorkflowsData) {
+          if (userWorkflowsData[scenarioId][workflowId]) {
+            const workflow = userWorkflowsData[scenarioId][workflowId];
             return {
               id: workflowId,
               scenarioId,
-              userId: userIdKey,
-              ...data[userIdKey][scenarioId][workflowId]
+              userId,
+              ...workflow
             };
           }
         }
       }
     }
+
+    // If not found in user's data or no userId provided, search all workflows
+    const allWorkflowsRef = ref(db, 'workflowVersions');
+    const allWorkflows = await get(allWorkflowsRef);
     
+    if (!allWorkflows.exists()) {
+      console.log('No workflows found in database');
+      return null;
+    }
+
+    const allWorkflowsData = allWorkflows.val();
+    for (const ownerId in allWorkflowsData) {
+      for (const scenarioId in allWorkflowsData[ownerId]) {
+        if (allWorkflowsData[ownerId][scenarioId][workflowId]) {
+          const workflow = allWorkflowsData[ownerId][scenarioId][workflowId];
+          return {
+            id: workflowId,
+            scenarioId,
+            userId: ownerId,
+            ...workflow
+          };
+        }
+      }
+    }
+
     console.log('Workflow not found');
     return null;
   } catch (error) {
     console.error('Failed to load workflow version:', error);
-    return null;
+    throw error;
   }
 };
 
@@ -745,7 +750,7 @@ export const updateWorkflowVersion = async (
   try {
     console.log('Updating workflow version:', { workflowId, userId, scenarioId, updates });
     
-    const ref = db.ref(`workflowVersions/${userId}/${scenarioId}/${workflowId}`);
+    const workflowRef = ref(db, `workflowVersions/${userId}/${scenarioId}/${workflowId}`);
     
     // Add lastModified timestamp to updates
     const updateData = {
@@ -753,7 +758,7 @@ export const updateWorkflowVersion = async (
       lastModified: Date.now()
     };
     
-    await ref.update(updateData);
+    await update(workflowRef, updateData);
     console.log('Workflow version updated successfully');
   } catch (error) {
     console.error('Failed to update workflow version:', error);
@@ -767,8 +772,8 @@ import type { TeamMember, TeamRole, WorkflowTeam, PendingInvitation } from '../t
 // Get team information for a workflow
 export const getWorkflowTeam = async (workflowId: string, userId: string, scenarioId: string): Promise<WorkflowTeam | null> => {
   try {
-    const ref = db.ref(`workflowVersions/${userId}/${scenarioId}/${workflowId}/team`);
-    const snapshot = await ref.get();
+    const teamRef = ref(db, `workflowVersions/${userId}/${scenarioId}/${workflowId}/team`);
+    const snapshot = await get(teamRef);
     
     if (!snapshot.exists()) {
       return null;
@@ -792,18 +797,16 @@ export const addTeamMember = async (
 ): Promise<void> => {
   try {
     // Get user profile by email to get userId and displayName
-    const usersRef = db.ref('users');
-    const userQuery = await usersRef.orderByChild('email').equalTo(memberEmail).get();
-    
-    if (!userQuery.exists()) {
-      throw new Error('User not found with this email address');
-    }
-    
-    const userData = userQuery.val();
-    const memberUserId = Object.keys(userData)[0];
-    const memberProfile = userData[memberUserId];
-    
-    const teamMember: TeamMember = {
+      const usersRef = ref(db, 'users');
+      const snapshot = await get(query(usersRef, orderByChild('email'), equalTo(memberEmail)));
+      
+      if (!snapshot.exists()) {
+        throw new Error('User not found with this email address');
+      }
+      
+      const userData = snapshot.val();
+      const memberUserId = Object.keys(userData)[0];
+      const memberProfile = userData[memberUserId];    const teamMember: TeamMember = {
       userId: memberUserId,
       email: memberEmail,
       displayName: memberProfile.displayName || null,
@@ -813,12 +816,12 @@ export const addTeamMember = async (
     };
     
     // Add member to team
-    const teamRef = db.ref(`workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/members/${memberUserId}`);
-    await teamRef.set(teamMember);
+    const teamRef = ref(db, `workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/members/${memberUserId}`);
+    await set(teamRef, teamMember);
     
     // Also update workflowId in the team structure
-    const workflowIdRef = db.ref(`workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/workflowId`);
-    await workflowIdRef.set(workflowId);
+    const workflowIdRef = ref(db, `workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/workflowId`);
+    await set(workflowIdRef, workflowId);
     
   } catch (error) {
     console.error('Failed to add team member:', error);
@@ -834,8 +837,8 @@ export const removeTeamMember = async (
   memberUserId: string
 ): Promise<void> => {
   try {
-    const teamMemberRef = db.ref(`workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/members/${memberUserId}`);
-    await teamMemberRef.remove();
+    const teamMemberRef = ref(db, `workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/members/${memberUserId}`);
+    await remove(teamMemberRef);
   } catch (error) {
     console.error('Failed to remove team member:', error);
     throw error;
@@ -851,8 +854,8 @@ export const updateTeamMemberRole = async (
   newRole: TeamRole
 ): Promise<void> => {
   try {
-    const roleRef = db.ref(`workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/members/${memberUserId}/role`);
-    await roleRef.set(newRole);
+    const roleRef = ref(db, `workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/members/${memberUserId}/role`);
+    await set(roleRef, newRole);
   } catch (error) {
     console.error('Failed to update team member role:', error);
     throw error;
@@ -881,8 +884,8 @@ export const createInvitation = async (
     };
     
     // Store invitation
-    const invitationRef = db.ref(`workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/invitations/${email.replace(/\./g, '_')}`);
-    await invitationRef.set(invitation);
+    const invitationRef = ref(db, `workflowVersions/${workflowOwnerId}/${scenarioId}/${workflowId}/team/invitations/${email.replace(/\./g, '_')}`);
+    await set(invitationRef, invitation);
     
     return token;
   } catch (error) {
@@ -914,8 +917,8 @@ export const getUserAccessibleWorkflows = async (userId: string): Promise<Workfl
 // Get all users for collaboration dropdown
 export const getAllUsers = async (): Promise<UserProfile[]> => {
   try {
-    const usersRef = db.ref('users');
-    const snapshot = await usersRef.get();
+    const usersRef = ref(db, 'users');
+    const snapshot = await get(usersRef);
     
     if (!snapshot.exists()) {
       return [];

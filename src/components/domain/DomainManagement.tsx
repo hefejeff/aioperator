@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import type { User } from 'firebase/auth';
 import { Domain } from '../../types/domain';
 import {
   listDomains,
@@ -9,7 +10,7 @@ import {
 import DomainModal from './DomainModal';
 import { Icons } from '../../constants';
 
-const DomainManagement: React.FC<{ currentUser: firebase.User }> = ({ currentUser }) => {
+const DomainManagement: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<Domain | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);

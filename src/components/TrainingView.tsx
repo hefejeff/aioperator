@@ -1,7 +1,7 @@
 
 
 import React, { useEffect, useState } from 'react';
-import type firebase from 'firebase/compat/app';
+import type { User } from 'firebase/auth';
 import type { Scenario } from '../types';
 import { saveUserScenario, deleteUserScenario, updateScenario, toggleFavoriteScenario, getUserFavoriteScenarioIds } from '../services/firebaseService';
 import ScenarioCard from './ScenarioCard';
@@ -11,7 +11,7 @@ import { useTranslation } from '../i18n';
 interface TrainingViewProps {
   scenarios: Scenario[];
   onSelectScenario: (scenario: Scenario) => void;
-  user: firebase.User;
+  user: User;
   onScenarioCreated: (newScenario: Scenario) => void;
   highScores: Record<string, number>;
   averageScores: Record<string, number>;

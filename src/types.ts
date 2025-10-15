@@ -13,6 +13,7 @@ export interface Scenario {
   type: 'TRAINING' | 'EVALUATION';
   userId?: string; // ID of the user who created this scenario
   favoritedBy?: Record<string, true>; // map of userId -> true for quick lookup
+  currentWorkflowImage?: string; // Base64 data URL for the current workflow image
 }
 
 export interface UserProfile {
@@ -36,6 +37,7 @@ export interface StoredEvaluationResult extends EvaluationResult {
   timestamp: number;
   workflowExplanation: string;
   imageUrl: string | null;
+  workflowVersionId?: string; // ID of the corresponding workflow version if one exists
 }
 
 export interface AggregatedEvaluationResult extends StoredEvaluationResult {

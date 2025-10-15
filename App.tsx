@@ -1,7 +1,7 @@
 
 
 import React, { useState, useCallback, useEffect } from 'react';
-import type firebase from 'firebase/compat/app';
+import type { User } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 import type { Scenario } from './types';
 import { getScenarios, seedScenarios, updateUserProfile, getAllUserEvaluations } from './services/firebaseService';
@@ -19,7 +19,7 @@ type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'EVALUATION' | 'HISTORY';
 const App: React.FC = () => {
   const [view, setView] = useState<View>('DASHBOARD');
   const [activeScenario, setActiveScenario] = useState<Scenario | null>(null);
-  const [user, setUser] = useState<firebase.User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);

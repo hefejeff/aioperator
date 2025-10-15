@@ -4,7 +4,16 @@ import { LoadingSpinner } from './OperatorConsole';
 // Note: import is done dynamically in the handler to avoid throwing at module load if API key is missing
 
 interface CreateScenarioFormProps {
-  onSave: (data: { title: string; title_es?: string; description: string; description_es?: string; goal: string; goal_es?: string; domain?: string }) => Promise<void>;
+  onSave: (data: { 
+    title: string; 
+    title_es?: string; 
+    description: string; 
+    description_es?: string; 
+    goal: string; 
+    goal_es?: string; 
+    domain?: string;
+    currentWorkflowImage?: File 
+  }) => Promise<void>;
   onClose: () => void;
 }
 
@@ -13,11 +22,30 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
   const [description, setDescription] = useState('');
   const [goal, setGoal] = useState('');
   const [domain, setDomain] = useState('');
+  const [currentWorkflowImage, setCurrentWorkflowImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generatingExample, setGeneratingExample] = useState(false);
   const { t, lang } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // AI generation removed
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        setError(t('operator.invalidImageAlert'));
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        setError(t('operator.invalidImageAlert'));
+        return;
+      }
+      setCurrentWorkflowImage(file);
+      setPreviewUrl(URL.createObjectURL(file));
+      setError(null);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +64,7 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
         description: description.trim(),
         goal: goal.trim(),
         domain: finalDomain,
+        ...(currentWorkflowImage && previewUrl ? { currentWorkflowImage: previewUrl } : {}),
       };
 
       // Try to generate translations via geminiService if available. If it fails, fall back to the original text.
@@ -223,10 +252,10 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
       onClick={onClose}
     >
       <div 
-        className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-6 w-full max-w-2xl text-left relative animate-fade-in-up"
-        onClick={(e) => e.stopPropagation()} // Prevent closing modal when clicking inside
+        className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-6 w-full max-w-2xl text-left relative animate-fade-in-up overflow-y-auto max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
       >
-  <h2 className="text-2xl font-bold text-white mb-4">{t('create.title')}</h2>
+        <h2 className="text-2xl font-bold text-white mb-4">{t('create.title')}</h2>
         <form onSubmit={handleSave} className="space-y-5">
           {/* Domain */}
           <div>
@@ -288,7 +317,63 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
               className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
             />
           </div>
-          {/* Domain badge */}
+
+          {/* Current Workflow Image Upload */}
+          <div className="mt-4 pt-4 border-t border-slate-700">
+            <div className="mb-2">
+              <label className="block text-sm font-medium text-slate-300">
+                Current Workflow
+                <span className="ml-1 text-slate-500">(Optional)</span>
+              </label>
+              <p className="text-sm text-slate-400 mt-1">Upload a screenshot or diagram of your current process</p>
+            </div>
+            
+            <div className="mt-3">
+              {previewUrl ? (
+                <div className="relative rounded-lg border-2 border-sky-500/50 bg-sky-500/10 p-4">
+                  <img
+                    src={previewUrl}
+                    alt="Current workflow preview"
+                    className="max-h-64 object-contain mx-auto rounded-lg"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentWorkflowImage(null);
+                      setPreviewUrl(null);
+                    }}
+                    className="absolute top-2 right-2 p-1 bg-red-500/90 hover:bg-red-600 text-white rounded-full transition-colors"
+                    title="Remove image"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <label
+                  htmlFor="workflow-image"
+                  className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-600 hover:border-slate-500 rounded-lg cursor-pointer bg-slate-900/50 hover:bg-slate-800/50 transition-all duration-200"
+                >
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <svg className="w-8 h-8 mb-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    <p className="mb-2 text-sm text-slate-400">Click or drag to upload</p>
+                    <p className="text-xs text-slate-500">PNG, JPG up to 5MB</p>
+                  </div>
+                  <input
+                    id="workflow-image"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="hidden"
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+
           <div>
             {domain && (
               <div className="mt-2">
