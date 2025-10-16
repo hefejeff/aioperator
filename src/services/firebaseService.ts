@@ -6,8 +6,28 @@ import type {
   TeamRole, 
   WorkflowTeam, 
   PendingInvitation,
-  Scenario 
+  Scenario,
+  StoredEvaluationResult,
+  EvaluationResult
 } from '../types';
+
+// Get evaluations for a specific user and scenario
+export const getEvaluations = async (userId: string, scenarioId: string): Promise<StoredEvaluationResult[]> => {
+  try {
+    const userEvaluationsRef = ref(db, `evaluations/${userId}`);
+    const evaluationsQuery = query(userEvaluationsRef, orderByChild('scenarioId'), equalTo(scenarioId));
+    const snapshot = await get(evaluationsQuery);
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      // Convert object to array and reverse to show newest first
+      return Object.entries(data).map(([id, value]) => ({ id, ...(value as Omit<StoredEvaluationResult, 'id'>) })).sort((a,b) => b.timestamp - a.timestamp);
+    }
+    return [];
+  } catch(error) {
+    console.error(`Firebase fetch failed for scenario ${scenarioId}:`, error);
+    throw error; // Re-throw to be handled by the UI
+  }
+};
 
 // Get workflow versions for a user & scenario
 export const getWorkflowVersions = async (userId: string, scenarioId: string): Promise<WorkflowVersion[]> => {
