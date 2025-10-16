@@ -8,10 +8,74 @@ import type {
   PendingInvitation,
   Scenario,
   StoredEvaluationResult,
-  EvaluationResult
+  EvaluationResult,
+  LeaderboardEntry
 } from '../types';
 
 // Get evaluations for a specific user and scenario
+export const saveEvaluation = async (
+  userId: string,
+  scenarioId: string,
+  evaluation: EvaluationResult,
+  workflowExplanation: string,
+  imageUrl: string | null,
+  displayName: string | null
+): Promise<string> => {
+  try {
+    // First save the workflow version to get its ID
+    const workflowVersionId = await saveWorkflowVersion(userId, scenarioId, workflowExplanation, null, {
+      evaluationScore: evaluation.score,
+      evaluationFeedback: evaluation.feedback,
+      imageBase64: imageUrl ? imageUrl.split(',')[1] : null,
+      imageMimeType: imageUrl ? imageUrl.split(';')[0].split(':')[1] : null
+    });
+
+    // Now save the evaluation with a reference to the workflow version
+    const evaluationData: Omit<StoredEvaluationResult, 'id'> = {
+      ...evaluation,
+      userId,
+      scenarioId,
+      workflowExplanation,
+      imageUrl,
+      workflowVersionId,
+      timestamp: Date.now(),
+    };
+
+    const userEvaluationsRef = ref(db, `evaluations/${userId}`);
+    const newEvaluationRef = push(userEvaluationsRef);
+    await set(newEvaluationRef, evaluationData);
+    
+    // After successful save, update leaderboard if it's a new high score
+    if (displayName) { // Only update if display name is available
+      const leaderboardRef = ref(db, `leaderboards/${scenarioId}/${userId}`);
+      const snapshot = await get(leaderboardRef);
+      const currentBestScore = snapshot.exists() ? snapshot.val().score : 0;
+
+      if (evaluation.score > currentBestScore) {
+        await set(leaderboardRef, {
+          score: evaluation.score,
+          displayName: displayName,
+          uid: userId,
+        });
+        // Notify UI that the global leaderboard may have changed so other components can refresh
+        try {
+          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+            window.dispatchEvent(new CustomEvent('leaderboard-updated'));
+          }
+        } catch (e) {
+          // Non-fatal if the environment doesn't support window events
+          console.debug('Could not dispatch leaderboard-updated event', e);
+        }
+      }
+    }
+
+    return workflowVersionId; // Return the workflow version ID for reference
+  } catch(error) {
+    console.error("Failed to save evaluation to Firebase:", error);
+    throw error; // Re-throw the error to be handled by the caller UI
+  }
+};
+
 export const getEvaluations = async (userId: string, scenarioId: string): Promise<StoredEvaluationResult[]> => {
   try {
     const userEvaluationsRef = ref(db, `evaluations/${userId}`);
