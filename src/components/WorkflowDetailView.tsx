@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Icons } from '../constants';
 import { useTranslation } from '../i18n';
-import type { WorkflowVersion, Scenario, TeamRole, UserProfile } from '../types';
-import { getWorkflowVersion, getScenarioById, updateWorkflowVersion, addTeamMember, removeTeamMember, updateTeamMemberRole, getAllUsers } from '../services/firebaseService';
+import type { WorkflowVersion, Scenario, TeamRole, UserProfile, SavedPrd, SavedPitch, StoredEvaluationResult } from '../types';
+import { getWorkflowVersion, getScenarioById, updateWorkflowVersion, addTeamMember, removeTeamMember, updateTeamMemberRole, getAllUsers, getLatestPrdForScenario, getLatestPitchForScenario, getEvaluations } from '../services/firebaseService';
 
 interface WorkflowDetailViewProps {
   workflowId: string;
@@ -652,17 +652,56 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
     }
   };
 
+  const [relatedPrd, setRelatedPrd] = useState<SavedPrd | null>(null);
+  const [relatedPitch, setRelatedPitch] = useState<SavedPitch | null>(null);
+  const [relatedEvaluations, setRelatedEvaluations] = useState<StoredEvaluationResult[]>([]);
+
   const loadWorkflow = async () => {
     try {
       setIsLoading(true);
       const workflowData = await getWorkflowVersion(workflowId, userId);
-      setWorkflow(workflowData);
       
       // Load scenario data if workflow is found
       if (workflowData?.scenarioId) {
         const scenarioData = await getScenarioById(workflowData.scenarioId, userId);
         setScenario(scenarioData);
+
+        // Load evaluations first
+        const evaluationsData = await getEvaluations(userId, workflowData.scenarioId);
+        
+        // If we have a sourceEvaluationId, find the matching evaluation
+        if (workflowData.sourceEvaluationId && evaluationsData.length > 0) {
+          const sourceEval = evaluationsData.find(e => e.id === workflowData.sourceEvaluationId);
+          if (sourceEval) {
+            console.log('Found source evaluation:', sourceEval);
+            // Use the evaluation feedback from the source evaluation
+            workflowData.evaluationFeedback = sourceEval.feedback;
+          }
+        }
+        
+        // If no evaluation feedback but we have evaluations, use the most recent one
+        if (!workflowData.evaluationFeedback && evaluationsData.length > 0) {
+          workflowData.evaluationFeedback = evaluationsData[0].feedback;
+          workflowData.evaluationScore = evaluationsData[0].score;
+        }
+
+        // Set the workflow data first so it's available
+        setWorkflow(workflowData);
+        setRelatedEvaluations(evaluationsData);
+        
+        // Load and set other related data
+        const [latestPrd, latestPitch] = await Promise.all([
+          getLatestPrdForScenario(userId, workflowData.scenarioId),
+          getLatestPitchForScenario(userId, workflowData.scenarioId)
+        ]);
+        
+        if (latestPrd) setRelatedPrd(latestPrd);
+        if (latestPitch) setRelatedPitch(latestPitch);
       }
+
+        setRelatedPrd(prd);
+        setRelatedPitch(pitch);
+        setRelatedEvaluations(evaluations);
       
       // Load users for team collaboration
       await loadUsers();
@@ -914,6 +953,17 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                     {workflow.prdMarkdown}
                   </pre>
                 </div>
+              ) : relatedPrd ? (
+                <div>
+                  <div className="text-sm text-slate-400 mb-2">
+                    Latest PRD from {new Date(relatedPrd.timestamp).toLocaleDateString()}:
+                  </div>
+                  <div className="prose prose-slate prose-invert max-w-none">
+                    <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900 p-4 rounded-lg border border-slate-600">
+                      {relatedPrd.markdown}
+                    </pre>
+                  </div>
+                </div>
               ) : (
                 <p className="text-slate-400 italic">{t('workflowDetail.noPrd')}</p>
               )}
@@ -929,6 +979,17 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                     {workflow.pitchMarkdown}
                   </pre>
                 </div>
+              ) : relatedPitch ? (
+                <div>
+                  <div className="text-sm text-slate-400 mb-2">
+                    Latest Elevator Pitch from {new Date(relatedPitch.timestamp).toLocaleDateString()}:
+                  </div>
+                  <div className="prose prose-slate prose-invert max-w-none">
+                    <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900 p-4 rounded-lg border border-slate-600">
+                      {relatedPitch.markdown}
+                    </pre>
+                  </div>
+                </div>
               ) : (
                 <p className="text-slate-400 italic">{t('workflowDetail.noPitch')}</p>
               )}
@@ -942,7 +1003,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                 
                 {workflow.evaluationScore !== null ? (
                   <div className="bg-slate-900 p-4 rounded-lg border border-slate-600 space-y-3">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 mb-4">
                       <Icons.Star />
                       <span className="text-slate-300">
                         {t('workflowDetail.finalScore')}: 
@@ -950,22 +1011,76 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                       </span>
                     </div>
                     
-                    {workflow.evaluationFeedback && (
-                      <div>
-                        <h4 className="text-white font-medium mb-2">{t('workflowDetail.feedback')}</h4>
-                        <div className="bg-slate-900/50 rounded-lg border border-slate-700 p-4">
-                          <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">
-                            {workflow.evaluationFeedback}
-                          </p>
+                    {/* Show evaluation feedback or find matching evaluation from relatedEvaluations */}
+                    {(() => {
+                      // First try to get the evaluation feedback from the workflow
+                      let evaluationContent = workflow.evaluationFeedback;
+                      
+                      // If not found and we have a source evaluation ID, try to find it in related evaluations
+                      if (!evaluationContent && workflow.sourceEvaluationId && relatedEvaluations.length > 0) {
+                        const sourceEval = relatedEvaluations.find(e => e.id === workflow.sourceEvaluationId);
+                        if (sourceEval) {
+                          evaluationContent = sourceEval.feedback;
+                        }
+                      }
+                      
+                      // If still not found but we have any related evaluations, use the most recent one
+                      if (!evaluationContent && relatedEvaluations.length > 0) {
+                        evaluationContent = relatedEvaluations[0].feedback;
+                      }
+                      
+                      return evaluationContent ? (
+                        <div>
+                          <h4 className="text-white font-medium mb-2">{t('workflowDetail.feedback')}</h4>
+                          <div className="bg-slate-900/50 rounded-lg border border-slate-700 p-4 whitespace-pre-wrap">
+                            <pre className="text-slate-300 whitespace-pre-wrap leading-relaxed font-sans">
+                              {evaluationContent}
+                            </pre>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="text-slate-400 italic">No evaluation feedback available</div>
+                      );
+                    })()}
                     
                     {workflow.sourceEvaluationId && (
-                      <div className="text-xs text-slate-400">
+                      <div className="text-xs text-slate-400 mt-2">
                         {t('workflowDetail.evaluationId')}: {workflow.sourceEvaluationId}
                       </div>
                     )}
+                  </div>
+                ) : relatedEvaluations.length > 0 ? (
+                  <div>
+                    <div className="text-sm text-slate-400 mb-4">All evaluations for this scenario:</div>
+                    <div className="space-y-4">
+                      {relatedEvaluations.map((evaluation) => (
+                        <div key={evaluation.id} className="bg-slate-900 p-4 rounded-lg border border-slate-600 space-y-3">
+                          <div className="flex items-center gap-3">
+                            <Icons.Star />
+                            <span className="text-slate-300">
+                              {t('workflowDetail.finalScore')}: 
+                              <span className="font-semibold text-white ml-2">{evaluation.score}/10</span>
+                            </span>
+                            <span className="text-sm text-slate-400">
+                              ({new Date(evaluation.timestamp).toLocaleDateString()})
+                            </span>
+                          </div>
+                          
+                          <div>
+                            <h4 className="text-white font-medium mb-2">{t('workflowDetail.feedback')}</h4>
+                            <div className="bg-slate-900/50 rounded-lg border border-slate-700 p-4">
+                              <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">
+                                {evaluation.feedback}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="text-xs text-slate-400">
+                            {t('workflowDetail.evaluationId')}: {evaluation.id}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <p className="text-slate-400 italic">{t('workflowDetail.noEvaluation')}</p>
