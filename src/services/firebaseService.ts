@@ -9,7 +9,8 @@ import type {
   Scenario,
   StoredEvaluationResult,
   EvaluationResult,
-  LeaderboardEntry
+  LeaderboardEntry,
+  SavedPitch
 } from '../types';
 
 // Get evaluations for a specific user and scenario
@@ -446,6 +447,34 @@ export const getUserAccessibleWorkflows = async (userId: string): Promise<Workfl
 };
 
 // Create invitation token and store pending invitation
+// Save a generated Elevator Pitch for later retrieval
+export const savePitch = async (
+  userId: string,
+  scenarioId: string,
+  markdown: string,
+  scenarioTitle?: string
+): Promise<string> => {
+  try {
+    console.log('Attempting to save Pitch:', { userId, scenarioId, scenarioTitle });
+    const pitchesRef = ref(db, `pitches/${userId}`);
+    const newPitchRef = push(pitchesRef);
+    const payload = {
+      userId,
+      scenarioId,
+      scenarioTitle: scenarioTitle ?? null,
+      markdown,
+      timestamp: Date.now(),
+    };
+    console.log('Pitch payload:', payload);
+    await set(newPitchRef, payload);
+    console.log('Pitch saved successfully with key:', newPitchRef.key);
+    return newPitchRef.key as string;
+  } catch (error) {
+    console.error('Failed to save Elevator Pitch:', error);
+    throw error;
+  }
+};
+
 export const createInvitation = async (
   workflowId: string,
   workflowOwnerId: string,
