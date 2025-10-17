@@ -10,7 +10,9 @@ import type {
   StoredEvaluationResult,
   EvaluationResult,
   LeaderboardEntry,
-  SavedPitch
+  SavedPitch,
+  SavedPrd,
+  Platform
 } from '../types';
 
 // Get evaluations for a specific user and scenario
@@ -447,6 +449,36 @@ export const getUserAccessibleWorkflows = async (userId: string): Promise<Workfl
 };
 
 // Create invitation token and store pending invitation
+// Save a generated PRD for later retrieval
+export const savePrd = async (
+  userId: string,
+  scenarioId: string,
+  platform: Platform,
+  markdown: string,
+  scenarioTitle?: string
+): Promise<string> => {
+  try {
+    console.log('Attempting to save PRD:', { userId, scenarioId, platform, scenarioTitle });
+    const prdsRef = ref(db, `prds/${userId}`);
+    const newPrdRef = push(prdsRef);
+    const payload = {
+      userId,
+      scenarioId,
+      scenarioTitle: scenarioTitle ?? null,
+      platform,
+      markdown,
+      timestamp: Date.now(),
+    };
+    console.log('PRD payload:', payload);
+    await set(newPrdRef, payload);
+    console.log('PRD saved successfully with key:', newPrdRef.key);
+    return newPrdRef.key as string;
+  } catch (error) {
+    console.error('Failed to save PRD:', error);
+    throw error;
+  }
+};
+
 // Save a generated Elevator Pitch for later retrieval
 export const savePitch = async (
   userId: string,
