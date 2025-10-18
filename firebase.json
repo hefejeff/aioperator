@@ -7,7 +7,7 @@
       "**/node_modules/**"
     ],
     "predeploy": [
-      "npm --prefix . run build"
+      "npm install && npm run build"
     ],
     "rewrites": [
       {
