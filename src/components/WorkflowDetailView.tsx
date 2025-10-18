@@ -698,10 +698,6 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
         if (latestPrd) setRelatedPrd(latestPrd);
         if (latestPitch) setRelatedPitch(latestPitch);
       }
-
-        setRelatedPrd(prd);
-        setRelatedPitch(pitch);
-        setRelatedEvaluations(evaluations);
       
       // Load users for team collaboration
       await loadUsers();

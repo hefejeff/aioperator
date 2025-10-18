@@ -1,74 +1,63 @@
 {
   "rules": {
+    ".read": "auth != null",
     "users": {
-      ".read": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'ADMIN' || root.child('users/' + auth.uid + '/role').val() === 'SUPER_ADMIN')",
       ".indexOn": ["email"],
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'ADMIN' || root.child('users/' + auth.uid + '/role').val() === 'SUPER_ADMIN')",
-  ".write": "auth != null && auth.uid === $uid && (newData.child('role').val() === data.child('role').val())",
-        "role": {
-          ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'ADMIN' || root.child('users/' + auth.uid + '/role').val() === 'SUPER_ADMIN')",
-          ".validate": "newData.isString() && newData.val().matches(/^(SUPER_ADMIN|ADMIN|PRO_USER|USER)$/)"
-        }
-      }
-    },
-    "scenarios": {
-      ".read": "auth != null",
-      ".write": "auth != null && !data.exists()",
-      "$scenarioId": {
-        "favoritedBy": {
-          "$uid": {
-            ".write": "auth != null && auth.uid === $uid",
-            ".validate": "newData.val() === true || !newData.exists()"
-          }
-        }
-      }
-    },
-    "userScenarios": {
-      "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid"
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')"
       }
     },
     "evaluations": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')",
         ".indexOn": ["scenarioId"]
       }
     },
+    "workflowVersions": {
+      ".indexOn": ["id"],
+      "$uid": {
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')",
+        "$scenarioId": {
+          ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')",
+          ".indexOn": ["timestamp"]
+        }
+      }
+    },
+    "userScenarioOverrides": {
+      "$uid": {
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')"
+      }
+    },
+    "scenarios": {
+      ".indexOn": ["userId", "type"],
+      "$scenarioId": {
+        ".write": "auth != null && (auth.uid === data.child('userId').val() || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')",
+        "favoritedBy": {
+          ".indexOn": ["userId"],
+          "$userId": {
+            ".write": "auth != null && (auth.uid === $userId || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')"
+          }
+        }
+      }
+    },
     "leaderboards": {
-      ".read": "auth != null",
       "$scenarioId": {
         ".indexOn": "score",
         "$uid": {
-          ".write": "auth != null && auth.uid === $uid",
-          ".validate": "newData.hasChildren(['score', 'displayName', 'uid']) && newData.child('score').isNumber() && newData.child('displayName').isString() && newData.child('uid').isString() && newData.child('uid').val() === $uid"
+          ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')"
         }
       }
     },
     "prds": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')",
         ".indexOn": ["scenarioId", "timestamp", "platform"]
       }
     },
     "pitches": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')",
         ".indexOn": ["scenarioId", "timestamp"]
-      }
-    },
-    "workflowVersions": {
-      ".read": "auth != null",
-      ".indexOn": ["id"],
-      "$uid": {
-        "$scenarioId": {
-          ".write": "auth != null && auth.uid === $uid",
-          ".indexOn": ["timestamp"]
-        }
       }
     }
   }

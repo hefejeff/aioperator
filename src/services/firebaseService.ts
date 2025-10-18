@@ -12,10 +12,50 @@ import type {
   LeaderboardEntry,
   SavedPitch,
   SavedPrd,
-  Platform
+  Platform,
+  AggregatedEvaluationResult,
+  UserProfile,
+  Role
 } from '../types';
+import { ALL_SCENARIOS } from '../constants';
 
 // Get evaluations for a specific user and scenario
+// Get all evaluations for a user across all scenarios
+export const getAllUserEvaluations = async (userId: string): Promise<AggregatedEvaluationResult[]> => {
+  try {
+    const userEvaluationsRef = ref(db, `evaluations/${userId}`);
+    const snapshot = await get(userEvaluationsRef);
+    
+    if (!snapshot.exists()) {
+      return [];
+    }
+
+    const evaluations: AggregatedEvaluationResult[] = [];
+    const evaluationsData = snapshot.val();
+
+    // Get all scenarios to look up titles
+    const scenariosRef = ref(db, 'scenarios');
+    const scenariosSnapshot = await get(scenariosRef);
+    const scenariosData = scenariosSnapshot.exists() ? scenariosSnapshot.val() : {};
+
+    // Convert object to array and include scenario titles
+    for (const [id, evaluation] of Object.entries<any>(evaluationsData)) {
+      const scenarioTitle = scenariosData[evaluation.scenarioId]?.title || 'Unknown Scenario';
+      evaluations.push({
+        id,
+        ...(evaluation as Omit<StoredEvaluationResult, 'id'>),
+        scenarioTitle
+      });
+    }
+
+    // Sort by timestamp, most recent first
+    return evaluations.sort((a, b) => b.timestamp - a.timestamp);
+  } catch (error) {
+    console.error('Failed to fetch user evaluations:', error);
+    throw error;
+  }
+};
+
 export const saveEvaluation = async (
   userId: string,
   scenarioId: string,
@@ -507,6 +547,421 @@ export const savePitch = async (
   }
 };
 
+// Get all scenarios available to a user (including public and user-created)
+export const getScenarios = async (userId: string): Promise<Scenario[]> => {
+  try {
+    const scenariosRef = ref(db, 'scenarios');
+    const snapshot = await get(scenariosRef);
+    
+    if (!snapshot.exists()) {
+      return [];
+    }
+    
+    const scenarios: Scenario[] = [];
+    const data = snapshot.val();
+    
+    // Convert object to array and include all scenarios user has access to
+    for (const [id, scenario] of Object.entries<any>(data)) {
+      // Include scenario if it's public or created by the user
+      if (!scenario.userId || scenario.userId === userId) {
+        scenarios.push({
+          id,
+          ...(scenario as Omit<Scenario, 'id'>)
+        });
+      }
+    }
+    
+    return scenarios;
+  } catch (error) {
+    console.error('Failed to fetch scenarios:', error);
+    throw error;
+  }
+};
+
+// Save a new user-created scenario
+export const saveUserScenario = async (userId: string, scenario: Omit<Scenario, 'id' | 'type'>): Promise<Scenario> => {
+  try {
+    const scenariosRef = ref(db, 'scenarios');
+    const newScenarioRef = push(scenariosRef);
+    
+    const scenarioData = {
+      ...scenario,
+      userId,
+      type: 'TRAINING' as const,
+      favoritedBy: {}
+    };
+    
+    await set(newScenarioRef, scenarioData);
+    
+    return {
+      id: newScenarioRef.key as string,
+      ...scenarioData
+    };
+  } catch (error) {
+    console.error('Failed to save user scenario:', error);
+    throw error;
+  }
+};
+
+// Toggle favorite status of a scenario for a user
+export const toggleFavoriteScenario = async (userId: string, scenario: Scenario): Promise<boolean> => {
+  try {
+    const favoritesRef = ref(db, `scenarios/${scenario.id}/favoritedBy/${userId}`);
+    const isFavorited = scenario.favoritedBy?.[userId];
+    
+    if (isFavorited) {
+      // Remove favorite
+      await remove(favoritesRef);
+      return false;
+    } else {
+      // Add favorite
+      await set(favoritesRef, true);
+      return true;
+    }
+  } catch (error) {
+    console.error('Failed to toggle favorite scenario:', error);
+    throw error;
+  }
+};
+
+// Delete a user's scenario
+export const deleteUserScenario = async (userId: string, scenarioId: string): Promise<void> => {
+  try {
+    const scenarioRef = ref(db, `scenarios/${scenarioId}`);
+    const snapshot = await get(scenarioRef);
+    
+    if (!snapshot.exists()) {
+      throw new Error('Scenario not found');
+    }
+    
+    const scenario = snapshot.val();
+    if (scenario.userId !== userId) {
+      throw new Error('Not authorized to delete this scenario');
+    }
+    
+    await remove(scenarioRef);
+  } catch (error) {
+    console.error('Failed to delete scenario:', error);
+    throw error;
+  }
+};
+
+// Update an existing scenario
+export const updateScenario = async (scenario: Scenario): Promise<void> => {
+  try {
+    const scenarioRef = ref(db, `scenarios/${scenario.id}`);
+    await update(scenarioRef, scenario);
+  } catch (error) {
+    console.error('Failed to update scenario:', error);
+    throw error;
+  }
+};
+
+// Get a user's favorite scenario IDs
+export const getUserFavoriteScenarioIds = async (userId: string): Promise<Set<string>> => {
+  try {
+    const scenariosRef = ref(db, 'scenarios');
+    const snapshot = await get(scenariosRef);
+    
+    if (!snapshot.exists()) {
+      return new Set();
+    }
+    
+    const favoriteIds = new Set<string>();
+    const scenarios = snapshot.val();
+    
+    for (const [id, scenario] of Object.entries<any>(scenarios)) {
+      if (scenario.favoritedBy?.[userId]) {
+        favoriteIds.add(id);
+      }
+    }
+    
+    return favoriteIds;
+  } catch (error) {
+    console.error('Failed to get user favorite scenarios:', error);
+    throw error;
+  }
+};
+
+// Create a user-specific override for a scenario
+export const createUserScenarioOverride = async (
+  userId: string,
+  scenarioId: string,
+  override: Partial<Scenario>
+): Promise<void> => {
+  try {
+    const overrideRef = ref(db, `userScenarioOverrides/${userId}/${scenarioId}`);
+    await update(overrideRef, {
+      ...override,
+      updatedAt: Date.now()
+    });
+  } catch (error) {
+    console.error('Failed to create scenario override:', error);
+    throw error;
+  }
+};
+
+// Delete a user and their data (admin only)
+export const deleteUser = async (adminUserId: string, targetUserId: string): Promise<boolean> => {
+  try {
+    // First verify admin permissions
+    const adminRef = ref(db, `users/${adminUserId}`);
+    const adminSnap = await get(adminRef);
+    if (!adminSnap.exists()) throw new Error('Admin not found');
+    const adminData = adminSnap.val();
+    if (adminData.role !== 'SUPER_ADMIN' && adminData.role !== 'ADMIN') {
+      throw new Error('Not authorized');
+    }
+
+    // Delete user's data
+    const batch = [
+      remove(ref(db, `users/${targetUserId}`)),
+      remove(ref(db, `evaluations/${targetUserId}`)),
+      remove(ref(db, `workflowVersions/${targetUserId}`)),
+      remove(ref(db, `userScenarioOverrides/${targetUserId}`))
+    ];
+
+    // Also remove user's favorites from all scenarios
+    const scenariosRef = ref(db, 'scenarios');
+    const scenariosSnap = await get(scenariosRef);
+    if (scenariosSnap.exists()) {
+      const scenarios = scenariosSnap.val();
+      for (const [scenarioId, scenario] of Object.entries<any>(scenarios)) {
+        if (scenario.favoritedBy?.[targetUserId]) {
+          batch.push(remove(ref(db, `scenarios/${scenarioId}/favoritedBy/${targetUserId}`)));
+        }
+        // If scenario was created by this user, delete it
+        if (scenario.userId === targetUserId) {
+          batch.push(remove(ref(db, `scenarios/${scenarioId}`)));
+        }
+      }
+    }
+
+    await Promise.all(batch);
+    return true;
+  } catch (error) {
+    console.error('Failed to delete user:', error);
+    return false;
+  }
+};
+
+// List all users (admin only)
+export const listAllUsers = async (): Promise<UserProfile[]> => {
+  try {
+    const usersRef = ref(db, 'users');
+    const snapshot = await get(usersRef);
+    
+    if (!snapshot.exists()) {
+      return [];
+    }
+    
+    const users: UserProfile[] = [];
+    const data = snapshot.val();
+    
+    for (const [uid, user] of Object.entries<any>(data)) {
+      users.push({
+        uid,
+        displayName: user.displayName || null,
+        email: user.email || null,
+        photoURL: user.photoURL || null,
+        preferredLanguage: user.preferredLanguage || 'English',
+        role: (user.role as Role | undefined) || 'USER'
+      });
+    }
+    
+    return users;
+  } catch (error) {
+    console.error('Failed to list users:', error);
+    throw error;
+  }
+};
+
+// Set a user's role (admin only)
+export const setUserRole = async (adminUserId: string, targetUserId: string, newRole: Role): Promise<boolean> => {
+  try {
+    // First verify admin permissions
+    const adminRef = ref(db, `users/${adminUserId}`);
+    const adminSnap = await get(adminRef);
+    if (!adminSnap.exists()) throw new Error('Admin not found');
+    const adminData = adminSnap.val();
+    if (adminData.role !== 'SUPER_ADMIN' && adminData.role !== 'ADMIN') {
+      throw new Error('Not authorized');
+    }
+
+    // Update user's role
+    const userRef = ref(db, `users/${targetUserId}`);
+    await update(userRef, { role: newRole });
+    return true;
+  } catch (error) {
+    console.error('Failed to set user role:', error);
+    return false;
+  }
+};
+
+// Get global leaderboard
+export const getGlobalLeaderboard = async (limit: number = 10): Promise<LeaderboardEntry[]> => {
+  try {
+    const leaderboardsRef = ref(db, 'leaderboards');
+    const snapshot = await get(leaderboardsRef);
+    
+    if (!snapshot.exists()) {
+      return [];
+    }
+    
+    const leaderboardData = snapshot.val();
+    const entries: { uid: string; displayName: string; totalScore: number }[] = [];
+    const userScores: Record<string, number> = {};
+    
+    // Calculate total scores across all scenarios
+    for (const scenarioEntries of Object.values<Record<string, { score: number; displayName: string; uid: string }>>(leaderboardData)) {
+      for (const [uid, entry] of Object.entries(scenarioEntries)) {
+        if (!userScores[uid]) {
+          userScores[uid] = 0;
+          entries.push({
+            uid,
+            displayName: entry.displayName,
+            totalScore: 0
+          });
+        }
+        userScores[uid] += entry.score;
+      }
+    }
+    
+    // Update total scores and calculate averages
+    entries.forEach(entry => {
+      entry.totalScore = userScores[entry.uid];
+    });
+    
+    // Sort by total score and take top N
+    return entries
+      .sort((a, b) => b.totalScore - a.totalScore)
+      .slice(0, limit)
+      .map(entry => ({
+        uid: entry.uid,
+        displayName: entry.displayName,
+        score: Math.round(entry.totalScore)
+      }));
+  } catch (error) {
+    console.error('Failed to get global leaderboard:', error);
+    return [];
+  }
+};
+
+// Get all users
+export const getAllUsers = async (): Promise<UserProfile[]> => {
+  try {
+    const usersRef = ref(db, 'users');
+    const snapshot = await get(usersRef);
+    
+    if (!snapshot.exists()) {
+      return [];
+    }
+    
+    const users: UserProfile[] = [];
+    const data = snapshot.val();
+    
+    for (const [uid, user] of Object.entries<any>(data)) {
+      users.push({
+        uid,
+        displayName: user.displayName || null,
+        email: user.email || null,
+        photoURL: user.photoURL || null,
+        preferredLanguage: user.preferredLanguage || 'English',
+        role: (user.role as Role | undefined) || 'USER'
+      });
+    }
+    
+    return users;
+  } catch (error) {
+    console.error('Failed to get all users:', error);
+    throw error;
+  }
+};
+
+// Get a specific scenario by ID
+export const getScenarioById = async (scenarioId: string, userId?: string): Promise<Scenario | null> => {
+  try {
+    // First try to get scenario from main scenarios path
+    const scenarioRef = ref(db, `scenarios/${scenarioId}`);
+    const snapshot = await get(scenarioRef);
+    
+    if (!snapshot.exists()) {
+      return null;
+    }
+
+    const scenarioData = snapshot.val();
+    
+    // If userId provided, check for user-specific overrides
+    if (userId) {
+      const overrideRef = ref(db, `userScenarioOverrides/${userId}/${scenarioId}`);
+      const overrideSnapshot = await get(overrideRef);
+      
+      if (overrideSnapshot.exists()) {
+        // Merge override data with base scenario
+        Object.assign(scenarioData, overrideSnapshot.val());
+      }
+    }
+    
+    return {
+      id: scenarioId,
+      ...scenarioData
+    };
+  } catch (error) {
+    console.error('Failed to get scenario:', error);
+    throw error;
+  }
+};
+
+// Get the latest PRD for a scenario
+export const getLatestPrdForScenario = async (userId: string, scenarioId: string): Promise<SavedPrd | null> => {
+  try {
+    const prdsRef = ref(db, `prds/${userId}`);
+    const snapshot = await get(prdsRef);
+    
+    if (!snapshot.exists()) {
+      return null;
+    }
+    
+    const prds = Object.entries<any>(snapshot.val())
+      .map(([id, prd]) => ({
+        id,
+        ...(prd as Omit<SavedPrd, 'id'>)
+      }))
+      .filter(prd => prd.scenarioId === scenarioId)
+      .sort((a, b) => b.timestamp - a.timestamp);
+    
+    return prds[0] || null;
+  } catch (error) {
+    console.error('Failed to get latest PRD:', error);
+    throw error;
+  }
+};
+
+// Get the latest pitch for a scenario
+export const getLatestPitchForScenario = async (userId: string, scenarioId: string): Promise<SavedPitch | null> => {
+  try {
+    const pitchesRef = ref(db, `pitches/${userId}`);
+    const snapshot = await get(pitchesRef);
+    
+    if (!snapshot.exists()) {
+      return null;
+    }
+    
+    const pitches = Object.entries<any>(snapshot.val())
+      .map(([id, pitch]) => ({
+        id,
+        ...(pitch as Omit<SavedPitch, 'id'>)
+      }))
+      .filter(pitch => pitch.scenarioId === scenarioId)
+      .sort((a, b) => b.timestamp - a.timestamp);
+    
+    return pitches[0] || null;
+  } catch (error) {
+    console.error('Failed to get latest pitch:', error);
+    throw error;
+  }
+};
+
 export const createInvitation = async (
   workflowId: string,
   workflowOwnerId: string,
@@ -534,6 +989,100 @@ export const createInvitation = async (
     return token;
   } catch (error) {
     console.error('Failed to create invitation:', error);
+    throw error;
+  }
+};
+
+export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
+  try {
+    const userRef = ref(db, `users/${userId}`);
+    const snapshot = await get(userRef);
+    
+    if (!snapshot.exists()) {
+      return null;
+    }
+    
+    const userData = snapshot.val();
+    return {
+      uid: userId,
+      email: userData.email || null,
+      displayName: userData.displayName || null,
+      photoURL: userData.photoURL || null,
+      preferredLanguage: userData.preferredLanguage || 'English',
+      role: userData.role || 'USER'
+    };
+  } catch (error) {
+    console.error('Failed to get user profile:', error);
+    throw error;
+  }
+};
+
+export const setUserPreferences = async (
+  userId: string, 
+  preferences: UserProfile
+): Promise<boolean> => {
+  try {
+    const userRef = ref(db, `users/${userId}`);
+    await update(userRef, preferences);
+    return true;
+  } catch (error) {
+    console.error('Failed to update user preferences:', error);
+    return false;
+  }
+};
+
+export const seedScenarios = async (): Promise<void> => {
+  try {
+    // First check if any scenarios exist
+    const scenariosRef = ref(db, 'scenarios');
+    const snapshot = await get(scenariosRef);
+    
+    // If scenarios already exist, don't seed
+    if (snapshot.exists()) {
+      console.log('Scenarios already exist, skipping seed');
+      return;
+    }
+    
+    console.log('No scenarios found, seeding default scenarios');
+    
+    // Add each default scenario from constants
+    const batch = ALL_SCENARIOS.map((scenario: Omit<Scenario, 'favoritedBy'>) => {
+      const newRef = push(scenariosRef);
+      return set(newRef, {
+        ...scenario,
+        favoritedBy: {}  // Initialize empty favorites for each scenario
+      });
+    });
+    
+    await Promise.all(batch);
+    console.log('Successfully seeded default scenarios');
+  } catch (error) {
+    console.error('Failed to seed scenarios:', error);
+    throw error;
+  }
+};
+
+export const updateUserProfile = async (user: { uid: string, email: string | null, displayName: string | null, photoURL: string | null }): Promise<void> => {
+  try {
+    const userRef = ref(db, `users/${user.uid}`);
+    
+    // Get existing user data first
+    const snapshot = await get(userRef);
+    const existingData = snapshot.exists() ? snapshot.val() : {};
+    
+    // Update user data, preserving existing fields
+    await update(userRef, {
+      ...existingData,
+      email: user.email,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+      lastLogin: Date.now(),
+      // Preserve existing role and preferences, defaulting if not set
+      role: existingData.role || 'USER',
+      preferredLanguage: existingData.preferredLanguage || 'English'
+    });
+  } catch (error) {
+    console.error('Failed to update user profile:', error);
     throw error;
   }
 };
