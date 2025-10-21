@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { EvaluationResult, Platform } from '../types';
+import type { EvaluationResult, Platform, CompanyResearch, Scenario, RelatedScenario } from '../types';
 
 if (!process.env.API_KEY) {
   throw new Error("API_KEY environment variable not set");
@@ -10,6 +10,189 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 interface ImagePart {
   base64: string;
   mimeType: string;
+}
+
+export async function researchCompany(companyName: string): Promise<CompanyResearch> {
+  const systemInstruction = `You are an expert business analyst and AI consultant. Research the given company and provide a comprehensive analysis including:
+- Company overview and core business
+- Industry analysis
+- Key products/services
+- Market challenges and opportunities
+- Current market position and competitors
+- Use cases for AI/automation
+- Current AI implementation status
+- Potential AI opportunities
+Format the response as structured JSON matching the specified schema.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: `Research and analyze ${companyName}, focusing on their business operations and AI/automation opportunities.`,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            description: { type: Type.STRING },
+            industry: { type: Type.STRING },
+            products: { type: Type.ARRAY, items: { type: Type.STRING } },
+            challenges: { type: Type.ARRAY, items: { type: Type.STRING } },
+            opportunities: { type: Type.ARRAY, items: { type: Type.STRING } },
+            marketPosition: { type: Type.STRING },
+            competitors: { type: Type.ARRAY, items: { type: Type.STRING } },
+            useCases: { type: Type.ARRAY, items: { type: Type.STRING } },
+            aiRelevance: {
+              type: Type.OBJECT,
+              properties: {
+                current: { type: Type.STRING },
+                potential: { type: Type.STRING },
+                recommendations: { type: Type.ARRAY, items: { type: Type.STRING } }
+              },
+              required: ["current", "potential", "recommendations"]
+            },
+            lastUpdated: { type: Type.NUMBER }
+          },
+          required: ["name", "description", "industry", "products", "challenges", "opportunities", "marketPosition", "competitors", "useCases", "aiRelevance", "lastUpdated"]
+        }
+      }
+    });
+
+    const rawResponse = JSON.parse(response.text ?? '{}');
+    const result: CompanyResearch = {
+      name: rawResponse.name,
+      currentResearch: {
+        description: rawResponse.description || '',
+        industry: rawResponse.industry || '',
+        marketPosition: rawResponse.marketPosition || '',
+        products: rawResponse.products || [],
+        challenges: rawResponse.challenges || [],
+        opportunities: rawResponse.opportunities || [],
+        competitors: rawResponse.competitors || [],
+        useCases: rawResponse.useCases || [],
+        aiRelevance: {
+          current: rawResponse.aiRelevance?.current || '',
+          potential: rawResponse.aiRelevance?.potential || '',
+          recommendations: rawResponse.aiRelevance?.recommendations || []
+        },
+        timestamp: Date.now()
+      },
+      history: [],
+      lastUpdated: Date.now()
+    };
+    return result;
+  } catch (error) {
+    console.error("Error researching company:", error);
+    throw new Error("Failed to research company");
+  }
+}
+
+export async function findRelevantScenarios(
+  companyResearch: CompanyResearch,
+  allScenarios: Scenario[],
+  generateSuggestions: boolean = false
+): Promise<RelatedScenario[]> {
+  const systemInstruction = generateSuggestions 
+    ? `You are an AI training consultant. Based on the company research provided, generate 2-3 new training scenario suggestions that would be valuable for this company. Consider:
+- Industry specific challenges
+- Company's current AI maturity
+- Identified opportunities
+- Skill gaps and development needs
+Generate scenarios that are specific to their context and aligned with their goals.`
+    : `You are an AI training consultant. Based on the company research provided, analyze the list of training scenarios and identify which ones are most relevant. Consider:
+- Industry alignment
+- Similar challenges/opportunities
+- AI implementation needs
+- Skill development opportunities
+Return a ranked list of relevant scenarios with explanations.`;
+
+  try {
+    const prompt = generateSuggestions
+      ? `Based on this company analysis, generate 2-3 NEW training scenario suggestions that would help this company improve their AI and automation capabilities. Focus on their specific industry challenges and opportunities.\n\nCompany Research:\n${JSON.stringify(companyResearch, null, 2)}`
+      : `Analyze these training scenarios and identify which ones would be most relevant and valuable for this company based on their profile, challenges, and opportunities.\n\nCompany Research:\n${JSON.stringify(companyResearch, null, 2)}\n\nAvailable Scenarios:\n${JSON.stringify(allScenarios, null, 2)}`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: prompt,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: generateSuggestions ? {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              title: { type: Type.STRING },
+              description: { type: Type.STRING },
+              goal: { type: Type.STRING },
+              domain: { type: Type.STRING },
+              type: { type: Type.STRING, enum: ["TRAINING", "EVALUATION"] },
+              relevanceScore: { type: Type.NUMBER },
+              relevanceReason: { type: Type.STRING }
+            },
+            required: ["title", "description", "goal", "type", "relevanceScore", "relevanceReason"]
+          }
+        } : {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              relevanceScore: { type: Type.NUMBER },
+              relevanceReason: { type: Type.STRING }
+            },
+            required: ["id", "relevanceScore", "relevanceReason"]
+          }
+        }
+      }
+    });
+
+    const matches = JSON.parse(response.text ?? '[]');
+    console.log('Raw matches from AI:', matches);
+    
+    if (generateSuggestions) {
+      // For suggested scenarios, ensure they have unique IDs and all required fields
+      const suggestions = matches.map((scenario: any, index: number) => ({
+        ...scenario,
+        id: `suggested-${Date.now()}-${index}`, // Generate unique IDs for suggested scenarios
+        type: 'TRAINING',
+        favoritedBy: {},
+        relevanceScore: scenario.relevanceScore || 0.8, // Default high relevance for suggestions
+        relevanceReason: scenario.relevanceReason || 'Generated based on company profile'
+      }));
+      console.log('Generated suggestions:', suggestions);
+      return suggestions as RelatedScenario[];
+    }
+    
+    // For matching existing scenarios, ensure we have all the scenario data and relevance information
+    const relevantScenarios = matches
+      .map((match: any) => {
+        const scenario = allScenarios.find(s => s.id === match.id);
+        if (!scenario) {
+          console.log('Could not find matching scenario for:', match.id);
+          return null;
+        }
+        
+        // Ensure a minimum relevance score of 0.1 to prevent filtering
+        // and clamp to maximum of 1.0 for consistency
+        const result = {
+          ...scenario,
+          relevanceScore: Math.max(0.1, Math.min(1, match.relevanceScore || 0.5)),
+          relevanceReason: match.relevanceReason || 'Matched based on scenario content'
+        };
+        console.log('Mapped scenario:', result);
+        return result;
+      })
+      .filter((s: RelatedScenario | null): s is RelatedScenario => s !== null);
+    
+    console.log('Final relevant scenarios:', relevantScenarios);
+    return relevantScenarios;
+  } catch (error) {
+    console.error("Error finding relevant scenarios:", error);
+    return [];
+  }
 }
 
 export async function generateText(prompt: string, image: ImagePart | null, opts?: { temperature?: number; candidateCount?: number; }): Promise<string> {
@@ -52,7 +235,7 @@ export async function generateText(prompt: string, image: ImagePart | null, opts
     request.config.systemInstruction = systemInstruction;
 
     const response = await ai.models.generateContent(request);
-  return response.text ?? '';
+    return response.text ?? '';
   } catch (error) {
     console.error("Error generating text:", error);
     return "Sorry, I encountered an error while generating a response. Please check the console for details.";
@@ -109,8 +292,8 @@ Please provide your evaluation based on the criteria in your instructions.`;
       },
     });
 
-  const jsonText = (response.text ?? '').trim();
-  const result = JSON.parse(jsonText);
+    const jsonText = (response.text ?? '').trim();
+    const result = JSON.parse(jsonText);
     return result as EvaluationResult;
   } catch (error) {
     console.error("Error evaluating performance:", error);
@@ -284,8 +467,8 @@ export interface ElevatorPitch {
   oneLiner: string;          // A crisp one-liner value prop
   problem: string;           // The core problem/opportunity
   solution: string;          // What we provide and how it works
-  targetAudience: string;    // Who it’s for
-  differentiation: string[]; // Why it’s better / unique
+  targetAudience: string;    // Who it's for
+  differentiation: string[]; // Why it's better / unique
   outcomes: string[];        // Tangible benefits/impact
   callToAction: string;      // Ask or next step
   pitches: {

@@ -15,7 +15,10 @@ import type {
   Platform,
   AggregatedEvaluationResult,
   UserProfile,
-  Role
+  Role,
+  CompanyResearch,
+  CompanyResearchEntry,
+  RelatedScenario
 } from '../types';
 import { ALL_SCENARIOS } from '../constants';
 
@@ -702,6 +705,147 @@ export const createUserScenarioOverride = async (
 };
 
 // Delete a user and their data (admin only)
+// Company Research Operations
+export const saveCompanyResearch = async (
+  userId: string,
+  companyName: string, 
+  researchEntry: Omit<CompanyResearchEntry, 'timestamp'>
+): Promise<string> => {
+  try {
+    const timestamp = Date.now();
+    const entry: CompanyResearchEntry = {
+      ...researchEntry,
+      timestamp
+    };
+
+    const companiesRef = ref(db, 'companies');
+    const companiesQuery = query(companiesRef, orderByChild('createdBy'), equalTo(userId));
+    const snapshot = await get(companiesQuery);
+    
+    let companyId: string | null = null;
+    let existingCompany: any = null;
+
+    if (snapshot.exists()) {
+      const companies = snapshot.val();
+      // Find company by name
+      for (const [id, company] of Object.entries<any>(companies)) {
+        if (company.name.toLowerCase() === companyName.toLowerCase()) {
+          companyId = id;
+          existingCompany = company;
+          break;
+        }
+      }
+    }
+
+    const researchData: CompanyResearch = {
+      name: companyName,
+      currentResearch: entry,
+      history: existingCompany?.research?.history ? [entry, ...existingCompany.research.history] : [entry],
+      lastUpdated: timestamp
+    };
+
+    if (companyId && existingCompany) {
+      // Update existing company
+      const companyRef = ref(db, `companies/${companyId}`);
+      await update(companyRef, {
+        research: researchData,
+        lastUpdated: timestamp
+      });
+    } else {
+      // Create new company
+      const newCompanyRef = push(companiesRef);
+      companyId = newCompanyRef.key;
+      await set(newCompanyRef, {
+        id: companyId,
+        name: companyName,
+        createdBy: userId,
+        createdAt: timestamp,
+        lastUpdated: timestamp,
+        selectedScenarios: [],
+        research: researchData
+      });
+    }
+
+    return companyId as string;
+  } catch (error) {
+    console.error('Failed to save company research:', error);
+    throw error;
+  }
+};
+
+export const getCompanyResearch = async (
+  companyId: string
+): Promise<CompanyResearch | null> => {
+  try {
+    const companyRef = ref(db, `companies/${companyId}`);
+    const snapshot = await get(companyRef);
+    
+    if (!snapshot.exists()) {
+      return null;
+    }
+
+    const company = snapshot.val();
+    return company.research || null;
+  } catch (error) {
+    console.error('Failed to get company research:', error);
+    throw error;
+  }
+};
+
+export const listCompanyResearch = async (userId: string): Promise<CompanyResearch[]> => {
+  try {
+    const companiesRef = ref(db, 'companies');
+    const companiesQuery = query(companiesRef, orderByChild('createdBy'), equalTo(userId));
+    const snapshot = await get(companiesQuery);
+    
+    if (!snapshot.exists()) {
+      return [];
+    }
+    
+    return Object.values<any>(snapshot.val())
+      .filter(company => company.research) // Only include companies with research data
+      .map(company => company.research);
+  } catch (error) {
+    console.error('Failed to list company research:', error);
+    throw error;
+  }
+};
+
+export const getCompanyResearchHistory = async (
+  userId: string, 
+  companyName: string
+): Promise<CompanyResearchEntry[]> => {
+  try {
+    const companiesRef = ref(db, 'companies');
+    const companiesQuery = query(companiesRef, orderByChild('createdBy'), equalTo(userId));
+    const snapshot = await get(companiesQuery);
+    
+    if (!snapshot.exists()) {
+      return [];
+    }
+
+    const companies = snapshot.val();
+    for (const company of Object.values<any>(companies)) {
+      if (company.name.toLowerCase() === companyName.toLowerCase()) {
+        return company.research?.history || [];
+      }
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('Failed to get company research history:', error);
+    throw error;
+  }
+};
+
+
+
+export const getRelatedScenarios = async (
+  companyId: string
+): Promise<RelatedScenario[]> => {
+  return []; // Related scenarios are no longer stored in the database
+};
+
 export const deleteUser = async (adminUserId: string, targetUserId: string): Promise<boolean> => {
   try {
     // First verify admin permissions
@@ -718,7 +862,8 @@ export const deleteUser = async (adminUserId: string, targetUserId: string): Pro
       remove(ref(db, `users/${targetUserId}`)),
       remove(ref(db, `evaluations/${targetUserId}`)),
       remove(ref(db, `workflowVersions/${targetUserId}`)),
-      remove(ref(db, `userScenarioOverrides/${targetUserId}`))
+      remove(ref(db, `userScenarioOverrides/${targetUserId}`)),
+      remove(ref(db, `companyResearch/${targetUserId}`))
     ];
 
     // Also remove user's favorites from all scenarios

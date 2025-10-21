@@ -1,0 +1,277 @@
+import React, { useEffect, useState } from 'react';
+import { Icons } from '../constants';
+import type { RelatedScenario, WorkflowVersion } from '../types';
+import { useTranslation } from '../i18n';
+import { getWorkflowVersions } from '../services/firebaseService';
+
+interface WorkflowExample {
+  workflowVersion: WorkflowVersion;
+  scenarioId: string;
+}
+
+interface ResearchSidebarProps {
+  relatedScenarios: RelatedScenario[];
+  isOpen?: boolean;
+  onClose?: () => void;
+  onSelectScenario?: (scenarioId: string) => void;
+  onFindOpportunities?: () => void;
+  onCreateScenario?: () => void;
+  onSuggestSelected?: () => void;
+  selectedScenarios?: string[];
+  onToggleScenario?: (scenarioId: string) => void;
+  isLoading?: boolean;
+  userId: string;
+}
+
+const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
+  relatedScenarios,
+  isOpen = false,
+  onClose,
+  onSelectScenario,
+  onFindOpportunities,
+  onCreateScenario,
+  onSuggestSelected,
+  selectedScenarios = [],
+  onToggleScenario,
+  isLoading = false,
+  userId
+}) => {
+  const { t } = useTranslation();
+  const [workflowExamples, setWorkflowExamples] = useState<Record<string, WorkflowVersion[]>>({});
+  const [expandedScenario, setExpandedScenario] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadWorkflowExamples = async () => {
+      const examples: Record<string, WorkflowVersion[]> = {};
+      for (const scenario of relatedScenarios) {
+        const versions = await getWorkflowVersions(userId, scenario.id);
+        if (versions.length > 0) {
+          examples[scenario.id] = versions.sort((a, b) => 
+            (b.evaluationScore || 0) - (a.evaluationScore || 0)
+          ).slice(0, 3); // Get top 3 highest scoring workflows
+        }
+      }
+      setWorkflowExamples(examples);
+    };
+
+    if (relatedScenarios.length > 0) {
+      loadWorkflowExamples();
+    }
+  }, [relatedScenarios, userId]);
+
+  return (
+    <>
+      {/* Overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Side Drawer */}
+      <aside
+        className={`fixed top-0 right-0 h-full w-80 bg-slate-900/95 backdrop-blur-md border-l border-slate-700/60 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
+          isOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
+        }`}
+      >
+        <div className="p-4 h-full flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-700/50">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-3">
+                <Icons.LightBulb />
+                <h2 className="text-lg font-semibold text-white">{t('research.relevantOpportunities')}</h2>
+                <button
+                  onClick={onClose}
+                  className="p-2 hover:bg-slate-800/60 rounded-lg transition-colors lg:hidden ml-auto"
+                  title="Close drawer"
+                >
+                  <Icons.X />
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={onFindOpportunities}
+                  disabled={isLoading}
+                  className="flex-1 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
+                >
+                  {isLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  ) : (
+                    <Icons.Search className="w-4 h-4" />
+                  )}
+                  {t('research.findOpportunities')}
+                </button>
+                <button
+                  onClick={onCreateScenario}
+                  className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+                >
+                  <Icons.Plus className="w-4 h-4" />
+                  {t('research.suggestOpportunity')}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Selected Scenarios Section */}
+          <div className="mb-4 pb-4 border-b border-slate-700/50">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-white">{t('research.selectedScenarios')}</h3>
+            </div>
+            {selectedScenarios.length === 0 ? (
+              <div className="text-xs text-slate-500">{t('research.noSelectedScenarios')}</div>
+            ) : (
+              <div className="space-y-2">
+                {relatedScenarios
+                  .filter(scenario => selectedScenarios.includes(scenario.id))
+                  .map(scenario => (
+                    <div 
+                      key={scenario.id}
+                      className="flex items-center justify-between p-2 rounded bg-slate-800/60 border border-slate-700/30"
+                    >
+                      <button
+                        onClick={() => onSelectScenario?.(scenario.id)}
+                        className="text-xs text-white truncate hover:text-emerald-400 transition-colors text-left flex-1"
+                      >
+                        {scenario.title}
+                      </button>
+                      <button 
+                        onClick={() => {
+                          onToggleScenario?.(scenario.id);
+                        }}
+                        className="text-xs text-red-400 hover:text-red-300 transition-colors ml-2"
+                      >
+                        {t('research.removeFromSelected')}
+                      </button>
+                    </div>
+                  ))}
+                <button
+                  onClick={onSuggestSelected}
+                  className="w-full mt-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z" />
+                  </svg>
+                  {t('research.suggestSelected')}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Main Content */}
+          <div className="flex-1 overflow-hidden">
+            {relatedScenarios.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Icons.Search className="w-8 h-8 text-slate-600 mb-3" />
+                <div className="text-sm text-slate-400 mb-2">{t('research.noScenariosYet')}</div>
+                <div className="text-xs text-slate-500 px-8">{t('research.searchCompanyFirst')}</div>
+              </div>
+            ) : (
+              <div className="space-y-3 overflow-y-auto h-full pr-2">
+                {relatedScenarios.map((scenario) => (
+                  <div
+                    key={scenario.id}
+                    className="rounded-lg bg-slate-800/60 border border-slate-700/30"
+                  >
+                    {/* Scenario Header */}
+                    <div
+                      onClick={() => setExpandedScenario(
+                        expandedScenario === scenario.id ? null : scenario.id
+                      )}
+                      className="p-4 cursor-pointer hover:bg-slate-700/60 transition-colors group"
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleScenario?.(scenario.id);
+                              }}
+                              className="shrink-0 flex items-center justify-center w-5 h-5 rounded border transition-colors group-hover:border-emerald-500 border-slate-600"
+                            >
+                              {selectedScenarios.includes(scenario.id) && (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-500" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                            </button>
+                            <h3 className="text-sm font-medium text-white group-hover:text-emerald-400 transition-colors">
+                              {scenario.title}
+                            </h3>
+                          </div>
+                        </div>
+                        <div className="shrink-0">
+                          <span className="bg-emerald-900/50 text-emerald-400 px-2 py-1 rounded text-xs">
+                            {Math.round(scenario.relevanceScore * 10)}% {t('research.relevanceMatch')}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <p className="text-xs text-slate-300 leading-relaxed mb-3">
+                        {scenario.description}
+                      </p>
+                      
+                      <p className="text-xs italic text-slate-500">
+                        {scenario.relevanceReason}
+                      </p>
+                    </div>
+
+                    {/* Workflow Examples */}
+                    {expandedScenario === scenario.id && workflowExamples[scenario.id]?.length > 0 && (
+                      <div className="border-t border-slate-700/30 p-4">
+                        <h4 className="text-xs font-medium text-white mb-3">{t('research.workflowExamples')}</h4>
+                        <div className="space-y-3">
+                          {workflowExamples[scenario.id].map((workflow) => (
+                            <div
+                              key={workflow.id}
+                              onClick={() => onSelectScenario?.(scenario.id)}
+                              className="p-3 rounded bg-slate-900/60 hover:bg-slate-800/60 cursor-pointer transition-colors border border-slate-700/30 group"
+                            >
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <h5 className="text-xs font-medium text-emerald-400">
+                                  {workflow.versionTitle || t('research.workflowVersion')}
+                                </h5>
+                                {workflow.evaluationScore && (
+                                  <span className="text-xs bg-emerald-900/30 text-emerald-400 px-2 py-0.5 rounded">
+                                    {t('research.score')}: {workflow.evaluationScore}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-400 line-clamp-2">
+                                {workflow.workflowExplanation}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* View All Button */}
+                    <div className="border-t border-slate-700/30 p-3">
+                      <button
+                        onClick={() => onSelectScenario?.(scenario.id)}
+                        className="w-full text-xs text-emerald-400 hover:text-emerald-300 transition-colors flex items-center justify-center gap-1"
+                      >
+                        <Icons.ChevronLeft className="w-4 h-4 transform rotate-180" />
+                        {t('research.viewScenario')}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+};
+
+export default ResearchSidebar;

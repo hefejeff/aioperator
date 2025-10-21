@@ -9,7 +9,7 @@ import { useTranslation } from '../i18n';
 import LoginView from './LoginView';
 
 interface HeaderProps {
-  onNavigate: (view: 'DASHBOARD' | 'TRAINING' | 'ADMIN') => void;
+  onNavigate: (view: 'DASHBOARD' | 'TRAINING' | 'ADMIN' | 'RESEARCH') => void;
   user: User | null;
   userRole?: 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER' | null;
   onOpenWorkflowDrawer?: () => void;
@@ -45,7 +45,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
     signOut(auth).catch(error => console.error('Logout Error:', error));
   };
 
-  const handleMobileNav = (view: 'DASHBOARD' | 'TRAINING' | 'ADMIN') => {
+  const handleMobileNav = (view: 'DASHBOARD' | 'TRAINING' | 'ADMIN' | 'RESEARCH') => {
     onNavigate(view);
     setIsMenuOpen(false); // Close menu after navigation
   };
@@ -139,7 +139,13 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                     onClick={() => onNavigate('TRAINING')}
                     className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
                   >
-                      {t('nav.playground')}
+                      {t('nav.library')}
+                  </button>
+                  <button 
+                    onClick={() => onNavigate('RESEARCH')}
+                    className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                  >
+                    {t('nav.research')}
                   </button>
                   {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
                     <button 
@@ -271,7 +277,13 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
           onClick={() => handleMobileNav('TRAINING')}
           className="w-full text-xl py-4 rounded-md font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
         >
-          {t('nav.playground')}
+          {t('nav.library')}
+        </button>
+        <button 
+          onClick={() => handleMobileNav('RESEARCH')}
+          className="w-full text-xl py-4 rounded-md font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+        >
+          {t('nav.research')}
         </button>
         {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
           <button 

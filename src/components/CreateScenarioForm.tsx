@@ -50,7 +50,7 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !description.trim() || !goal.trim()) {
-      setError(t('create.errorRequired'));
+      setError(t('form.error.required'));
       return;
     }
     setError(null);
@@ -98,7 +98,7 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
       await onSave(payload);
       onClose(); // Close on success
     } catch (err) {
-      setError(t('create.errorSaveFailed'));
+      setError(t('form.error.saveFailed'));
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -255,12 +255,12 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
         className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-6 w-full max-w-2xl text-left relative animate-fade-in-up overflow-y-auto max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-2xl font-bold text-white mb-4">{t('create.title')}</h2>
+        <h2 className="text-2xl font-bold text-white mb-4">{t('form.workflow.title')}</h2>
         <form onSubmit={handleSave} className="space-y-5">
           {/* Domain */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-slate-300">{t('create.domain')}</label>
+              <label className="block text-sm font-medium text-slate-300">{t('form.domain')}</label>
               <button
                 type="button"
                 onClick={handleGenerateExample}
@@ -275,7 +275,7 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
               onChange={(e) => { setDomain(e.target.value); }}
               className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
             >
-              <option value="">{t('create.domainAuto')}</option>
+              <option value="">{t('form.selectDomain')}</option>
               {domainOptions.map(opt => (
                 <option key={opt} value={opt}>{t(`domain.${opt}`)}</option>
               ))}
@@ -283,37 +283,37 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
           </div>
           {/* Workflow Title */}
           <div>
-            <label htmlFor="title" className="block text-sm font-medium text-slate-300 mb-1">Workflow Title</label>
+            <label htmlFor="title" className="block text-sm font-medium text-slate-300 mb-1">{t('form.title')}</label>
             <input
               id="title"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter a descriptive title for your workflow"
+              placeholder={t('form.titlePlaceholder')}
               className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
             />
           </div>
           {/* Your Problem (Description) */}
           <div>
-            <label htmlFor="description" className="block text-sm font-medium text-slate-300 mb-1">Your Problem</label>
+            <label htmlFor="description" className="block text-sm font-medium text-slate-300 mb-1">{t('form.description')}</label>
             <textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
-              placeholder={t('create.descriptionPlaceholder')}
+              placeholder={t('form.descriptionPlaceholder')}
               className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
             />
           </div>
           {/* Target (Goal) */}
           <div>
-            <label htmlFor="goal" className="block text-sm font-medium text-slate-300 mb-1">Target</label>
+            <label htmlFor="goal" className="block text-sm font-medium text-slate-300 mb-1">{t('form.goal')}</label>
             <textarea
               id="goal"
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               rows={4}
-              placeholder={t('create.goalPlaceholder')}
+              placeholder={t('form.goalPlaceholder')}
               className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
             />
           </div>
@@ -322,10 +322,10 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
           <div className="mt-4 pt-4 border-t border-slate-700">
             <div className="mb-2">
               <label className="block text-sm font-medium text-slate-300">
-                Current Workflow
-                <span className="ml-1 text-slate-500">(Optional)</span>
+                {t('form.currentWorkflow')}
+                <span className="ml-1 text-slate-500">({t('form.optional')})</span>
               </label>
-              <p className="text-sm text-slate-400 mt-1">Upload a screenshot or diagram of your current process</p>
+              <p className="text-sm text-slate-400 mt-1">{t('form.uploadImage')}</p>
             </div>
             
             <div className="mt-3">
@@ -343,7 +343,7 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
                       setPreviewUrl(null);
                     }}
                     className="absolute top-2 right-2 p-1 bg-red-500/90 hover:bg-red-600 text-white rounded-full transition-colors"
-                    title="Remove image"
+                    title={t('form.removeImage')}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -359,8 +359,8 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
                     <svg className="w-8 h-8 mb-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
-                    <p className="mb-2 text-sm text-slate-400">Click or drag to upload</p>
-                    <p className="text-xs text-slate-500">PNG, JPG up to 5MB</p>
+                    <p className="mb-2 text-sm text-slate-400">{t('form.dragToUpload')}</p>
+                    <p className="text-xs text-slate-500">{t('form.imageTypes')}</p>
                   </div>
                   <input
                     id="workflow-image"
@@ -392,14 +392,14 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
               onClick={onClose}
               className="px-4 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-700 transition-colors"
             >
-              {t('create.cancel')}
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
               disabled={isLoading}
               className="flex items-center justify-center px-6 py-2 bg-sky-600 text-white font-bold rounded-lg hover:bg-sky-500 transition-colors disabled:bg-slate-700 disabled:cursor-not-allowed"
             >
-              {isLoading ? <LoadingSpinner /> : t('create.save')}
+              {isLoading ? <LoadingSpinner /> : t('common.save')}
             </button>
           </div>
         </form>

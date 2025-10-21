@@ -52,6 +52,48 @@ export interface LeaderboardEntry {
 
 export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER';
 
+// Company types
+export interface Company {
+  id: string;
+  name: string;
+  createdBy: string;
+  createdAt: number;
+  lastUpdated: number;
+  selectedScenarios: string[]; // Array of scenario IDs selected for this company
+  research: CompanyResearch;
+}
+
+// Company Research types
+export interface CompanyResearchEntry {
+  description: string;
+  industry: string;
+  products: string[];
+  challenges: string[];
+  opportunities: string[];
+  marketPosition: string;
+  competitors: string[];
+  useCases: string[];
+  aiRelevance: {
+    current: string;
+    potential: string;
+    recommendations: string[];
+  };
+  timestamp: number;
+}
+
+export interface CompanyResearch {
+  name: string;
+  currentResearch: CompanyResearchEntry;
+  history: CompanyResearchEntry[];
+  lastUpdated: number;
+  selectedScenarios?: string[]; // Array of scenario IDs selected for this company
+}
+
+export interface RelatedScenario extends Scenario {
+  relevanceScore: number;
+  relevanceReason: string;
+}
+
 // Team collaboration types
 export type TeamRole = 'OWNER' | 'EDITOR' | 'VIEWER';
 

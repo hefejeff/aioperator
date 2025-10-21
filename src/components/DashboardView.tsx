@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import type { User } from 'firebase/auth';
-import { getAllUserEvaluations, getScenarios, getAllUserWorkflowVersions, saveUserScenario, toggleFavoriteScenario } from '../services/firebaseService';
+import { User } from 'firebase/auth';
+import { 
+  getAllUserEvaluations, 
+  getScenarios, 
+  getAllUserWorkflowVersions, 
+  saveUserScenario, 
+  toggleFavoriteScenario,
+  listCompanyResearch
+} from '../services/firebaseService';
 import { Icons } from '../constants';
-import type { Scenario, WorkflowVersion, AggregatedEvaluationResult } from '../types';
-import WorkflowCard from './WorkflowCard';
+import type { Scenario, WorkflowVersion, AggregatedEvaluationResult, Company, CompanyResearch } from '../types';
 import CreateScenarioForm from './CreateScenarioForm';
 import brainIcon from '../assets/brain_icon.png';
+import CompaniesSection from './CompaniesSection';
+import WorkflowsSection from './WorkflowsSection';
 
 interface DashboardViewProps {
   user: User;
@@ -13,9 +21,10 @@ interface DashboardViewProps {
   onNavigateToScenario: (scenarioId: string) => void;
   onViewWorkflow: (workflowId: string) => void;
   onScenarioCreated?: (newScenario: Scenario) => void;
+  handleNavigate: (view: 'DASHBOARD' | 'TRAINING' | 'ADMIN' | 'RESEARCH', companyId?: string) => void;
 }
 
-const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, onNavigateToScenario, onViewWorkflow, onScenarioCreated }) => {
+const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, onNavigateToScenario, onViewWorkflow, onScenarioCreated, handleNavigate }) => {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [workflowVersions, setWorkflowVersions] = useState<WorkflowVersion[]>([]);
   const [evaluations, setEvaluations] = useState<AggregatedEvaluationResult[]>([]);
@@ -32,6 +41,12 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
   const [isGeneratingExample, setIsGeneratingExample] = useState(false);
   const [showStarredOnly, setShowStarredOnly] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [companies, setCompanies] = useState<Company[]>([]);
+
+  // Function to handle starting new company research
+  const handleStartNewResearch = () => {
+    handleNavigate('RESEARCH');
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -45,15 +60,54 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
         setError(null);
 
         // Fetch all data in parallel
-        const [scenariosData, workflowData, evaluationsData] = await Promise.all([
+        const [scenariosData, workflowData, evaluationsData, companyResearchData] = await Promise.all([
           getScenarios(user.uid),
           getAllUserWorkflowVersions(user.uid),
-          getAllUserEvaluations(user.uid)
+          getAllUserEvaluations(user.uid),
+          listCompanyResearch(user.uid)
         ]);
+
+        // Transform company research data to match Company interface and deduplicate
+        const transformedCompanies = companyResearchData.reduce((uniqueCompanies, researchData) => {
+          const { name, currentResearch, history, lastUpdated, selectedScenarios = [] } = researchData;
+          const existingCompany = uniqueCompanies.find(c => c.name.toLowerCase() === name.toLowerCase());
+          
+          // If company exists, update it only if the new data is more recent
+          if (existingCompany) {
+            if (lastUpdated > existingCompany.lastUpdated) {
+              existingCompany.lastUpdated = lastUpdated;
+              existingCompany.selectedScenarios = selectedScenarios;
+              existingCompany.research = {
+                name,
+                currentResearch,
+                history: [...(history || []), ...(existingCompany.research.history || [])],
+                lastUpdated
+              };
+            }
+            return uniqueCompanies;
+          }
+
+          // If company doesn't exist, add it
+          uniqueCompanies.push({
+            id: `${name.toLowerCase()}_${Date.now()}`, // Ensure unique ID
+            name,
+            lastUpdated,
+            selectedScenarios,
+            research: {
+              name,
+              currentResearch,
+              history: history || [],
+              lastUpdated
+            }
+          });
+
+          return uniqueCompanies;
+        }, [] as Company[]);
 
         setScenarios(scenariosData);
         setWorkflowVersions(workflowData);
         setEvaluations(evaluationsData);
+        setCompanies(transformedCompanies);
       } catch (e) {
         console.error('Could not fetch dashboard data', e);
         setError('Failed to load dashboard data');
@@ -457,112 +511,38 @@ Make this example specific to ${problemDomain} with realistic details, metrics, 
       
       {/* Main Content Grid */}
       <div className="container mx-auto px-4 sm:px-6 md:px-8 py-16">
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Companies Section */}
+          <div className="lg:col-span-1">
+            <CompaniesSection
+              user={user}
+              companies={companies}
+              onStartNewResearch={handleStartNewResearch}
+              handleNavigate={handleNavigate}
+            />
+          </div>
           
           {/* Workflows Section */}
-          <div className="xl:col-span-2">
-            <div className="mb-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-3xl font-bold text-white mb-2">Your Workflows</h2>
-                  <p className="text-slate-400">Manage and monitor your AI automation pipelines</p>
-                </div>
-                
-                {/* Filters */}
-                <div className="flex items-center gap-4">
-                  <span className="text-sm font-medium text-slate-300">Filters</span>
-                  <button
-                    onClick={() => setShowStarredOnly(!showStarredOnly)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
-                      showStarredOnly
-                        ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                        : 'bg-slate-700/50 text-slate-400 border border-slate-600/50 hover:bg-slate-600/50 hover:text-slate-300'
-                    }`}
-                  >
-                    <svg
-                      className={`w-4 h-4 transition-all duration-200 ${
-                        showStarredOnly ? 'fill-current' : 'fill-none stroke-current'
-                      }`}
-                      viewBox="0 0 24 24"
-                      strokeWidth="2"
-                    >
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                    </svg>
-                    <span className="text-sm font-medium">
-                      {showStarredOnly ? 'Starred' : 'All'}
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </div>
+          <div className="lg:col-span-1">
+            <WorkflowsSection
+              user={user}
+              scenarios={scenarios}
+              workflowVersions={workflowVersions}
+              evaluations={evaluations}
+              showStarredOnly={showStarredOnly}
+              onToggleStarred={() => setShowStarredOnly(!showStarredOnly)}
+              onViewDetails={handleViewDetails}
+              onViewWorkflow={onViewWorkflow}
+              onStartTraining={handleStartTraining}
+              onToggleFavorite={handleToggleFavorite}
+              onCreateScenario={() => setShowCreateModal(true)}
+            />
 
-            {/* Workflow Cards Grid */}
-            {filteredScenarios.length > 0 ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in duration-500">
-                {filteredScenarios.map((scenario, index) => (
-                  <div 
-                    key={scenario.id}
-                    className="animate-in slide-in-from-bottom duration-300"
-                    style={{ animationDelay: `${index * 100}ms` }}
-                  >
-                    <WorkflowCard
-                      scenario={scenario}
-                      workflowVersions={workflowsByScenario[scenario.id] || []}
-                      evaluations={evaluations}
-                      onViewDetails={handleViewDetails}
-                      onViewWorkflow={onViewWorkflow}
-                      onStartTraining={handleStartTraining}
-                      onToggleFavorite={handleToggleFavorite}
-                      user={user}
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-20 animate-in fade-in duration-700">
-                <div className="relative max-w-md mx-auto">
-                  {/* Background glow effect */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-sky-500/10 via-blue-500/10 to-emerald-500/10 rounded-3xl blur-2xl animate-pulse"></div>
-                  
-                  {/* Icon container */}
-                  <div className="relative w-32 h-32 bg-gradient-to-br from-slate-800/60 to-slate-900/60 backdrop-blur-xl rounded-3xl flex items-center justify-center mx-auto mb-8 border border-slate-700/50 group hover:border-sky-500/30 transition-all duration-500">
-                    <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                    <div className="relative text-slate-400 group-hover:text-sky-400 transition-colors duration-300">
-                      <Icons.LightBulb />
-                    </div>
-                  </div>
-                  
-                  {/* Content */}
-                  <div className="relative">
-                    <h3 className="text-3xl font-bold text-white mb-4 bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-                      {showStarredOnly ? 'No Starred Workflows Yet' : 'Ready to Build Something Amazing?'}
-                    </h3>
-                    <p className="text-lg text-slate-400 mb-10 max-w-sm mx-auto leading-relaxed">
-                      {showStarredOnly 
-                        ? 'Star your favorite workflows to keep them organized and easily accessible.'
-                        : 'Create your first AI workflow and start automating your processes today.'
-                      }
-                    </p>
-                    {!showStarredOnly && (
-                      <button
-                        onClick={() => setShowCreateModal(true)}
-                        className="group relative px-10 py-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-semibold rounded-2xl hover:shadow-2xl hover:shadow-sky-500/25 transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm border border-sky-400/20 hover:border-sky-300/40"
-                      >
-                        <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                        <span className="relative flex items-center gap-3">
-                          <Icons.Plus />
-                          <span className="text-lg">Create Your First Workflow</span>
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* AI Assistant Sidebar */}
-          <div className="xl:col-span-1">
+          {/* AI Assistant Column */}
+          <div className="lg:col-span-1">
             <div className="sticky top-8">
               <div className="bg-gradient-to-br from-slate-800/60 to-slate-900/60 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-8 shadow-2xl">
                 <div className="text-center mb-8">

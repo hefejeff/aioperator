@@ -59,6 +59,16 @@
         ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')",
         ".indexOn": ["scenarioId", "timestamp"]
       }
+    },
+
+    "companies": {
+      ".indexOn": ["createdBy", "name"],
+      "$companyId": {
+        ".write": "auth != null && (!data.exists() || auth.uid === data.child('createdBy').val())",
+        "selectedScenarios": {
+          ".write": "auth != null && auth.uid === root.child('companies').child($companyId).child('createdBy').val()"
+        }
+      }
     }
   }
 }

@@ -2,7 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { User } from 'firebase/auth';
-import { getWorkflowVersion } from './services/firebaseService';
+import { getWorkflowVersion, saveUserScenario } from './services/firebaseService';
+import CreateScenarioForm from './components/CreateScenarioForm';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './services/firebaseInit';
 import type { Scenario } from './types';
@@ -17,10 +18,11 @@ import PublicLanding from './components/PublicLanding';
 import LoadingScreen from './components/LoadingScreen';
 import AdminDashboard from './components/AdminDashboard';
 import WorkflowDetailView from './components/WorkflowDetailView';
+import CompanyResearch from './components/CompanyResearch';
 import { ALL_SCENARIOS } from './constants';
 import { I18nProvider } from './i18n';
 
-type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'ADMIN' | 'WORKFLOW_DETAIL';
+type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'ADMIN' | 'WORKFLOW_DETAIL' | 'RESEARCH';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('TRAINING');
@@ -122,9 +124,16 @@ const App: React.FC = () => {
   }, []);
 
 
-  const handleNavigate = useCallback((newView: 'DASHBOARD' | 'TRAINING' | 'ADMIN') => {
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+
+  const handleNavigate = useCallback((newView: 'DASHBOARD' | 'TRAINING' | 'ADMIN' | 'RESEARCH', companyId?: string) => {
     setPreviousView(view);
     setActiveScenario(null);
+    if (newView === 'RESEARCH' && companyId) {
+      setSelectedCompanyId(companyId);
+    } else {
+      setSelectedCompanyId(null);
+    }
     setView(newView);
   }, [view]);
 
@@ -219,8 +228,46 @@ const App: React.FC = () => {
     // They will be updated on the next full page load/login.
   }, []);
 
+  const handleSaveScenario = async (data: {
+    title: string;
+    title_es?: string;
+    description: string;
+    description_es?: string;
+    goal: string;
+    goal_es?: string;
+    domain?: string;
+    currentWorkflowImage?: File;
+  }) => {
+    if (!user) return;
+
+    const base64Image = data.currentWorkflowImage ? await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      if (data.currentWorkflowImage) {
+        reader.readAsDataURL(data.currentWorkflowImage);
+      }
+    }) : undefined;
+
+    const scenarioData = {
+      title: data.title,
+      title_es: data.title_es,
+      description: data.description,
+      description_es: data.description_es,
+      goal: data.goal,
+      goal_es: data.goal_es,
+      domain: data.domain,
+      currentWorkflowImage: base64Image,
+      type: 'TRAINING' as const
+    };
+
+    const newScenario = await saveUserScenario(user.uid, scenarioData);
+    handleScenarioCreated(newScenario);
+  };
+
   const trainingScenarios = scenarios.filter(s => s.type === 'TRAINING');
 
+  const [isCreatingScenario, setIsCreatingScenario] = useState(false);
+  
   const renderAppContent = () => {
     if (isLoadingScenarios && user) {
         return <LoadingScreen />;
@@ -264,10 +311,21 @@ const App: React.FC = () => {
                     onNavigateToScenario={handleNavigateToScenario}
                     onViewWorkflow={handleSelectWorkflow}
                     onScenarioCreated={handleScenarioCreated}
+                    handleNavigate={handleNavigate}
                />;
       case 'ADMIN':
         if (user) {
           return <AdminDashboard currentUser={user} />;
+        }
+        return null;
+      case 'RESEARCH':
+        if (user) {
+          return <CompanyResearch 
+                    userId={user.uid} 
+                    initialCompany={selectedCompanyId || undefined}
+                    onSelectScenario={handleNavigateToScenario}
+                    onCreateScenario={() => setIsCreatingScenario(true)}
+                  />;
         }
         return null;
     }
@@ -304,6 +362,15 @@ const App: React.FC = () => {
           <div className="flex flex-col lg:flex-row gap-8 items-start">
             <main className={`flex-1 w-full ${error ? 'pt-0' : ''}`}>
               {renderAppContent()}
+              {isCreatingScenario && (
+                <CreateScenarioForm 
+                  onSave={async (data) => {
+                    await handleSaveScenario(data);
+                    setIsCreatingScenario(false);
+                  }}
+                  onClose={() => setIsCreatingScenario(false)}
+                />
+              )}
             </main>
             <div className="w-full lg:w-auto lg:shrink-0">
               <RightSidebar 
