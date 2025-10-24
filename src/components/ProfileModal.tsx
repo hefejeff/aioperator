@@ -48,6 +48,8 @@ const ProfileModal: React.FC<Props> = ({ user, onClose, onSaved }) => {
           displayName: displayName || null,
           photoURL: photoURL || null
         });
+        // Update localStorage with new language preference
+        localStorage.setItem('preferredLanguage', preferredLanguage);
       } catch (err) {
         // Non-fatal: we still proceed to close and notify
         console.warn('Could not update auth profile:', err);

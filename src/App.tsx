@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { User } from 'firebase/auth';
 import { getWorkflowVersion, saveUserScenario } from './services/firebaseService';
+import { getCompany, updateCompanySelectedScenarios } from './services/companyService';
 import CreateScenarioForm from './components/CreateScenarioForm';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './services/firebaseInit';
@@ -24,6 +25,12 @@ import { I18nProvider } from './i18n';
 
 type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'ADMIN' | 'WORKFLOW_DETAIL' | 'RESEARCH';
 
+type ScenarioCreationContext = {
+  source: 'RESEARCH' | 'DEFAULT';
+  companyId?: string;
+  companyName?: string;
+};
+
 const App: React.FC = () => {
   const [view, setView] = useState<View>('TRAINING');
   const [previousView, setPreviousView] = useState<View>('TRAINING');
@@ -38,7 +45,16 @@ const App: React.FC = () => {
   const [averageScores, setAverageScores] = useState<Record<string, number>>({});
   const [isLoadingScenarios, setIsLoadingScenarios] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [initialLang, setInitialLang] = useState<'English' | 'Spanish'>('English');
+  const [initialLang, setInitialLang] = useState<'English' | 'Spanish'>(() => {
+    // First try to get from localStorage
+    const savedLang = localStorage.getItem('preferredLanguage');
+    if (savedLang === 'English' || savedLang === 'Spanish') {
+      return savedLang;
+    }
+    // Fall back to browser language
+    const browserLang = navigator.language.startsWith('es') ? 'Spanish' : 'English';
+    return browserLang;
+  });
   const [role, setRole] = useState<'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER' | null>(null);
 
   useEffect(() => {
@@ -49,7 +65,11 @@ const App: React.FC = () => {
       if (currentUser) {
         try {
           const profile = await getUserProfile(currentUser.uid);
-          if (profile && profile.preferredLanguage) setInitialLang(profile.preferredLanguage as 'English' | 'Spanish');
+          if (profile && profile.preferredLanguage) {
+            setInitialLang(profile.preferredLanguage as 'English' | 'Spanish');
+            // Also update localStorage
+            localStorage.setItem('preferredLanguage', profile.preferredLanguage);
+          }
           if (profile && profile.role) setRole(profile.role);
         } catch (e) {
           // ignore
@@ -210,7 +230,12 @@ const App: React.FC = () => {
 
   const handleScenarioCreated = (newScenario: Scenario) => {
     setScenarios(prevScenarios => [...prevScenarios, newScenario]);
-    setView('TRAINING'); // Ensure user stays on the training view
+    if (scenarioCreationContext?.source === 'RESEARCH') {
+      setView('RESEARCH');
+    } else {
+      setView('TRAINING');
+    }
+    setScenarioCreationContext(null);
   };
   
   const handleEvaluationCompleted = useCallback((scenarioId: string, newScore: number) => {
@@ -240,15 +265,24 @@ const App: React.FC = () => {
   }) => {
     if (!user) return;
 
-    const base64Image = data.currentWorkflowImage ? await new Promise<string>((resolve) => {
+    let base64Image: string | null = null;
+    
+    const workflowImage = data.currentWorkflowImage;
+    if (workflowImage) {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      if (data.currentWorkflowImage) {
-        reader.readAsDataURL(data.currentWorkflowImage);
-      }
-    }) : undefined;
+      base64Image = await new Promise<string>((resolve) => {
+        reader.onloadend = () => {
+          if (reader.result) {
+            resolve(reader.result as string);
+          } else {
+            resolve(''); // In case of empty result, provide empty string
+          }
+        };
+        reader.readAsDataURL(workflowImage);
+      });
+    }
 
-    const scenarioData = {
+    const scenarioData: Omit<Scenario, 'id' | 'type'> = {
       title: data.title,
       title_es: data.title_es,
       description: data.description,
@@ -256,18 +290,54 @@ const App: React.FC = () => {
       goal: data.goal,
       goal_es: data.goal_es,
       domain: data.domain,
-      currentWorkflowImage: base64Image,
-      type: 'TRAINING' as const
+      currentWorkflowImage: base64Image || null,
+      favoritedBy: {}
     };
 
     const newScenario = await saveUserScenario(user.uid, scenarioData);
+
+    if (scenarioCreationContext?.companyId) {
+      const companyId = scenarioCreationContext.companyId;
+      let companyName = scenarioCreationContext.companyName;
+      try {
+        const company = await getCompany(companyId, user.uid);
+        if (company) {
+          companyName = company.name;
+          const existingSelected = company.selectedScenarios ?? [];
+          if (!existingSelected.includes(newScenario.id)) {
+            await updateCompanySelectedScenarios(company.id, user.uid, [...existingSelected, newScenario.id]);
+          }
+        }
+      } catch (associationError) {
+        console.error('Failed to associate scenario with company:', associationError);
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('company-scenario-created', {
+            detail: {
+              scenario: newScenario,
+              companyId,
+              companyName
+            }
+          })
+        );
+      }
+    }
+
     handleScenarioCreated(newScenario);
   };
 
   const trainingScenarios = scenarios.filter(s => s.type === 'TRAINING');
 
   const [isCreatingScenario, setIsCreatingScenario] = useState(false);
+  const [scenarioCreationContext, setScenarioCreationContext] = useState<ScenarioCreationContext | null>(null);
   
+  const openScenarioCreator = (context: ScenarioCreationContext) => {
+    setScenarioCreationContext(context);
+    setIsCreatingScenario(true);
+  };
+
   const renderAppContent = () => {
     if (isLoadingScenarios && user) {
         return <LoadingScreen />;
@@ -324,7 +394,12 @@ const App: React.FC = () => {
                     userId={user.uid} 
                     initialCompany={selectedCompanyId || undefined}
                     onSelectScenario={handleNavigateToScenario}
-                    onCreateScenario={() => setIsCreatingScenario(true)}
+                    onCreateScenario={(ctx) => openScenarioCreator({
+                      source: 'RESEARCH',
+                      companyId: ctx?.companyId,
+                      companyName: ctx?.companyName
+                    })}
+                    onViewWorkflow={handleSelectWorkflow}
                   />;
         }
         return null;
@@ -367,8 +442,12 @@ const App: React.FC = () => {
                   onSave={async (data) => {
                     await handleSaveScenario(data);
                     setIsCreatingScenario(false);
+                    setScenarioCreationContext(null);
                   }}
-                  onClose={() => setIsCreatingScenario(false)}
+                  onClose={() => {
+                    setIsCreatingScenario(false);
+                    setScenarioCreationContext(null);
+                  }}
                 />
               )}
             </main>

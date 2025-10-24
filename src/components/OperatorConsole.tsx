@@ -3,7 +3,7 @@ import type { User } from 'firebase/auth';
 import type { Scenario, EvaluationResult, StoredEvaluationResult, Platform } from '../types';
 import type { AIActionsPlatform, AIActionsApproach } from './AIActionsPanel';
 import { generateText, generatePRD, prdToMarkdown, generateElevatorPitch, elevatorPitchToMarkdown } from '../services/geminiService';
-import { getEvaluations, saveEvaluation, savePrd, savePitch, saveWorkflowVersion, getWorkflowVersions } from '../services/firebaseService';
+import { getEvaluations, saveEvaluation, savePrd, savePitch, saveWorkflowVersion } from '../services/firebaseService';
 import { evaluateOperatorPerformance } from '../services/geminiService';
 import { Icons } from '../constants';
 import AIActionsPanel from './AIActionsPanel';
@@ -929,7 +929,7 @@ Return only the steps.`;
                 value={workflowExplanation}
                 onChange={(e) => setWorkflowExplanation(e.target.value)}
                 placeholder={"e.g., Step 1 (AI): Ingest customer email and categorize intent. Step 2 (Human): Review high-priority tickets..."}
-                className={`flex-grow bg-slate-900 border ${highlightEditor ? 'border-amber-400 ring-2 ring-amber-400/60' : 'border-slate-600'} rounded-lg p-4 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow w-full`}
+                className={`flex-grow bg-slate-100 text-slate-900 placeholder:text-slate-500 border ${highlightEditor ? 'border-amber-400 ring-2 ring-amber-400/60' : 'border-slate-300'} rounded-lg p-4 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow w-full`}
                 rows={10}
                 aria-live="polite"
               />

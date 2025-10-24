@@ -4,6 +4,7 @@ import { auth } from '../services/firebaseInit';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { Icons } from '../constants';
 import { LoadingSpinner } from './OperatorConsole';
+import { useTranslation } from '../i18n';
 
 interface LoginViewProps {
   mode?: 'login' | 'signup';
@@ -16,6 +17,7 @@ const LoginView: React.FC<LoginViewProps> = ({ mode = 'login' }) => {
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const { t } = useTranslation();
 
   useEffect(() => {
     setIsSignUp(mode === 'signup');
@@ -30,7 +32,7 @@ const LoginView: React.FC<LoginViewProps> = ({ mode = 'login' }) => {
       if (isSignUp) {
         // Handle Sign Up
         if (!displayName.trim()) {
-          throw new Error("Display Name is required.");
+          throw new Error(t('login.error.displayNameRequired'));
         }
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         if (userCredential.user) {
@@ -47,16 +49,16 @@ const LoginView: React.FC<LoginViewProps> = ({ mode = 'login' }) => {
       // Map common Firebase auth errors to more user-friendly messages
       switch (err.code) {
         case 'auth/user-not-found':
-          setError('No account found with this email. Please sign up.');
+          setError(t('login.error.userNotFound'));
           break;
         case 'auth/wrong-password':
-          setError('Incorrect password. Please try again.');
+          setError(t('login.error.wrongPassword'));
           break;
         case 'auth/email-already-in-use':
-          setError('This email is already in use. Please log in.');
+          setError(t('login.error.emailInUse'));
           break;
         case 'auth/weak-password':
-          setError('Password should be at least 6 characters long.');
+          setError(t('login.error.weakPassword'));
           break;
         default:
           setError(err.message || 'An unknown error occurred. Please try again.');
@@ -74,16 +76,16 @@ const LoginView: React.FC<LoginViewProps> = ({ mode = 'login' }) => {
           <Icons.Sparkles />
         </div>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-500 mt-4 mb-2">
-          {isSignUp ? 'Create Your Account' : 'Welcome Back'}
+          {isSignUp ? t('login.createAccount') : t('login.welcomeBack')}
         </h1>
         <p className="max-w-xl mx-auto text-base text-slate-400 mb-8">
-          {isSignUp ? 'Join the hub to start your training.' : 'Sign in to continue your journey.'}
+          {isSignUp ? t('login.signUpSubtitle') : t('login.loginSubtitle')}
         </p>
         
         <form onSubmit={handleSubmit} className="space-y-4 text-left">
           {isSignUp && (
             <div>
-              <label htmlFor="displayName" className="block text-sm font-medium text-slate-300 mb-1">Display Name</label>
+              <label htmlFor="displayName" className="block text-sm font-medium text-slate-300 mb-1">{t('login.displayNameLabel')}</label>
               <input
                 id="displayName"
                 name="displayName"
@@ -92,12 +94,12 @@ const LoginView: React.FC<LoginViewProps> = ({ mode = 'login' }) => {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
-                placeholder="Jane Doe"
+                placeholder={t('login.displayNamePlaceholder')}
               />
             </div>
           )}
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1">Email Address</label>
+            <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1">{t('login.emailLabel')}</label>
             <input
               id="email"
               name="email"
@@ -107,11 +109,11 @@ const LoginView: React.FC<LoginViewProps> = ({ mode = 'login' }) => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
-              placeholder="you@example.com"
+              placeholder={t('login.emailPlaceholder')}
             />
           </div>
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1">Password</label>
+            <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1">{t('login.passwordLabel')}</label>
             <input
               id="password"
               name="password"
@@ -122,7 +124,7 @@ const LoginView: React.FC<LoginViewProps> = ({ mode = 'login' }) => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
-              placeholder="••••••••"
+              placeholder={t('login.passwordPlaceholder')}
             />
           </div>
 
@@ -135,14 +137,14 @@ const LoginView: React.FC<LoginViewProps> = ({ mode = 'login' }) => {
             disabled={isLoading}
             className="w-full flex items-center justify-center bg-sky-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-sky-500 transition-colors disabled:bg-slate-700 disabled:cursor-not-allowed"
           >
-            {isLoading ? <LoadingSpinner /> : isSignUp ? 'Sign Up' : 'Login'}
+            {isLoading ? <LoadingSpinner /> : isSignUp ? t('login.signUpButton') : t('login.loginButton')}
           </button>
         </form>
 
         <p className="mt-6 text-sm text-slate-400">
-          {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+          {isSignUp ? t('login.haveAccount') : t('login.noAccount')}
           <button onClick={() => { setIsSignUp(!isSignUp); setError(null); }} className="font-medium text-sky-400 hover:text-sky-300">
-            {isSignUp ? 'Login' : 'Sign Up'}
+            {isSignUp ? t('login.loginButton') : t('login.signUpButton')}
           </button>
         </p>
       </div>

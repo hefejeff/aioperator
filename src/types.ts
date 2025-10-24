@@ -13,7 +13,7 @@ export interface Scenario {
   type: 'TRAINING' | 'EVALUATION';
   userId?: string; // ID of the user who created this scenario
   favoritedBy?: Record<string, true>; // map of userId -> true for quick lookup
-  currentWorkflowImage?: string; // Base64 data URL for the current workflow image
+  currentWorkflowImage?: string | null; // Base64 data URL for the current workflow image
 }
 
 export interface UserProfile {
@@ -63,6 +63,22 @@ export interface Company {
   research: CompanyResearch;
 }
 
+export interface RfpAnalysis {
+  summary: string;
+  projectStructure: string;
+  detailedAnalysis: string;
+  timeline: string;
+  budget: string;
+  requirements: string;
+  stakeholders: string;
+  successCriteria: string;
+  risks: string;
+  aiRecommendations: string;
+  aiCapabilities: string;
+  constraints: string;
+  clarificationNeeded: string;
+}
+
 // Company Research types
 export interface CompanyResearchEntry {
   description: string;
@@ -73,6 +89,14 @@ export interface CompanyResearchEntry {
   marketPosition: string;
   competitors: string[];
   useCases: string[];
+  rfpDocument?: {
+    content: string;
+    fileName: string;
+    uploadedAt: number;
+    url?: string;
+    path?: string;
+    analysis?: RfpAnalysis;
+  };
   aiRelevance: {
     current: string;
     potential: string;

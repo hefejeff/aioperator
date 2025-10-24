@@ -1,5 +1,12 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { EvaluationResult, Platform, CompanyResearch, Scenario, RelatedScenario } from '../types';
+import type { 
+  EvaluationResult, 
+  Platform, 
+  CompanyResearch, 
+  Scenario, 
+  RelatedScenario,
+  RfpAnalysis
+} from '../types';
 
 if (!process.env.API_KEY) {
   throw new Error("API_KEY environment variable not set");
@@ -12,7 +19,166 @@ interface ImagePart {
   mimeType: string;
 }
 
-export async function researchCompany(companyName: string): Promise<CompanyResearch> {
+interface ResearchCompanyParams {
+  companyName: string;
+  rfpContent?: string;
+}
+
+export async function analyzeRfpDocument(content: string): Promise<RfpAnalysis> {
+  const systemInstruction = `You are an expert AI consultant analyzing an RFP (Request for Proposal) document.
+
+FOCUS ON PROJECT STRUCTURE FIRST:
+1. Create a hierarchical breakdown of ALL projects and sub-projects mentioned in the RFP
+2. For EACH project and sub-project, identify:
+   - Project name/identifier
+   - Parent project (if it's a sub-project)
+   - Project scope and objectives
+   - Specific deliverables
+   - Dependencies on other projects
+   - Key technical requirements
+   - Timeline and milestones
+   - Budget allocation (if specified)
+   - Project-specific stakeholders
+
+Then analyze additional RFP details including:
+1. Technical specifications and standards
+2. Overall program deadlines and phases
+3. Total budget and cost constraints
+4. Key stakeholders and roles
+5. Success metrics and acceptance criteria
+6. Risks and challenges
+7. Required technologies and integrations
+8. Compliance requirements and regulations
+
+REQUIRED OUTPUT FORMAT:
+1. Project Hierarchy (MUST include):
+   - Main project list with clear parent-child relationships
+   - Each project's key details organized under its entry
+   - Direct quotes from RFP for critical project definitions
+   - Cross-references between dependent projects
+
+2. Project-Specific Details:
+   - Create separate sections for each major project
+   - List all sub-projects and components
+   - Include verbatim requirements and specifications
+   - Note dependencies and integration points
+
+3. Additional Analysis:
+   - Program-level requirements and standards
+   - Cross-project dependencies and risks
+   - Technology stack and integration requirements
+   - Compliance and regulatory considerations
+   - AI implementation opportunities for each project
+
+IMPORTANT RULES:
+- Start with a clear project tree showing the hierarchy
+- Always maintain relationships between projects
+- Quote directly from the RFP for project definitions
+- Flag any ambiguous project relationships
+- Identify where projects intersect or depend on each other
+- Note ANY project-specific AI opportunities`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: `Your primary task is to create a detailed project hierarchy from this RFP, breaking down all projects, sub-projects, and their relationships. Start by identifying the main projects, then map out all sub-projects and their dependencies. After that, analyze additional RFP details.
+
+RFP Content:
+${content}
+
+Required format:
+1. Start with a visual project hierarchy showing parent-child relationships
+2. Then provide detailed analysis for each project and sub-project
+3. Finally add program-level analysis
+
+Remember: Project structure and relationships are the TOP priority.`,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            summary: { 
+              type: Type.STRING,
+              description: "Comprehensive overview of the entire RFP, including all major components and unique aspects"
+            },
+            projectStructure: {
+              type: Type.STRING,
+              description: "Detailed breakdown of all projects, sub-projects, and their relationships as specified in the RFP"
+            },
+            detailedAnalysis: {
+              type: Type.STRING,
+              description: "In-depth analysis of all requirements, specifications, and details from the RFP, maintaining original structure"
+            },
+            timeline: { 
+              type: Type.STRING,
+              description: "All timeline-related information, phases, and milestones found in the RFP"
+            },
+            budget: { 
+              type: Type.STRING,
+              description: "All budget and cost-related information found in the RFP"
+            },
+            requirements: { 
+              type: Type.STRING,
+              description: "Comprehensive list of all requirements found, maintaining their original context and structure"
+            },
+            stakeholders: { 
+              type: Type.STRING,
+              description: "All identified stakeholders and their roles/responsibilities"
+            },
+            successCriteria: { 
+              type: Type.STRING,
+              description: "All success criteria, acceptance criteria, and evaluation metrics mentioned"
+            },
+            risks: { 
+              type: Type.STRING,
+              description: "All identified risks, challenges, and potential issues"
+            },
+            aiRecommendations: { 
+              type: Type.STRING,
+              description: "Strategic recommendations for AI implementation based on the RFP analysis"
+            },
+            aiCapabilities: { 
+              type: Type.STRING,
+              description: "Required AI capabilities and potential integration points"
+            },
+            constraints: { 
+              type: Type.STRING,
+              description: "All constraints, limitations, and compliance requirements"
+            },
+            clarificationNeeded: { 
+              type: Type.STRING,
+              description: "Areas requiring clarification or additional information"
+            }
+          },
+          required: ["summary", "projectStructure", "detailedAnalysis", "requirements", "aiRecommendations", "aiCapabilities"]
+        }
+      }
+    });
+
+    const result = JSON.parse(response.text ?? '{}');
+    return result as RfpAnalysis;
+  } catch (error) {
+    console.error("Error analyzing RFP document:", error);
+    return {
+      summary: "Error analyzing document",
+      projectStructure: "Analysis failed",
+      detailedAnalysis: "Analysis failed",
+      requirements: "Analysis failed",
+      successCriteria: "Analysis failed",
+      aiRecommendations: "Analysis failed",
+      aiCapabilities: "Analysis failed",
+      timeline: "",
+      budget: "",
+      stakeholders: "",
+      risks: "",
+      constraints: "",
+      clarificationNeeded: ""
+    };
+  }
+}
+
+export async function researchCompany({ companyName, rfpContent }: ResearchCompanyParams): Promise<CompanyResearch> {
   const systemInstruction = `You are an expert business analyst and AI consultant. Research the given company and provide a comprehensive analysis including:
 - Company overview and core business
 - Industry analysis
@@ -25,9 +191,11 @@ export async function researchCompany(companyName: string): Promise<CompanyResea
 Format the response as structured JSON matching the specified schema.`;
 
   try {
+    const rfpContext = rfpContent ? `\n\nAdditionally, analyze this RFP document from the company:\n${rfpContent}` : '';
+    
     const response = await ai.models.generateContent({
       model: "gemini-2.5-pro",
-      contents: `Research and analyze ${companyName}, focusing on their business operations and AI/automation opportunities.`,
+      contents: `Research and analyze ${companyName}, focusing on their business operations and AI/automation opportunities.${rfpContext}`,
       config: {
         systemInstruction,
         responseMimeType: "application/json",
@@ -154,14 +322,23 @@ Return a ranked list of relevant scenarios with explanations.`;
     
     if (generateSuggestions) {
       // For suggested scenarios, ensure they have unique IDs and all required fields
-      const suggestions = matches.map((scenario: any, index: number) => ({
-        ...scenario,
-        id: `suggested-${Date.now()}-${index}`, // Generate unique IDs for suggested scenarios
-        type: 'TRAINING',
-        favoritedBy: {},
-        relevanceScore: scenario.relevanceScore || 0.8, // Default high relevance for suggestions
-        relevanceReason: scenario.relevanceReason || 'Generated based on company profile'
-      }));
+      const suggestions = matches.map((scenario: any, index: number) => {
+        const rawScore = typeof scenario.relevanceScore === 'number'
+          ? scenario.relevanceScore
+          : parseFloat(String(scenario.relevanceScore ?? ''));
+        const normalizedScore = Number.isFinite(rawScore)
+          ? Math.max(0.1, Math.min(1, rawScore))
+          : 0.8;
+
+        return {
+          ...scenario,
+          id: `suggested-${Date.now()}-${index}`, // Generate unique IDs for suggested scenarios
+          type: 'TRAINING',
+          favoritedBy: {},
+          relevanceScore: normalizedScore, // Ensure numerical relevance scores
+          relevanceReason: scenario.relevanceReason || 'Generated based on company profile'
+        };
+      });
       console.log('Generated suggestions:', suggestions);
       return suggestions as RelatedScenario[];
     }
@@ -175,11 +352,18 @@ Return a ranked list of relevant scenarios with explanations.`;
           return null;
         }
         
+        const rawScore = typeof match.relevanceScore === 'number'
+          ? match.relevanceScore
+          : parseFloat(String(match.relevanceScore ?? ''));
         // Ensure a minimum relevance score of 0.1 to prevent filtering
         // and clamp to maximum of 1.0 for consistency
+        const normalizedScore = Number.isFinite(rawScore)
+          ? Math.max(0.1, Math.min(1, rawScore))
+          : 0.5;
+
         const result = {
           ...scenario,
-          relevanceScore: Math.max(0.1, Math.min(1, match.relevanceScore || 0.5)),
+          relevanceScore: normalizedScore,
           relevanceReason: match.relevanceReason || 'Matched based on scenario content'
         };
         console.log('Mapped scenario:', result);

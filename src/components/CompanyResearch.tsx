@@ -1,43 +1,81 @@
 import React, { useState, useEffect } from 'react';
 import { Icons } from '../constants';
 import { useTranslation } from '../i18n';
-import type { CompanyResearch as CompanyInfo, CompanyResearchEntry, RelatedScenario, Company } from '../types';
+import RfpUploadField from './RfpUploadField';
+import type { CompanyResearch as CompanyInfo, CompanyResearchEntry, RelatedScenario, Company, Scenario, StoredEvaluationResult } from '../types';
 import ResearchSidebar from './ResearchSidebar';
-import { getScenarios, getCompanyResearch, getRelatedScenarios, saveCompanyResearch } from '../services/firebaseService';
+import { getScenarios, getCompanyResearch, saveCompanyResearch, getEvaluations } from '../services/firebaseService';
 import { researchCompany, findRelevantScenarios } from '../services/geminiService';
 import { saveCompany, getCompany, updateCompanySelectedScenarios } from '../services/companyService';
 import { ref, onValue } from 'firebase/database';
 import { db } from '../services/firebaseInit';
 import ResearchListView from './ResearchListView';
+import RfpAnalysisView from './RfpAnalysisView';
+import CompanyResearchContent from './CompanyResearchContent';
 
 interface CompanyResearchProps {
   userId: string;
   initialCompany?: string;  // This is now expected to be a company ID
   onSelectScenario?: (scenarioId: string) => void;
-  onCreateScenario?: () => void;
+  onCreateScenario?: (context?: { companyId?: string; companyName?: string }) => void;
+  onViewWorkflow?: (workflowId: string) => void;
 }
 
 type View = 'LIST' | 'RESEARCH';
 
-const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompany, onSelectScenario, onCreateScenario }) => {
+const CompanyResearch: React.FC<CompanyResearchProps> = ({
+  userId,
+  initialCompany,
+  onSelectScenario,
+  onCreateScenario,
+  onViewWorkflow,
+}) => {
   const [view, setView] = useState<View>(initialCompany ? 'RESEARCH' : 'LIST');
   const [companyName, setCompanyName] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isCreatingCompany, setIsCreatingCompany] = useState(false);
+  const [isLoadingResearch, setIsLoadingResearch] = useState(false);
+  const [isLoadingOpportunities, setIsLoadingOpportunities] = useState(false);
+  const [, setIsCreatingCompany] = useState(false);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [relatedScenarios, setRelatedScenarios] = useState<RelatedScenario[]>([]);
   const [selectedScenarios, setSelectedScenarios] = useState<string[]>([]);
+  const [rfpDocument, setRfpDocument] = useState<{
+    content: string;
+    fileName: string;
+    uploadedAt: number;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedCompanyName, setSelectedCompanyName] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(null);
+  const [scenarioCatalog, setScenarioCatalog] = useState<Record<string, Scenario>>({});
+  const [scenarioRuns, setScenarioRuns] = useState<Record<string, StoredEvaluationResult[]>>({});
+  const [isLoadingScenarioRuns, setIsLoadingScenarioRuns] = useState(false);
 
   const { t } = useTranslation();
+
+  // Helper function to keep local catalog of scenarios for lookup when rendering history
+  const updateScenarioCatalog = (scenariosToTrack: Scenario[]) => {
+    if (!Array.isArray(scenariosToTrack) || scenariosToTrack.length === 0) {
+      return;
+    }
+
+    setScenarioCatalog(prev => {
+      const nextCatalog = { ...prev };
+      scenariosToTrack.forEach(s => {
+        if (s?.id) {
+          nextCatalog[s.id] = s;
+        }
+      });
+      return nextCatalog;
+    });
+  };
 
   // Helper function to load selected scenarios into the sidebar
   const loadSelectedScenariosIntoSidebar = async (scenarios: string[]) => {
     if (scenarios.length > 0) {
-      const existingScenarios = await getScenarios(userId);
+  const existingScenarios = await getScenarios(userId);
+  updateScenarioCatalog(existingScenarios);
+      updateScenarioCatalog(existingScenarios);
       const selectedScenarioObjects = existingScenarios
         .filter(scenario => scenarios.includes(scenario.id))
         .map(scenario => ({
@@ -45,12 +83,16 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
           relevanceScore: 1,
           relevanceReason: 'Previously selected scenario'
         }));
-      setRelatedScenarios(selectedScenarioObjects);
+      
+      // Keep existing non-selected scenarios and add selected ones
+      const currentIds = new Set(relatedScenarios.map(s => s.id));
+      const newScenarios = selectedScenarioObjects.filter(s => !currentIds.has(s.id));
+      setRelatedScenarios([...relatedScenarios, ...newScenarios]);
     }
   };
 
   const loadExistingResearch = async (companyId: string) => {
-    setIsLoading(true);
+    setIsLoadingResearch(true);
     setError(null);
     try {
       // Try to get company by ID
@@ -60,6 +102,8 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
       if (!company) {
         console.log('No existing company found');
         setError(t('research.noCompanyFound'));
+        setScenarioCatalog({});
+        setScenarioRuns({});
         return;
       }
       
@@ -86,18 +130,104 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
       console.error('Failed to load existing research:', error);
       setError(t('common.error'));
     } finally {
-      setIsLoading(false);
+      setIsLoadingResearch(false);
     }
   };
 
+  useEffect(() => {
+    const handleScenarioCreated = (event: Event) => {
+      const detail = (event as CustomEvent<{ scenario: Scenario; companyId?: string }>).detail;
+      if (!detail || !detail.companyId || detail.companyId !== currentCompanyId) {
+        return;
+      }
+
+      const { scenario } = detail;
+      setSelectedScenarios(prev =>
+        prev.includes(scenario.id) ? prev : [...prev, scenario.id]
+      );
+
+      setScenarioCatalog(prev => ({ ...prev, [scenario.id]: scenario }));
+
+      setRelatedScenarios(prev => {
+        if (prev.some(s => s.id === scenario.id)) {
+          return prev;
+        }
+        const manualScenario: RelatedScenario = {
+          ...scenario,
+          relevanceScore: 100,
+          relevanceReason: t('research.manualScenarioReason')
+        };
+        return [manualScenario, ...prev];
+      });
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('company-scenario-created', handleScenarioCreated as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('company-scenario-created', handleScenarioCreated as EventListener);
+      }
+    };
+  }, [currentCompanyId, t]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadScenarioRuns = async () => {
+      if (!selectedScenarios.length) {
+        setScenarioRuns({});
+        setIsLoadingScenarioRuns(false);
+        return;
+      }
+
+      setIsLoadingScenarioRuns(true);
+      try {
+        const runEntries = await Promise.all(
+          selectedScenarios.map(async scenarioId => {
+            const runs = await getEvaluations(userId, scenarioId);
+            return [scenarioId, runs] as [string, StoredEvaluationResult[]];
+          })
+        );
+
+        if (!isActive) {
+          return;
+        }
+
+        const nextRuns: Record<string, StoredEvaluationResult[]> = {};
+        runEntries.forEach(([scenarioId, runs]) => {
+          nextRuns[scenarioId] = runs;
+        });
+        setScenarioRuns(nextRuns);
+      } catch (runError) {
+        console.error('Failed to load scenario runs:', runError);
+      } finally {
+        if (isActive) {
+          setIsLoadingScenarioRuns(false);
+        }
+      }
+    };
+
+    loadScenarioRuns();
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedScenarios, userId]);
+
   const handleResearch = async () => {
     if (!companyName.trim()) return;
+    if (isLoadingResearch) return; // Prevent multiple concurrent research requests
 
-    setIsLoading(true);
+    setIsLoadingResearch(true);
     setError(null);
     try {
       // Research company
-      const researchData = await researchCompany(companyName);
+      const researchData = await researchCompany({
+        companyName,
+        rfpContent: rfpDocument?.content
+      });
 
       // Get existing research if any
       let existingResearch = null;
@@ -119,6 +249,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
         opportunities: researchData.currentResearch.opportunities || [],
         competitors: researchData.currentResearch.competitors || [],
         useCases: researchData.currentResearch.useCases || [],
+        rfpDocument: rfpDocument || undefined,
         aiRelevance: {
           current: researchData.currentResearch.aiRelevance?.current || '',
           potential: researchData.currentResearch.aiRelevance?.potential || '',
@@ -182,7 +313,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
       console.error('Research failed:', error);
       setError(t('common.error'));
     } finally {
-      setIsLoading(false);
+      setIsLoadingResearch(false);
     }
   };
 
@@ -205,6 +336,9 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
     setRelatedScenarios([]);
     setSelectedScenarios([]);
     setCompanyName('');
+    setScenarioCatalog({});
+    setScenarioRuns({});
+    setIsLoadingScenarioRuns(false);
   };
 
   // Effect to load company research when switching to RESEARCH view with a selected company
@@ -215,15 +349,30 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
         loadExistingResearch(companyId);
       }
 
-      // Set up real-time listener for selected scenarios changes
+      // Set up real-time listener for company changes
       if (currentCompanyId) {
         const companyRef = ref(db, `companies/${currentCompanyId}`);
         const unsubscribe = onValue(companyRef, (snapshot) => {
           if (snapshot.exists()) {
             const companyData = snapshot.val() as Company;
+            
+            // Update company info if research data changes
+            if (companyData.research) {
+              const currentJson = JSON.stringify(companyInfo?.currentResearch);
+              const newJson = JSON.stringify(companyData.research.currentResearch);
+              if (currentJson !== newJson) {
+                setCompanyInfo(companyData.research);
+              }
+            }
+
+            // Update selected scenarios if they change
             if (companyData.selectedScenarios) {
-              setSelectedScenarios(companyData.selectedScenarios);
-              loadSelectedScenariosIntoSidebar(companyData.selectedScenarios);
+              const scenariosJson = JSON.stringify(selectedScenarios);
+              const newScenariosJson = JSON.stringify(companyData.selectedScenarios);
+              if (scenariosJson !== newScenariosJson) {
+                setSelectedScenarios(companyData.selectedScenarios);
+                loadSelectedScenariosIntoSidebar(companyData.selectedScenarios);
+              }
             }
           }
         });
@@ -243,7 +392,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
   const handleFindOpportunities = async () => {
     if (!companyInfo || !currentCompanyId) return;
     
-    setIsLoading(true);
+    setIsLoadingOpportunities(true);
     try {
       // First, get all existing scenarios
       const existingScenarios = await getScenarios(userId);
@@ -263,6 +412,19 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
       // Then, generate suggested scenarios
       const suggestedScenarios = await findRelevantScenarios(companyInfo, [], true);
       
+      // Get IDs of suggested scenarios that should be added to selected
+      const newSuggestedIds = suggestedScenarios
+        .filter(scenario => scenario.id && !selectedScenarios.includes(scenario.id))
+        .map(scenario => scenario.id);
+
+      // Add suggested scenarios to selected scenarios
+      if (newSuggestedIds.length > 0 && currentCompanyId) {
+        const updatedSelectedScenarios = [...selectedScenarios, ...newSuggestedIds];
+        setSelectedScenarios(updatedSelectedScenarios);
+        // Save to database
+        await updateCompanySelectedScenarios(currentCompanyId, userId, updatedSelectedScenarios);
+      }
+
       // Combine and sort by relevance score
       const combinedScenarios = [
         ...selectedScenarioObjects, // Add selected scenarios first
@@ -276,13 +438,13 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
         )
         .sort((a, b) => b.relevanceScore - a.relevanceScore);
       
-      // Update the UI with the related scenarios but don't save them
+      // Update the UI with all scenarios including newly suggested ones
       setRelatedScenarios(combinedScenarios);
     } catch (error) {
       console.error('Failed to find opportunities:', error);
       setError(t('research.findOpportunitiesError'));
     } finally {
-      setIsLoading(false);
+      setIsLoadingOpportunities(false);
     }
   };
 
@@ -323,7 +485,10 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
         onClose={() => setIsSidebarOpen(false)}
         onSelectScenario={handleScenarioSelect}
         onFindOpportunities={handleFindOpportunities}
-        onCreateScenario={onCreateScenario}
+        onCreateScenario={() => onCreateScenario?.({
+          companyId: currentCompanyId ?? undefined,
+          companyName: companyName || undefined
+        })}
         selectedScenarios={selectedScenarios}
         onToggleScenario={async (scenarioId: string) => {
           if (!currentCompanyId) {
@@ -342,8 +507,24 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
             // Save to database
             await updateCompanySelectedScenarios(currentCompanyId, userId, updatedScenarios);
 
-            // Update the sidebar to show selected scenarios
-            await loadSelectedScenariosIntoSidebar(updatedScenarios);
+            // Keep existing scenarios and add selected ones if they're not already present
+            const existingScenarios = await getScenarios(userId);
+            const updatedRelatedScenarios = [...relatedScenarios];
+            
+            // Add newly selected scenario if it's not already in the list
+            if (!relatedScenarios.some(s => s.id === scenarioId) && updatedScenarios.includes(scenarioId)) {
+              const scenario = existingScenarios.find(s => s.id === scenarioId);
+              if (scenario) {
+                updatedRelatedScenarios.push({
+                  ...scenario,
+                  relevanceScore: 1,
+                  relevanceReason: 'Selected scenario'
+                });
+              }
+            }
+
+            // Update the related scenarios list
+            setRelatedScenarios(updatedRelatedScenarios);
           } catch (error) {
             console.error('Failed to update selected scenarios:', error);
             // Revert the local state if save fails
@@ -351,8 +532,10 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
           }
         }}
         onSuggestSelected={handleFindOpportunities}
-        isLoading={isLoading}
+        isLoadingOpportunities={isLoadingOpportunities}
         userId={userId}
+        companyId={currentCompanyId ?? undefined}
+        companyName={companyName || undefined}
       />
 
       {/* Search Input */}
@@ -376,32 +559,59 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
       </div>
 
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder={t('research.searchPlaceholder')}
-            className="flex-1 bg-slate-900 text-white p-3 rounded-lg border border-slate-600 focus:border-emerald-500 focus:outline-none"
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder={t('research.searchPlaceholder')}
+              className="flex-1 bg-slate-900 text-white p-3 rounded-lg border border-slate-600 focus:border-emerald-500 focus:outline-none"
+            />
+            <button
+              onClick={handleResearch}
+              disabled={isLoadingResearch || !companyName.trim()}
+              className="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isLoadingResearch ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  {t('research.searching')}
+                </>
+              ) : (
+                <>
+                  <Icons.Search className="w-5 h-5" />
+                  {t('common.search')}
+                </>
+              )}
+            </button>
+          </div>
+          <RfpUploadField
+            companyId={currentCompanyId}
+            onUploadSuccess={async () => {
+              if (currentCompanyId) {
+                // Add a small delay to allow for RFP analysis to complete
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Then reload the company data to get the latest RFP analysis
+                await loadExistingResearch(currentCompanyId);
+                setRfpDocument(null);
+              }
+            }}
+            onUploadError={(error) => {
+              console.error('RFP upload failed:', error);
+              setError(t('research.rfpUploadError'));
+            }}
+            onDelete={async () => {
+              if (currentCompanyId) {
+                setRfpDocument(null);
+                // Add a small delay to allow for RFP deletion to complete
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Then reload the company data
+                await loadExistingResearch(currentCompanyId);
+              }
+            }}
           />
-          <button
-            onClick={handleResearch}
-            disabled={isLoading || !companyName.trim()}
-            className="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {isLoading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                {t('research.searching')}
-              </>
-            ) : (
-              <>
-                <Icons.Search className="w-5 h-5" />
-                {t('common.search')}
-              </>
-            )}
-          </button>
         </div>
       </div>
 
@@ -414,95 +624,34 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ userId, initialCompan
       {/* Research Results */}
       <div>
         {companyInfo && (
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-            <h2 className="text-lg font-semibold text-white mb-6">{t('research.companyInfo')}</h2>
-            
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-white font-medium mb-2">{t('research.description')}</h3>
-                <p className="text-slate-300">{companyInfo?.currentResearch?.description || ''}</p>
-              </div>
+          <div className="space-y-8">
+            {/* Company Research Section */}
+            <CompanyResearchContent
+              companyInfo={companyInfo}
+              scenarioRuns={scenarioRuns}
+              scenariosById={scenarioCatalog}
+              isScenarioRunsLoading={isLoadingScenarioRuns}
+              onViewWorkflow={onViewWorkflow}
+            />
 
-              <div>
-                <h3 className="text-white font-medium mb-2">{t('research.industry')}</h3>
-                <p className="text-slate-300">{companyInfo?.currentResearch?.industry || ''}</p>
-              </div>
-
-              <div>
-                <h3 className="text-white font-medium mb-2">{t('research.marketPosition')}</h3>
-                <p className="text-slate-300">{companyInfo?.currentResearch?.marketPosition || ''}</p>
-              </div>
-
-              <div>
-                <h3 className="text-white font-medium mb-2">{t('research.products')}</h3>
-                <ul className="list-disc list-inside text-slate-300 space-y-1">
-                  {companyInfo?.currentResearch?.products?.map((product, index) => (
-                    <li key={index}>{product}</li>
-                  )) || []}
-                </ul>
-              </div>
-
-              <div>
-                <h3 className="text-white font-medium mb-2">{t('research.competitors')}</h3>
-                <ul className="list-disc list-inside text-slate-300 space-y-1">
-                  {companyInfo?.currentResearch?.competitors?.map((competitor, index) => (
-                    <li key={index}>{competitor}</li>
-                  )) || []}
-                </ul>
-              </div>
-
-              <div>
-                <h3 className="text-white font-medium mb-2">{t('research.challenges')}</h3>
-                <ul className="list-disc list-inside text-slate-300 space-y-1">
-                  {companyInfo?.currentResearch?.challenges?.map((challenge, index) => (
-                    <li key={index}>{challenge}</li>
-                  )) || []}
-                </ul>
-              </div>
-
-              <div>
-                <h3 className="text-white font-medium mb-2">{t('research.opportunities')}</h3>
-                <ul className="list-disc list-inside text-slate-300 space-y-1">
-                  {companyInfo?.currentResearch?.opportunities?.map((opportunity, index) => (
-                    <li key={index}>{opportunity}</li>
-                  )) || []}
-                </ul>
-              </div>
-
-              <div>
-                <h3 className="text-white font-medium mb-2">{t('research.aiUseCases')}</h3>
-                <ul className="list-disc list-inside text-slate-300 space-y-1">
-                  {companyInfo?.currentResearch?.useCases?.map((useCase, index) => (
-                    <li key={index}>{useCase}</li>
-                  )) || []}
-                </ul>
-              </div>
-
-              <div className="border-t border-slate-700 pt-6">
-                <h3 className="text-white font-medium mb-4">{t('research.aiAnalysis')}</h3>
-                
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="text-slate-300 font-medium mb-2">{t('research.currentAI')}</h4>
-                    <p className="text-slate-400">{companyInfo?.currentResearch?.aiRelevance?.current || ''}</p>
-                  </div>
-                  
-                  <div>
-                    <h4 className="text-slate-300 font-medium mb-2">{t('research.potentialAI')}</h4>
-                    <p className="text-slate-400">{companyInfo?.currentResearch?.aiRelevance?.potential || ''}</p>
-                  </div>
-                  
-                  <div>
-                    <h4 className="text-slate-300 font-medium mb-2">{t('research.aiRecommendations')}</h4>
-                    <ul className="list-disc list-inside text-slate-400 space-y-1">
-                      {companyInfo?.currentResearch?.aiRelevance?.recommendations?.map((rec, index) => (
-                        <li key={index}>{rec}</li>
-                      )) || []}
-                    </ul>
+            {/* RFP Analysis Section - Completely Separate */}
+            {companyInfo?.currentResearch?.rfpDocument?.analysis ? (
+              <RfpAnalysisView 
+                analysis={companyInfo.currentResearch.rfpDocument.analysis} 
+              />
+            ) : companyInfo?.currentResearch?.rfpDocument && (
+              <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+                <div className="animate-pulse flex space-x-4">
+                  <div className="flex-1 space-y-4 py-1">
+                    <div className="h-4 bg-slate-700 rounded w-3/4"></div>
+                    <div className="space-y-2">
+                      <div className="h-4 bg-slate-700 rounded"></div>
+                      <div className="h-4 bg-slate-700 rounded w-5/6"></div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

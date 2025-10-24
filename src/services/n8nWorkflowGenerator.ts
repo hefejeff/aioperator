@@ -1,14 +1,12 @@
-import { parseWorkflowSteps, type WorkflowStep, type N8NWorkflow } from './n8nService';
+import { parseWorkflowSteps, type N8NWorkflow, type N8NNode } from './n8nService';
 import {
   AI_ANALYSIS_NODE_TEMPLATE,
   WEBHOOK_INPUT_NODE_TEMPLATE,
   HUMAN_APPROVAL_NODE_TEMPLATE,
-  PROCESS_DATA_FUNCTION_TEMPLATE,
   ERROR_HANDLING_FUNCTION_TEMPLATE,
   API_RESPONSE_TEMPLATE,
   DATA_TRANSFORM_FUNCTION_TEMPLATE,
-  NOTIFICATION_NODE_TEMPLATE,
-  SET_NODE_TEMPLATE
+  NOTIFICATION_NODE_TEMPLATE
 } from './n8nTemplates';
 
 interface NodeConfig {
@@ -34,27 +32,8 @@ export function generateN8NWorkflow(workflowExplanation: string, options: Workfl
     throw new Error('No workflow steps found in explanation');
   }
 
-  const nodes: NodeConfig[] = [];
+  const nodes: Array<NodeConfig & { parameters: Record<string, any> }> = [];
   const connections: Record<string, { main: Array<Array<{ node: string; type: string; index: number }>> }> = {};
-
-  // Setup platform-specific configuration
-  const platformConfigs = {
-    'MS 365': {
-      nodes: ['n8n-nodes-base.microsoftOutlook', 'n8n-nodes-base.microsoftTeams', 'n8n-nodes-base.microsoftOneDrive'],
-      headers: { 'Authorization': 'Bearer {{$env.MS365_TOKEN}}' }
-    },
-    'Google': {
-      nodes: ['n8n-nodes-base.gmail', 'n8n-nodes-base.googleDrive', 'n8n-nodes-base.googleSheets'],
-      headers: { 'Authorization': 'Bearer {{$env.GOOGLE_TOKEN}}' }
-    },
-    'Assistant': {
-      nodes: ['n8n-nodes-base.openAi'],
-      headers: { 'Authorization': 'Bearer {{$env.OPENAI_API_KEY}}' }
-    }
-  };
-
-  // Get platform-specific settings
-  const platformConfig = options.platform ? platformConfigs[options.platform] : null;
 
   // Add initial webhook for workflow trigger with platform context
   const triggerNode = {
@@ -79,9 +58,8 @@ export function generateN8NWorkflow(workflowExplanation: string, options: Workfl
   const yPos = 300;
 
   // Process each step
-  steps.forEach((step, index) => {
+  steps.forEach((step) => {
     const currentNodeId = step.id;
-    const isLastStep = index === steps.length - 1;
 
     // Create nodes based on step type
     if (step.actor === 'ai') {
@@ -194,11 +172,14 @@ export function generateN8NWorkflow(workflowExplanation: string, options: Workfl
       connections[previousNodeId] = {
         main: [[{ node: `${currentNodeId}_notify`, type: 'main', index: 0 }]]
       };
-      connections[`${currentNodeId}_notify`] = {
-        main: [[{ node: `${currentNodeId}_approval`, type: 'main', index: 0 }]]
-      };
-      
-      previousNodeId = `${currentNodeId}_approval`;
+      if (options.approach === 'Hybrid' || options.approach === 'Assisted') {
+        connections[`${currentNodeId}_notify`] = {
+          main: [[{ node: `${currentNodeId}_approval`, type: 'main', index: 0 }]]
+        };
+        previousNodeId = `${currentNodeId}_approval`;
+      } else {
+        previousNodeId = `${currentNodeId}_notify`;
+      }
     }
 
     // Update x position for next step
@@ -232,7 +213,7 @@ export function generateN8NWorkflow(workflowExplanation: string, options: Workfl
 
   return {
     name: 'Generated Workflow',
-    nodes: nodes as any[],
+    nodes: nodes as unknown as N8NNode[],
     connections,
     settings: {
       saveExecutionProgress: true,

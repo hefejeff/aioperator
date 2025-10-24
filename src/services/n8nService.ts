@@ -1,5 +1,3 @@
-import type { Node, Connection } from 'n8n-workflow';
-
 export interface WorkflowStep {
   id: string;
   label: string;
@@ -7,9 +5,18 @@ export interface WorkflowStep {
   index: number;
 }
 
+export interface N8NNode {
+  id: string;
+  name: string;
+  type: string;
+  position: [number, number];
+  parameters: Record<string, any>;
+  typeVersion?: number;
+}
+
 export interface N8NWorkflow {
   name: string;
-  nodes: Node[];
+  nodes: N8NNode[];
   connections: Record<string, { main: Array<Array<{ node: string; type: string; index: number }>> }>;
   settings?: {
     saveExecutionProgress?: boolean;
@@ -69,7 +76,7 @@ export function createBaseNode(
   type: string,
   position: [number, number],
   parameters: Record<string, any> = {}
-): Node {
+): N8NNode {
   return {
     id,
     name,
@@ -83,10 +90,9 @@ export function createBaseNode(
 /**
  * Calculate node position in the workflow grid
  */
-export function calculateNodePosition(index: number, totalSteps: number): [number, number] {
+export function calculateNodePosition(index: number, _totalSteps: number): [number, number] {
   // Start from left to right with some spacing
   const xSpacing = 300;
-  const ySpacing = 200;
   
   // For simple linear workflows, just space them horizontally
   return [index * xSpacing + 100, 300];
@@ -95,7 +101,7 @@ export function calculateNodePosition(index: number, totalSteps: number): [numbe
 /**
  * Create a webhook node for user input
  */
-export function createWebhookNode(id: string, name: string, position: [number, number], path: string): Node {
+export function createWebhookNode(id: string, name: string, position: [number, number], path: string): N8NNode {
   return createBaseNode(id, name, 'n8n-nodes-base.webhook', position, {
     httpMethod: 'POST',
     path,
@@ -117,7 +123,7 @@ export function createHttpNode(
   method = 'POST',
   headers: Record<string, string> = {},
   body: any = undefined
-): Node {
+): N8NNode {
   return createBaseNode(id, name, 'n8n-nodes-base.httpRequest', position, {
     url,
     method,
@@ -139,7 +145,7 @@ export function createFunctionNode(
   name: string,
   position: [number, number],
   code: string
-): Node {
+): N8NNode {
   return createBaseNode(id, name, 'n8n-nodes-base.function', position, {
     functionCode: code
   });
@@ -153,7 +159,7 @@ export function createResponseNode(
   name: string,
   position: [number, number],
   responseData: any = { success: true }
-): Node {
+): N8NNode {
   return createBaseNode(id, name, 'n8n-nodes-base.respondToWebhook', position, {
     responseBody: responseData,
     responseCode: 200

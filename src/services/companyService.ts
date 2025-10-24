@@ -17,6 +17,8 @@ export const saveCompany = async (
       throw new Error('Invalid research data structure');
     }
 
+    const currentRfp = research.currentResearch.rfpDocument;
+
     // Create a safe currentResearch object
     const currentResearch: CompanyResearch['currentResearch'] = {
       description: research.currentResearch.description || '',
@@ -34,6 +36,35 @@ export const saveCompany = async (
           ? research.currentResearch.aiRelevance.recommendations.filter(Boolean) 
           : []
       },
+      // Preserve RFP document and analysis if they exist
+      rfpDocument: currentRfp
+        ? {
+            content: currentRfp.content || '',
+            fileName: currentRfp.fileName || '',
+            uploadedAt: currentRfp.uploadedAt ?? Date.now(),
+            ...(currentRfp.analysis
+              ? {
+                  analysis: {
+                    summary: currentRfp.analysis.summary || '',
+                    projectStructure: currentRfp.analysis.projectStructure || '',
+                    detailedAnalysis: currentRfp.analysis.detailedAnalysis || '',
+                    timeline: currentRfp.analysis.timeline || '',
+                    budget: currentRfp.analysis.budget || '',
+                    requirements: currentRfp.analysis.requirements || '',
+                    stakeholders: currentRfp.analysis.stakeholders || '',
+                    successCriteria: currentRfp.analysis.successCriteria || '',
+                    risks: currentRfp.analysis.risks || '',
+                    aiRecommendations: currentRfp.analysis.aiRecommendations || '',
+                    aiCapabilities: currentRfp.analysis.aiCapabilities || '',
+                    constraints: currentRfp.analysis.constraints || '',
+                    clarificationNeeded: currentRfp.analysis.clarificationNeeded || ''
+                  }
+                }
+              : {}),
+            ...(currentRfp.url ? { url: currentRfp.url } : {}),
+            ...(currentRfp.path ? { path: currentRfp.path } : {})
+          }
+        : undefined,
       timestamp: Date.now() // Add required timestamp
     };
 

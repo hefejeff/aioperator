@@ -1,4 +1,4 @@
-# ChatGPT Instructions – AI Operator Training Hub
+# ChatGPT Instructions – Workflow Assistant
 
 Purpose
 - Provide clear, project-specific guidance for using ChatGPT (and similar LLMs) when editing or extending this repo.

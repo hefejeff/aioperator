@@ -157,7 +157,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
         const [u, lb, sc] = await Promise.all([
           listAllUsers(),
           getGlobalLeaderboard(10),
-          getScenarios(),
+          getScenarios(currentUser.uid),
         ]);
         setUsers(u);
         setLeaderboard(lb);

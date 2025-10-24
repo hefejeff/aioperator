@@ -1,20 +1,15 @@
 import React from 'react';
 import { useTranslation } from '../i18n';
-import { User } from 'firebase/auth';
 import { Icons } from '../constants';
 import type { Company } from '../types';
-import CompanyDetailsView from './CompanyDetailsView';
-import { updateCompanySelectedScenarios } from '../services/companyService';
 
 interface CompaniesSectionProps {
-  user: User;
   companies: Company[];
   onStartNewResearch: () => void;
   handleNavigate: (view: 'DASHBOARD' | 'TRAINING' | 'ADMIN' | 'RESEARCH', companyId?: string) => void;
 }
 
 const CompaniesSection: React.FC<CompaniesSectionProps> = ({
-  user,
   companies,
   onStartNewResearch,
   handleNavigate,

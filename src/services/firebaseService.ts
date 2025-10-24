@@ -1,5 +1,6 @@
-import { db } from './firebaseInit';
+import { db, storage } from './firebaseInit';
 import { ref, get, push, set, update, remove, query, orderByChild, equalTo } from 'firebase/database';
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import type { 
   WorkflowVersion,
   TeamMember, 
@@ -20,6 +21,7 @@ import type {
   CompanyResearchEntry,
   RelatedScenario
 } from '../types';
+import { analyzeRfpDocument } from './geminiService';
 import { ALL_SCENARIOS } from '../constants';
 
 // Get evaluations for a specific user and scenario
@@ -706,6 +708,115 @@ export const createUserScenarioOverride = async (
 
 // Delete a user and their data (admin only)
 // Company Research Operations
+// Upload RFP document to GCP storage and analyze it
+export const uploadRfpDocument = async (
+  companyId: string,
+  file: File
+): Promise<string> => {
+  try {
+    const timestamp = Date.now();
+    const fileName = `${companyId}/rfp_${timestamp}_${file.name}`;
+    const fileRef = storageRef(storage, `rfp_documents/${fileName}`);
+    
+    await uploadBytes(fileRef, file);
+    const downloadURL = await getDownloadURL(fileRef);
+    
+    // Read the file content and analyze it
+    const fileContent = await file.text();
+    const analysis = await analyzeRfpDocument(fileContent);
+    
+    // Update company record with the RFP document reference and analysis in the current research
+    const companyRef = ref(db, `companies/${companyId}`);
+    const companySnapshot = await get(companyRef);
+    if (!companySnapshot.exists()) {
+      throw new Error('Company not found');
+    }
+    
+    const company = companySnapshot.val();
+    const currentResearch = company.research?.currentResearch || {};
+    
+    await update(companyRef, {
+      'research.currentResearch': {
+        ...currentResearch,
+        rfpDocument: {
+          content: await file.text(),
+          url: downloadURL,
+          fileName: file.name,
+          uploadedAt: timestamp,
+          path: `rfp_documents/${fileName}`,
+          analysis
+        }
+      }
+    });
+    
+    return downloadURL;
+  } catch (error) {
+    console.error('Failed to upload RFP document:', error);
+    throw error;
+  }
+};
+
+// Delete RFP document from GCP storage
+export const deleteRfpDocument = async (companyId: string): Promise<void> => {
+  try {
+    // Get the company data to find the RFP document path
+    const companyRef = ref(db, `companies/${companyId}`);
+    const snapshot = await get(companyRef);
+    
+    if (!snapshot.exists()) {
+      throw new Error('Company not found');
+    }
+    
+    const company = snapshot.val();
+    if (!company.research?.currentResearch?.rfpDocument?.path) {
+      throw new Error('No RFP document found for this company');
+    }
+    
+    // Delete the file from storage
+    // Ensure we're using the correct path format
+    const fileRef = storageRef(storage, company.research.currentResearch.rfpDocument.path);
+    
+    try {
+      await deleteObject(fileRef);
+    } catch (deleteError: any) {
+      // If the file doesn't exist, we still want to remove the reference from the database
+      if (deleteError?.code !== 'storage/object-not-found') {
+        throw deleteError;
+      }
+      console.warn('RFP file not found in storage, cleaning up database reference only');
+    }
+    
+    // Remove the RFP document reference from the company's current research
+    const currentResearch = { ...company.research.currentResearch };
+    delete currentResearch.rfpDocument;
+    
+    await update(companyRef, {
+      'research.currentResearch': currentResearch
+    });
+  } catch (error) {
+    console.error('Failed to delete RFP document:', error);
+    throw error;
+  }
+};
+
+// Get RFP document URL
+export const getRfpDocumentUrl = async (companyId: string): Promise<string | null> => {
+  try {
+    const companyRef = ref(db, `companies/${companyId}`);
+    const snapshot = await get(companyRef);
+    
+    if (!snapshot.exists()) {
+      return null;
+    }
+    
+    const company = snapshot.val();
+    return company.research?.currentResearch?.rfpDocument?.url || null;
+  } catch (error) {
+    console.error('Failed to get RFP document URL:', error);
+    throw error;
+  }
+};
+
 export const saveCompanyResearch = async (
   userId: string,
   companyName: string, 
@@ -841,7 +952,7 @@ export const getCompanyResearchHistory = async (
 
 
 export const getRelatedScenarios = async (
-  companyId: string
+  _companyId: string
 ): Promise<RelatedScenario[]> => {
   return []; // Related scenarios are no longer stored in the database
 };
@@ -1164,11 +1275,12 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
 
 export const setUserPreferences = async (
   userId: string, 
-  preferences: UserProfile
+  preferences: Partial<UserProfile>
 ): Promise<boolean> => {
   try {
     const userRef = ref(db, `users/${userId}`);
-    await update(userRef, preferences);
+    const { uid, email, ...updates } = preferences;
+    await update(userRef, updates);
     return true;
   } catch (error) {
     console.error('Failed to update user preferences:', error);

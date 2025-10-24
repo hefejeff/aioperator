@@ -4,9 +4,9 @@ import type { RelatedScenario, WorkflowVersion } from '../types';
 import { useTranslation } from '../i18n';
 import { getWorkflowVersions } from '../services/firebaseService';
 
-interface WorkflowExample {
-  workflowVersion: WorkflowVersion;
-  scenarioId: string;
+interface ScenarioCreationContext {
+  companyId?: string;
+  companyName?: string;
 }
 
 interface ResearchSidebarProps {
@@ -15,12 +15,14 @@ interface ResearchSidebarProps {
   onClose?: () => void;
   onSelectScenario?: (scenarioId: string) => void;
   onFindOpportunities?: () => void;
-  onCreateScenario?: () => void;
+  onCreateScenario?: (context?: ScenarioCreationContext) => void;
   onSuggestSelected?: () => void;
   selectedScenarios?: string[];
   onToggleScenario?: (scenarioId: string) => void;
-  isLoading?: boolean;
+  isLoadingOpportunities?: boolean;
   userId: string;
+  companyId?: string;
+  companyName?: string;
 }
 
 const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
@@ -33,8 +35,10 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
   onSuggestSelected,
   selectedScenarios = [],
   onToggleScenario,
-  isLoading = false,
-  userId
+  isLoadingOpportunities = false,
+  userId,
+  companyId,
+  companyName
 }) => {
   const { t } = useTranslation();
   const [workflowExamples, setWorkflowExamples] = useState<Record<string, WorkflowVersion[]>>({});
@@ -64,14 +68,14 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
       {/* Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-x-0 top-16 bottom-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
           onClick={onClose}
         />
       )}
 
       {/* Side Drawer */}
       <aside
-        className={`fixed top-0 right-0 h-full w-80 bg-slate-900/95 backdrop-blur-md border-l border-slate-700/60 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-16 right-0 bottom-0 w-80 bg-slate-900/95 backdrop-blur-md border-l border-slate-700/60 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
         }`}
       >
@@ -90,26 +94,33 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
                   <Icons.X />
                 </button>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={onFindOpportunities}
-                  disabled={isLoading}
-                  className="flex-1 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
-                >
-                  {isLoading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                  ) : (
-                    <Icons.Search className="w-4 h-4" />
-                  )}
-                  {t('research.findOpportunities')}
-                </button>
-                <button
-                  onClick={onCreateScenario}
-                  className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
-                >
-                  <Icons.Plus className="w-4 h-4" />
-                  {t('research.suggestOpportunity')}
-                </button>
+              <div>
+                <h3 className="text-sm font-medium text-slate-400 mb-2">{t('research.findNew')}</h3>
+                <div className="flex gap-2">
+                  <button
+                    onClick={onFindOpportunities}
+                    disabled={isLoadingOpportunities}
+                    className="flex-1 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
+                  >
+                    {isLoadingOpportunities ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    ) : (
+                      <Icons.Search className="w-4 h-4" />
+                    )}
+                    {t('research.findOpportunities')}
+                  </button>
+                  <button
+                    onClick={() => onCreateScenario?.({
+                      companyId,
+                      companyName
+                    })}
+                    className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Icons.Plus className="w-4 h-4" />
+                    {t('research.suggestOpportunity')}
+                  </button>
+                </div>
+                <div className="mt-4 border-b border-slate-700/50" />
               </div>
             </div>
           </div>
@@ -189,19 +200,21 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
                       <div className="flex items-start justify-between gap-3 mb-2">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <button
+                            <div
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onToggleScenario?.(scenario.id);
                               }}
-                              className="shrink-0 flex items-center justify-center w-5 h-5 rounded border transition-colors group-hover:border-emerald-500 border-slate-600"
+                              className="shrink-0 flex items-center justify-center w-5 h-5 rounded border cursor-pointer transition-colors hover:border-emerald-500 hover:bg-slate-700/60 border-slate-600"
                             >
-                              {selectedScenarios.includes(scenario.id) && (
+                              {selectedScenarios.includes(scenario.id) ? (
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-500" viewBox="0 0 20 20" fill="currentColor">
                                   <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                                 </svg>
+                              ) : (
+                                <div className="w-3 h-3 rounded transition-colors group-hover:bg-emerald-500/20" />
                               )}
-                            </button>
+                            </div>
                             <h3 className="text-sm font-medium text-white group-hover:text-emerald-400 transition-colors">
                               {scenario.title}
                             </h3>

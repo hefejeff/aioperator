@@ -1,0 +1,169 @@
+import React, { createContext, useContext, useMemo, useState, useCallback } from 'react';
+
+export type Lang = 'English' | 'Spanish';
+
+export const resources: Record<string, Record<string, string>> = {
+  'English': {
+    'dashboard.training': 'Training',
+    'dashboard.workflowHistory': 'Workflow History',
+    'dashboard.workflows': 'Workflows',
+    'workflowDetail.untitled': 'Untitled Workflow',
+    'dashboard.yesterday': 'Yesterday',
+    'dashboard.today': 'Today',
+    'dashboard.custom': 'Custom',
+    
+    // Workflow Detail
+    'workflowDetail.problem': 'Problem Statement',
+    'workflowDetail.workflow': 'Workflow Design',
+    'workflowDetail.prd': 'Product Requirements',
+    'workflowDetail.prdContent': 'PRD Content',
+    'workflowDetail.pitch': 'Value Proposition',
+    'workflowDetail.evaluation': 'Evaluation',
+    'workflowDetail.canvas': 'Canvas',
+    'workflowDetail.team': 'Team',
+    'workflowDetail.title': 'Title',
+    'workflowDetail.score': 'Score',
+    'workflowDetail.scenario': 'Scenario',
+    'workflowDetail.loading': 'Loading workflow details...',
+    'workflowDetail.error': 'Error loading workflow details',
+    'workflowDetail.notFound': 'Workflow not found',
+    'workflowDetail.lastModified': 'Last Modified',
+    'workflowDetail.created': 'Created',
+    'workflowDetail.status': 'Status',
+    'workflowDetail.actions': 'Actions',
+    'workflowDetail.edit': 'Edit Workflow',
+    'workflowDetail.delete': 'Delete Workflow',
+    'workflowDetail.confirmDelete': 'Are you sure you want to delete this workflow?',
+
+    // Navigation and Common
+    'nav.dashboard': 'Dashboard',
+    'nav.training': 'Training',
+    'nav.history': 'History',
+    'nav.research': 'Research',
+    'nav.library': 'Library',
+    'nav.admin': 'Admin',
+    'nav.home': 'Home',
+
+    // Common UI Elements
+    'common.close': 'Close',
+    'common.cancel': 'Cancel',
+    'common.save': 'Save',
+    'common.delete': 'Delete',
+    'common.edit': 'Edit',
+    'common.search': 'Search',
+    'common.loading': 'Loading...',
+    'common.error': 'Error',
+    'common.success': 'Success',
+    'common.back': 'Back'
+  },
+  'Spanish': {
+    'dashboard.training': 'Entrenamiento',
+    'dashboard.workflowHistory': 'Historial de Flujos de Trabajo',
+    'dashboard.workflows': 'Flujos de Trabajo',
+    'workflowDetail.untitled': 'Flujo de Trabajo Sin Título',
+    'dashboard.yesterday': 'Ayer',
+    'dashboard.today': 'Hoy',
+    'dashboard.custom': 'Personalizado',
+    
+    // Workflow Detail
+    'workflowDetail.problem': 'Planteamiento del Problema',
+    'workflowDetail.workflow': 'Diseño del Flujo de Trabajo',
+    'workflowDetail.prd': 'Requerimientos del Producto',
+    'workflowDetail.prdContent': 'Contenido del PRD',
+    'workflowDetail.pitch': 'Propuesta de Valor',
+    'workflowDetail.evaluation': 'Evaluación',
+    'workflowDetail.canvas': 'Lienzo',
+    'workflowDetail.team': 'Equipo',
+    'workflowDetail.title': 'Título',
+    'workflowDetail.score': 'Puntuación',
+    'workflowDetail.scenario': 'Escenario',
+    'workflowDetail.loading': 'Cargando detalles del flujo de trabajo...',
+    'workflowDetail.error': 'Error al cargar los detalles del flujo de trabajo',
+    'workflowDetail.notFound': 'Flujo de trabajo no encontrado',
+    'workflowDetail.lastModified': 'Última Modificación',
+    'workflowDetail.created': 'Creado',
+    'workflowDetail.status': 'Estado',
+    'workflowDetail.actions': 'Acciones',
+    'workflowDetail.edit': 'Editar Flujo de Trabajo',
+    'workflowDetail.delete': 'Eliminar Flujo de Trabajo',
+    'workflowDetail.confirmDelete': '¿Estás seguro de que quieres eliminar este flujo de trabajo?',
+
+    // Navigation and Common
+    'nav.dashboard': 'Tablero',
+    'nav.training': 'Entrenamiento',
+    'nav.history': 'Historial',
+    'nav.research': 'Investigación',
+    'nav.library': 'Biblioteca',
+    'nav.admin': 'Administrador',
+    'nav.home': 'Inicio',
+
+    // Common UI Elements
+    'common.close': 'Cerrar',
+    'common.cancel': 'Cancelar',
+    'common.save': 'Guardar',
+    'common.delete': 'Eliminar',
+    'common.edit': 'Editar',
+    'common.search': 'Buscar',
+    'common.loading': 'Cargando...',
+    'common.error': 'Error',
+    'common.success': 'Éxito',
+    'common.back': 'Volver'
+  }
+};
+
+type I18nContextShape = {
+  lang: Lang;
+  setLang: (l: Lang) => void;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+};
+
+const I18nContext = createContext<I18nContextShape>({
+  lang: 'English',
+  setLang: () => {},
+  t: (k) => k,
+});
+
+export const I18nProvider: React.FC<{ initial?: Lang; children?: React.ReactNode }> = ({ initial = 'English', children }) => {
+  const [lang, setLang] = useState<Lang>(initial);
+  
+  React.useEffect(() => {
+    const onProfileUpdated = (e: Event) => {
+      try {
+        const detail = (e as CustomEvent).detail as { preferredLanguage?: Lang } | undefined;
+        if (detail && detail.preferredLanguage) {
+          setLang(detail.preferredLanguage);
+        }
+      } catch (err) {
+        // ignore
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('profile-updated', onProfileUpdated as EventListener);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('profile-updated', onProfileUpdated as EventListener);
+      }
+    };
+  }, []);
+
+  const t = useCallback((key: string, vars?: Record<string, string | number>) => {
+    const dict = resources[lang] || resources['English'];
+    const raw = dict[key] ?? key;
+    if (!vars) return raw;
+    return Object.keys(vars).reduce((s, k) => s.replace(new RegExp(`\\{${k}\\}`, 'g'), String(vars[k])), raw);
+  }, [lang]);
+
+  const memoizedSetLang = useCallback((newLang: Lang) => {
+    setLang(newLang);
+    localStorage.setItem('preferredLanguage', newLang);
+  }, []);
+
+  const value = useMemo(() => ({ lang, setLang: memoizedSetLang, t }), [lang, memoizedSetLang, t]);
+  
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+};
+
+export const useTranslation = () => useContext(I18nContext);
+
+export default resources;

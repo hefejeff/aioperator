@@ -774,11 +774,16 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
           </button>
           <div className="flex-1">
             <h1 className="text-xl font-semibold text-white">
-              {workflow.versionTitle || t('workflowDetail.untitled')}
+              {(workflow.versionTitle && workflow.versionTitle.trim()) || scenario?.title || t('workflowDetail.untitled')}
             </h1>
             <p className="text-slate-400 text-sm mt-1">
-              {t('workflowDetail.scenario')}: {workflow.scenarioId}
+              {t('workflowDetail.scenario')}: {scenario?.title || workflow.scenarioId}
             </p>
+            {scenario?.description && (
+              <p className="text-slate-500 text-xs mt-1 line-clamp-2">
+                {scenario.description}
+              </p>
+            )}
           </div>
           <div className="text-right text-sm text-slate-400">
             <div>{new Date(workflow.timestamp).toLocaleDateString()}</div>
@@ -823,30 +828,30 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                 <>
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.title')}</h3>
-                    <div className="bg-slate-900 p-4 rounded-lg border border-slate-600">
-                      <p className="text-slate-300">{scenario.title}</p>
+                    <div className="bg-slate-100 p-4 rounded-lg border border-slate-300">
+                      <p className="text-slate-900">{scenario.title}</p>
                       {scenario.title_es && (
-                        <p className="text-slate-400 text-sm mt-2 italic">ES: {scenario.title_es}</p>
+                        <p className="text-slate-600 text-sm mt-2 italic">ES: {scenario.title_es}</p>
                       )}
                     </div>
                   </div>
                   
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.problemDescription')}</h3>
-                    <div className="bg-slate-900 p-4 rounded-lg border border-slate-600">
-                      <p className="text-slate-300 whitespace-pre-wrap">{scenario.description}</p>
+                    <div className="bg-slate-100 p-4 rounded-lg border border-slate-300">
+                      <p className="text-slate-900 whitespace-pre-wrap">{scenario.description}</p>
                       {scenario.description_es && (
-                        <p className="text-slate-400 text-sm mt-3 italic whitespace-pre-wrap">ES: {scenario.description_es}</p>
+                        <p className="text-slate-600 text-sm mt-3 italic whitespace-pre-wrap">ES: {scenario.description_es}</p>
                       )}
                     </div>
                   </div>
                   
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.target')}</h3>
-                    <div className="bg-slate-900 p-4 rounded-lg border border-slate-600">
-                      <p className="text-slate-300 whitespace-pre-wrap">{scenario.goal}</p>
+                    <div className="bg-slate-100 p-4 rounded-lg border border-slate-300">
+                      <p className="text-slate-900 whitespace-pre-wrap">{scenario.goal}</p>
                       {scenario.goal_es && (
-                        <p className="text-slate-400 text-sm mt-3 italic whitespace-pre-wrap">ES: {scenario.goal_es}</p>
+                        <p className="text-slate-600 text-sm mt-3 italic whitespace-pre-wrap">ES: {scenario.goal_es}</p>
                       )}
                     </div>
                   </div>
@@ -855,32 +860,32 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                   <div>
                     <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.businessContext')}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="bg-slate-900 p-4 rounded-lg border border-slate-600">
-                        <h4 className="text-white font-medium mb-2 flex items-center gap-2">
+                      <div className="bg-slate-100 p-4 rounded-lg border border-slate-300">
+                        <h4 className="text-slate-900 font-medium mb-2 flex items-center gap-2">
                           <Icons.Star />
                           {t('workflowDetail.customerSegments')}
                         </h4>
-                        <p className="text-slate-300 text-sm">
+                        <p className="text-slate-800 text-sm">
                           {inferCustomerSegments(scenario)}
                         </p>
                       </div>
                       
-                      <div className="bg-slate-900 p-4 rounded-lg border border-slate-600">
-                        <h4 className="text-white font-medium mb-2 flex items-center gap-2">
+                      <div className="bg-slate-100 p-4 rounded-lg border border-slate-300">
+                        <h4 className="text-slate-900 font-medium mb-2 flex items-center gap-2">
                           <Icons.Sparkles />
                           {t('workflowDetail.valueProposition')}
                         </h4>
-                        <p className="text-slate-300 text-sm">
+                        <p className="text-slate-800 text-sm">
                           {extractValueProp(scenario.description)}
                         </p>
                       </div>
                       
-                      <div className="bg-slate-900 p-4 rounded-lg border border-slate-600">
-                        <h4 className="text-white font-medium mb-2 flex items-center gap-2">
+                      <div className="bg-slate-100 p-4 rounded-lg border border-slate-300">
+                        <h4 className="text-slate-900 font-medium mb-2 flex items-center gap-2">
                           <Icons.ChartBar />
                           {t('workflowDetail.keyMetrics')}
                         </h4>
-                        <p className="text-slate-300 text-sm">
+                        <p className="text-slate-800 text-sm">
                           {suggestKeyMetrics(scenario, workflow?.evaluationScore || undefined)}
                         </p>
                       </div>
@@ -897,8 +902,8 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.explanation')}</h3>
-                <div className="prose prose-slate prose-invert max-w-none">
-                  <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900 p-4 rounded-lg border border-slate-600">
+                <div className="prose prose-slate max-w-none">
+                  <pre className="whitespace-pre-wrap text-slate-900 bg-slate-100 p-4 rounded-lg border border-slate-300">
                     {workflow.workflowExplanation}
                   </pre>
                 </div>
@@ -944,8 +949,8 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
             <div>
               <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.prdContent')}</h3>
               {workflow.prdMarkdown ? (
-                <div className="prose prose-slate prose-invert max-w-none">
-                  <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900 p-4 rounded-lg border border-slate-600">
+                <div className="prose prose-slate max-w-none">
+                  <pre className="whitespace-pre-wrap text-slate-900 bg-slate-100 p-4 rounded-lg border border-slate-300">
                     {workflow.prdMarkdown}
                   </pre>
                 </div>
@@ -954,8 +959,8 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                   <div className="text-sm text-slate-400 mb-2">
                     Latest PRD from {new Date(relatedPrd.timestamp).toLocaleDateString()}:
                   </div>
-                  <div className="prose prose-slate prose-invert max-w-none">
-                    <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900 p-4 rounded-lg border border-slate-600">
+                  <div className="prose prose-slate max-w-none">
+                    <pre className="whitespace-pre-wrap text-slate-900 bg-slate-100 p-4 rounded-lg border border-slate-300">
                       {relatedPrd.markdown}
                     </pre>
                   </div>
@@ -970,8 +975,8 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
             <div>
               <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.pitchContent')}</h3>
               {workflow.pitchMarkdown ? (
-                <div className="prose prose-slate prose-invert max-w-none">
-                  <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900 p-4 rounded-lg border border-slate-600">
+                <div className="prose prose-slate max-w-none">
+                  <pre className="whitespace-pre-wrap text-slate-900 bg-slate-100 p-4 rounded-lg border border-slate-300">
                     {workflow.pitchMarkdown}
                   </pre>
                 </div>
@@ -980,8 +985,8 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                   <div className="text-sm text-slate-400 mb-2">
                     Latest Elevator Pitch from {new Date(relatedPitch.timestamp).toLocaleDateString()}:
                   </div>
-                  <div className="prose prose-slate prose-invert max-w-none">
-                    <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900 p-4 rounded-lg border border-slate-600">
+                  <div className="prose prose-slate max-w-none">
+                    <pre className="whitespace-pre-wrap text-slate-900 bg-slate-100 p-4 rounded-lg border border-slate-300">
                       {relatedPitch.markdown}
                     </pre>
                   </div>
@@ -998,12 +1003,12 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                 <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.evaluationDetails')}</h3>
                 
                 {workflow.evaluationScore !== null ? (
-                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-600 space-y-3">
+                  <div className="bg-slate-100 p-4 rounded-lg border border-slate-300 space-y-3">
                     <div className="flex items-center gap-3 mb-4">
                       <Icons.Star />
-                      <span className="text-slate-300">
+                      <span className="text-slate-700">
                         {t('workflowDetail.finalScore')}: 
-                        <span className="font-semibold text-white ml-2">{workflow.evaluationScore}/10</span>
+                        <span className="font-semibold text-slate-900 ml-2">{workflow.evaluationScore}/10</span>
                       </span>
                     </div>
                     
@@ -1027,9 +1032,9 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                       
                       return evaluationContent ? (
                         <div>
-                          <h4 className="text-white font-medium mb-2">{t('workflowDetail.feedback')}</h4>
-                          <div className="bg-slate-900/50 rounded-lg border border-slate-700 p-4 whitespace-pre-wrap">
-                            <pre className="text-slate-300 whitespace-pre-wrap leading-relaxed font-sans">
+                          <h4 className="text-slate-900 font-medium mb-2">{t('workflowDetail.feedback')}</h4>
+                          <div className="bg-white rounded-lg border border-slate-300 p-4 whitespace-pre-wrap">
+                            <pre className="text-slate-800 whitespace-pre-wrap leading-relaxed font-sans">
                               {evaluationContent}
                             </pre>
                           </div>
@@ -1040,38 +1045,38 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                     })()}
                     
                     {workflow.sourceEvaluationId && (
-                      <div className="text-xs text-slate-400 mt-2">
+                      <div className="text-xs text-slate-600 mt-2">
                         {t('workflowDetail.evaluationId')}: {workflow.sourceEvaluationId}
                       </div>
                     )}
                   </div>
                 ) : relatedEvaluations.length > 0 ? (
                   <div>
-                    <div className="text-sm text-slate-400 mb-4">All evaluations for this scenario:</div>
+                    <div className="text-sm text-slate-600 mb-4">All evaluations for this scenario:</div>
                     <div className="space-y-4">
                       {relatedEvaluations.map((evaluation) => (
-                        <div key={evaluation.id} className="bg-slate-900 p-4 rounded-lg border border-slate-600 space-y-3">
+                        <div key={evaluation.id} className="bg-slate-100 p-4 rounded-lg border border-slate-300 space-y-3">
                           <div className="flex items-center gap-3">
                             <Icons.Star />
-                            <span className="text-slate-300">
+                            <span className="text-slate-700">
                               {t('workflowDetail.finalScore')}: 
-                              <span className="font-semibold text-white ml-2">{evaluation.score}/10</span>
+                              <span className="font-semibold text-slate-900 ml-2">{evaluation.score}/10</span>
                             </span>
-                            <span className="text-sm text-slate-400">
+                            <span className="text-sm text-slate-500">
                               ({new Date(evaluation.timestamp).toLocaleDateString()})
                             </span>
                           </div>
                           
                           <div>
-                            <h4 className="text-white font-medium mb-2">{t('workflowDetail.feedback')}</h4>
-                            <div className="bg-slate-900/50 rounded-lg border border-slate-700 p-4">
-                              <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">
+                            <h4 className="text-slate-900 font-medium mb-2">{t('workflowDetail.feedback')}</h4>
+                            <div className="bg-white rounded-lg border border-slate-300 p-4">
+                              <p className="text-slate-800 whitespace-pre-wrap leading-relaxed">
                                 {evaluation.feedback}
                               </p>
                             </div>
                           </div>
                           
-                          <div className="text-xs text-slate-400">
+                          <div className="text-xs text-slate-600">
                             {t('workflowDetail.evaluationId')}: {evaluation.id}
                           </div>
                         </div>

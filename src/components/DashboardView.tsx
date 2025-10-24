@@ -8,9 +8,8 @@ import {
   toggleFavoriteScenario,
   listCompanyResearch
 } from '../services/firebaseService';
-import { Icons } from '../constants';
-import type { Scenario, WorkflowVersion, AggregatedEvaluationResult, Company, CompanyResearch } from '../types';
-import CreateScenarioForm from './CreateScenarioForm';
+import type { Scenario, WorkflowVersion, AggregatedEvaluationResult, Company } from '../types';
+import CreateScenarioForm, { ScenarioFormPayload } from './CreateScenarioForm';
 import brainIcon from '../assets/brain_icon.png';
 import CompaniesSection from './CompaniesSection';
 import WorkflowsSection from './WorkflowsSection';
@@ -70,18 +69,19 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
         // Transform company research data to match Company interface and deduplicate
         const transformedCompanies = companyResearchData.reduce((uniqueCompanies, researchData) => {
           const { name, currentResearch, history, lastUpdated, selectedScenarios = [] } = researchData;
+          const resolvedLastUpdated = lastUpdated ?? Date.now();
           const existingCompany = uniqueCompanies.find(c => c.name.toLowerCase() === name.toLowerCase());
           
           // If company exists, update it only if the new data is more recent
           if (existingCompany) {
-            if (lastUpdated > existingCompany.lastUpdated) {
-              existingCompany.lastUpdated = lastUpdated;
+            if (resolvedLastUpdated > existingCompany.lastUpdated) {
+              existingCompany.lastUpdated = resolvedLastUpdated;
               existingCompany.selectedScenarios = selectedScenarios;
               existingCompany.research = {
                 name,
                 currentResearch,
                 history: [...(history || []), ...(existingCompany.research.history || [])],
-                lastUpdated
+                lastUpdated: resolvedLastUpdated
               };
             }
             return uniqueCompanies;
@@ -91,13 +91,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
           uniqueCompanies.push({
             id: `${name.toLowerCase()}_${Date.now()}`, // Ensure unique ID
             name,
-            lastUpdated,
+            createdBy: user.uid,
+            createdAt: resolvedLastUpdated,
+            lastUpdated: resolvedLastUpdated,
             selectedScenarios,
             research: {
               name,
               currentResearch,
               history: history || [],
-              lastUpdated
+              lastUpdated: resolvedLastUpdated
             }
           });
 
@@ -146,13 +148,17 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
     onStartTraining(scenario);
   };
 
-  const handleScenarioCreated = async (data: { title: string; description: string; goal: string }) => {
+  const handleScenarioCreated = async (data: ScenarioFormPayload) => {
     try {
+      const { title, description, goal, domain, title_es, description_es, goal_es } = data;
       const newScenario = await saveUserScenario(user.uid, {
-        title: data.title,
-        description: data.description,
-        goal: data.goal,
-        domain: 'General'
+        title,
+        description,
+        goal,
+        domain: domain || 'General',
+        title_es,
+        description_es,
+        goal_es
       });
       
       setShowCreateModal(false);
@@ -516,7 +522,6 @@ Make this example specific to ${problemDomain} with realistic details, metrics, 
           {/* Companies Section */}
           <div className="lg:col-span-1">
             <CompaniesSection
-              user={user}
               companies={companies}
               onStartNewResearch={handleStartNewResearch}
               handleNavigate={handleNavigate}
@@ -527,7 +532,7 @@ Make this example specific to ${problemDomain} with realistic details, metrics, 
           <div className="lg:col-span-1">
             <WorkflowsSection
               user={user}
-              scenarios={scenarios}
+              scenarios={filteredScenarios}
               workflowVersions={workflowVersions}
               evaluations={evaluations}
               showStarredOnly={showStarredOnly}

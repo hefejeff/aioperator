@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icons } from '../constants';
 import { useTranslation } from '../i18n';
-import type { CompanyResearch, Company, RelatedScenario } from '../types';
+import type { CompanyResearch, Company, RelatedScenario, Scenario } from '../types';
 import { getRelatedScenarios, getCompanyResearch } from '../services/firebaseService';
 import { updateCompanySelectedScenarios } from '../services/companyService';
 import { findRelevantScenarios } from '../services/geminiService';
@@ -12,7 +12,7 @@ interface CompanyDetailsViewProps {
   userId: string;
   company: Company;
   onBack: () => void;
-  onCreateScenario: () => void;
+  onCreateScenario: (context?: { companyId?: string; companyName?: string }) => void;
   onSelectScenario: (scenarioId: string) => void;
 }
 
@@ -24,7 +24,7 @@ const CompanyDetailsView: React.FC<CompanyDetailsViewProps> = ({
   onSelectScenario
 }) => {
   const [error, setError] = useState<string | null>(null);
-  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
+  const [companyInfo, setCompanyInfo] = useState<CompanyResearch | null>(null);
   const [relatedScenarios, setRelatedScenarios] = useState<RelatedScenario[]>([]);
   const [selectedScenarios, setSelectedScenarios] = useState<string[]>(company.selectedScenarios || []);
   const [isLoadingScenarios, setIsLoadingScenarios] = useState(false);
@@ -101,6 +101,42 @@ const CompanyDetailsView: React.FC<CompanyDetailsViewProps> = ({
     }
   };
 
+  useEffect(() => {
+    const handleScenarioCreated = (event: Event) => {
+      const detail = (event as CustomEvent<{ scenario: Scenario; companyId?: string }>).detail;
+      if (!detail || detail.companyId !== company.id) {
+        return;
+      }
+
+      const { scenario } = detail;
+      setSelectedScenarios(prev =>
+        prev.includes(scenario.id) ? prev : [...prev, scenario.id]
+      );
+
+      setRelatedScenarios(prev => {
+        if (prev.some(s => s.id === scenario.id)) {
+          return prev;
+        }
+        const enrichedScenario: RelatedScenario = {
+          ...scenario,
+          relevanceScore: 100,
+          relevanceReason: t('research.manualScenarioReason')
+        };
+        return [enrichedScenario, ...prev];
+      });
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('company-scenario-created', handleScenarioCreated as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('company-scenario-created', handleScenarioCreated as EventListener);
+      }
+    };
+  }, [company.id, t]);
+
   const handleToggleScenario = async (scenarioId: string) => {
     try {
       const updatedScenarios = selectedScenarios.includes(scenarioId)
@@ -171,27 +207,89 @@ const CompanyDetailsView: React.FC<CompanyDetailsViewProps> = ({
   if (isLoadingDetails) {
     return (
       <>
+        <LoadingSkeleton />
         <ResearchSidebar
           relatedScenarios={[]}
           isOpen={true}
           onClose={() => {}}
           onSelectScenario={onSelectScenario}
-          onCreateScenario={onCreateScenario}
+          onCreateScenario={() => onCreateScenario({
+            companyId: company.id,
+            companyName: company.name
+          })}
           selectedScenarios={[]}
           onToggleScenario={() => {}}
-          isLoading={true}
+          isLoadingOpportunities={true}
           userId={userId}
           onFindOpportunities={() => {}}
           onSuggestSelected={() => {}}
+          companyId={company.id}
+          companyName={company.name}
         />
-        <LoadingSkeleton />
       </>
     );
   }
 
   if (error) {
     return (
+      <>
+        <div className="space-y-6 lg:mr-80">
+          <div className="flex justify-between items-center">
+            <div>
+              <button
+                onClick={onBack}
+                className="text-blue-400 hover:text-blue-300 transition-colors mb-2 flex items-center gap-1"
+              >
+                <Icons.ChevronLeft className="w-4 h-4" />
+                {t('common.back')}
+              </button>
+            </div>
+          </div>
+          <div className="bg-red-900/30 border-l-4 border-red-500 text-red-300 p-6 rounded-r-lg">
+            <div className="flex items-start gap-3">
+              <div className="p-1">
+                <Icons.ChevronLeft className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-red-200 mb-2">{t('common.error')}</h3>
+                <p className="text-red-300 mb-4">{error}</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-2 bg-red-500/20 text-red-300 rounded hover:bg-red-500/30 transition-colors flex items-center gap-2"
+                >
+                  <Icons.ChevronLeft className="w-4 h-4" />
+                  {t('common.retry')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <ResearchSidebar
+          relatedScenarios={relatedScenarios}
+          isOpen={true}
+          onClose={() => {}}
+          onSelectScenario={onSelectScenario}
+          onCreateScenario={() => onCreateScenario({
+            companyId: company.id,
+            companyName: company.name
+          })}
+          selectedScenarios={selectedScenarios}
+          onToggleScenario={handleToggleScenario}
+          isLoadingOpportunities={isLoadingScenarios}
+          userId={userId}
+          onFindOpportunities={handleFindOpportunities}
+          onSuggestSelected={handleFindOpportunities}
+          companyId={company.id}
+          companyName={company.name}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
       <div className="space-y-6 lg:mr-80">
+        {/* Header */}
         <div className="flex justify-between items-center">
           <div>
             <button
@@ -201,60 +299,9 @@ const CompanyDetailsView: React.FC<CompanyDetailsViewProps> = ({
               <Icons.ChevronLeft className="w-4 h-4" />
               {t('common.back')}
             </button>
+            <h1 className="text-2xl font-semibold text-white">{company.name}</h1>
           </div>
         </div>
-                <div className="bg-red-900/30 border-l-4 border-red-500 text-red-300 p-6 rounded-r-lg">
-          <div className="flex items-start gap-3">
-            <div className="p-1">
-              <Icons.ChevronLeft className="w-5 h-5 text-red-500" />
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-red-200 mb-2">{t('common.error')}</h3>
-              <p className="text-red-300 mb-4">{error}</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-red-500/20 text-red-300 rounded hover:bg-red-500/30 transition-colors flex items-center gap-2"
-              >
-                <Icons.ChevronLeft className="w-4 h-4" />
-                {t('common.retry')}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6 lg:mr-80">
-      {/* Research Sidebar */}
-      <ResearchSidebar
-        relatedScenarios={relatedScenarios}
-        isOpen={true}
-        onClose={() => {}} // Sidebar is always open in details view
-        onSelectScenario={onSelectScenario}
-        onCreateScenario={onCreateScenario}
-        selectedScenarios={selectedScenarios}
-        onToggleScenario={handleToggleScenario}
-        isLoading={isLoadingScenarios}
-        userId={userId}
-        onFindOpportunities={handleFindOpportunities}
-        onSuggestSelected={handleFindOpportunities}
-      />
-
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <button
-            onClick={onBack}
-            className="text-blue-400 hover:text-blue-300 transition-colors mb-2 flex items-center gap-1"
-          >
-            <Icons.ChevronLeft className="w-4 h-4" />
-            {t('common.back')}
-          </button>
-          <h1 className="text-2xl font-semibold text-white">{company.name}</h1>
-        </div>
-      </div>
 
       {/* Current Research Details */}
       {company.research?.currentResearch && (
@@ -446,45 +493,70 @@ const CompanyDetailsView: React.FC<CompanyDetailsViewProps> = ({
       )}
 
       {/* Scenario Management */}
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-lg font-semibold text-white">{t('research.scenarios')}</h2>
-          <div className="flex gap-3">
-            <button
-              onClick={handleFindOpportunities}
-              disabled={isLoadingScenarios}
-              className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-            >
-              {isLoadingScenarios ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  {t('research.finding')}
-                </>
-              ) : (
-                <>
-                  <Icons.Search className="w-4 h-4" />
-                  {t('research.findOpportunities')}
-                </>
-              )}
-            </button>
-            <button
-              onClick={onCreateScenario}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <Icons.Plus className="w-4 h-4" />
-              {t('research.createScenario')}
-            </button>
+        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-lg font-semibold text-white">{t('research.relevantOpportunities')}</h2>
+            <div className="flex gap-3">
+              <button
+                onClick={handleFindOpportunities}
+                disabled={isLoadingScenarios}
+                className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+              >
+                {isLoadingScenarios ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    {t('research.finding')}
+                  </>
+                ) : (
+                  <>
+                    <Icons.Search className="w-4 h-4" />
+                    {t('research.findOpportunities')}
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => onCreateScenario({
+                  companyId: company.id,
+                  companyName: company.name
+                })}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <Icons.Plus className="w-4 h-4" />
+                {t('research.createScenario')}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <ScenarioSelection
+              scenarios={relatedScenarios}
+              selectedScenarios={selectedScenarios}
+              onToggleScenario={handleToggleScenario}
+              onScenarioClick={onSelectScenario}
+            />
           </div>
         </div>
-
-        <ScenarioSelection
-          scenarios={relatedScenarios}
-          selectedScenarios={selectedScenarios}
-          onToggleScenario={handleToggleScenario}
-          onScenarioClick={onSelectScenario}
-        />
       </div>
-    </div>
+
+      <ResearchSidebar
+        relatedScenarios={relatedScenarios}
+        isOpen={true}
+        onClose={() => {}}
+        onSelectScenario={onSelectScenario}
+        onCreateScenario={() => onCreateScenario({
+          companyId: company.id,
+          companyName: company.name
+        })}
+        selectedScenarios={selectedScenarios}
+        onToggleScenario={handleToggleScenario}
+        isLoadingOpportunities={isLoadingScenarios}
+        userId={userId}
+        onFindOpportunities={handleFindOpportunities}
+        onSuggestSelected={handleFindOpportunities}
+        companyId={company.id}
+        companyName={company.name}
+      />
+    </>
   );
 };
 

@@ -12,10 +12,12 @@ interface CreateScenarioFormProps {
     goal: string; 
     goal_es?: string; 
     domain?: string;
-    currentWorkflowImage?: File 
+    currentWorkflowImage: File | undefined;
   }) => Promise<void>;
   onClose: () => void;
 }
+
+export type ScenarioFormPayload = Parameters<CreateScenarioFormProps['onSave']>[0];
 
 const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose }) => {
   const [title, setTitle] = useState('');
@@ -59,12 +61,12 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
       const finalDomain = domain || 'General';
 
       // Build payload that includes both English and Spanish versions.
-      const payload: any = {
+      const payload: ScenarioFormPayload = {
         title: title.trim(),
         description: description.trim(),
         goal: goal.trim(),
         domain: finalDomain,
-        ...(currentWorkflowImage && previewUrl ? { currentWorkflowImage: previewUrl } : {}),
+        currentWorkflowImage: currentWorkflowImage || undefined
       };
 
       // Try to generate translations via geminiService if available. If it fails, fall back to the original text.
@@ -246,6 +248,11 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
     'Sales','HR','Finance','Operations','Logistics','Healthcare','Manufacturing','Legal','Procurement','Marketing','IT','Customer Support'
   ];
 
+  const translatedDomainOptions = domainOptions.map(domain => ({
+    value: domain,
+    label: t(`domain.${domain.toLowerCase().replace(/\s+/g, '_')}`) || domain
+  }));
+
   return (
     <div 
       className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
@@ -276,8 +283,8 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
               className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
             >
               <option value="">{t('form.selectDomain')}</option>
-              {domainOptions.map(opt => (
-                <option key={opt} value={opt}>{t(`domain.${opt}`)}</option>
+              {translatedDomainOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
           </div>
