@@ -36,35 +36,35 @@ export const saveCompany = async (
           ? research.currentResearch.aiRelevance.recommendations.filter(Boolean) 
           : []
       },
-      // Preserve RFP document and analysis if they exist
-      rfpDocument: currentRfp
-        ? {
-            content: currentRfp.content || '',
-            fileName: currentRfp.fileName || '',
-            uploadedAt: currentRfp.uploadedAt ?? Date.now(),
-            ...(currentRfp.analysis
-              ? {
-                  analysis: {
-                    summary: currentRfp.analysis.summary || '',
-                    projectStructure: currentRfp.analysis.projectStructure || '',
-                    detailedAnalysis: currentRfp.analysis.detailedAnalysis || '',
-                    timeline: currentRfp.analysis.timeline || '',
-                    budget: currentRfp.analysis.budget || '',
-                    requirements: currentRfp.analysis.requirements || '',
-                    stakeholders: currentRfp.analysis.stakeholders || '',
-                    successCriteria: currentRfp.analysis.successCriteria || '',
-                    risks: currentRfp.analysis.risks || '',
-                    aiRecommendations: currentRfp.analysis.aiRecommendations || '',
-                    aiCapabilities: currentRfp.analysis.aiCapabilities || '',
-                    constraints: currentRfp.analysis.constraints || '',
-                    clarificationNeeded: currentRfp.analysis.clarificationNeeded || ''
-                  }
+      // Preserve RFP document and analysis if they exist - conditionally include only if present
+      ...(currentRfp && {
+        rfpDocument: {
+          content: currentRfp.content || '',
+          fileName: currentRfp.fileName || '',
+          uploadedAt: currentRfp.uploadedAt ?? Date.now(),
+          ...(currentRfp.analysis
+            ? {
+                analysis: {
+                  summary: currentRfp.analysis.summary || '',
+                  projectStructure: currentRfp.analysis.projectStructure || '',
+                  detailedAnalysis: currentRfp.analysis.detailedAnalysis || '',
+                  timeline: currentRfp.analysis.timeline || '',
+                  budget: currentRfp.analysis.budget || '',
+                  requirements: currentRfp.analysis.requirements || '',
+                  stakeholders: currentRfp.analysis.stakeholders || '',
+                  successCriteria: currentRfp.analysis.successCriteria || '',
+                  risks: currentRfp.analysis.risks || '',
+                  aiRecommendations: currentRfp.analysis.aiRecommendations || '',
+                  aiCapabilities: currentRfp.analysis.aiCapabilities || '',
+                  constraints: currentRfp.analysis.constraints || '',
+                  clarificationNeeded: currentRfp.analysis.clarificationNeeded || ''
                 }
-              : {}),
-            ...(currentRfp.url ? { url: currentRfp.url } : {}),
-            ...(currentRfp.path ? { path: currentRfp.path } : {})
-          }
-        : undefined,
+              }
+            : {}),
+          ...(currentRfp.url ? { url: currentRfp.url } : {}),
+          ...(currentRfp.path ? { path: currentRfp.path } : {})
+        }
+      }),
       timestamp: Date.now() // Add required timestamp
     };
 
@@ -288,11 +288,24 @@ export const updateCompanySelectedScenarios = async (
     const snapshot = await get(companyRef);
     
     if (!snapshot.exists()) {
+      console.error('Company not found:', companyId);
       throw new Error('Company not found');
     }
     
     const company = snapshot.val();
+    console.log('Authorization check:', {
+      companyId,
+      companyCreatedBy: company.createdBy,
+      currentUserId: userId,
+      matches: company.createdBy === userId
+    });
+    
     if (company.createdBy !== userId) {
+      console.error('Authorization failed:', {
+        expected: userId,
+        actual: company.createdBy,
+        companyName: company.name
+      });
       throw new Error('Not authorized to update this company');
     }
 
@@ -301,6 +314,8 @@ export const updateCompanySelectedScenarios = async (
       selectedScenarios,
       lastUpdated: currentTime
     });
+    
+    console.log('Successfully updated selected scenarios for company:', companyId);
 
   } catch (error) {
     console.error('Failed to update company selected scenarios:', error);

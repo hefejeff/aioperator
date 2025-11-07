@@ -72,30 +72,45 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
 
   // Helper function to load selected scenarios into the sidebar
   const loadSelectedScenariosIntoSidebar = async (scenarios: string[]) => {
-    if (scenarios.length > 0) {
-  const existingScenarios = await getScenarios(userId);
-  updateScenarioCatalog(existingScenarios);
-      updateScenarioCatalog(existingScenarios);
-      const selectedScenarioObjects = existingScenarios
-        .filter(scenario => scenarios.includes(scenario.id))
-        .map(scenario => ({
-          ...scenario,
-          relevanceScore: 1,
-          relevanceReason: 'Previously selected scenario'
-        }));
-      
-      // Keep existing non-selected scenarios and add selected ones
-      const currentIds = new Set(relatedScenarios.map(s => s.id));
-      const newScenarios = selectedScenarioObjects.filter(s => !currentIds.has(s.id));
-      setRelatedScenarios([...relatedScenarios, ...newScenarios]);
+    if (scenarios.length === 0) {
+      return;
     }
+
+    const existingScenarios = await getScenarios(userId);
+    updateScenarioCatalog(existingScenarios);
+
+    const selectedScenarioObjects = existingScenarios
+      .filter(scenario => scenarios.includes(scenario.id))
+      .map(scenario => ({
+        ...scenario,
+        relevanceScore: 1,
+        relevanceReason: 'Previously selected scenario'
+      }));
+
+    setRelatedScenarios(prev => {
+      if (selectedScenarioObjects.length === 0) {
+        return prev;
+      }
+
+      const seenIds = new Set(prev.map(scenario => scenario.id));
+      const merged = [...prev];
+
+      selectedScenarioObjects.forEach(scenario => {
+        if (!seenIds.has(scenario.id)) {
+          seenIds.add(scenario.id);
+          merged.push(scenario);
+        }
+      });
+
+      return merged;
+    });
   };
 
   const loadExistingResearch = async (companyId: string) => {
     setIsLoadingResearch(true);
     setError(null);
     try {
-      // Try to get company by ID
+      // Try to get company by ID - don't filter by userId to allow viewing others' research
       const company = await getCompany(companyId);
       console.log('Found company:', company);
       
@@ -106,6 +121,10 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
         setScenarioRuns({});
         return;
       }
+      
+      // Check if user owns this company
+      const isOwner = company.createdBy === userId;
+      console.log('Company ownership:', { isOwner, createdBy: company.createdBy, currentUser: userId });
       
       setCurrentCompanyId(company.id);
       setCompanyName(company.name);
@@ -249,7 +268,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
         opportunities: researchData.currentResearch.opportunities || [],
         competitors: researchData.currentResearch.competitors || [],
         useCases: researchData.currentResearch.useCases || [],
-        rfpDocument: rfpDocument || undefined,
+        ...(rfpDocument && { rfpDocument }),
         aiRelevance: {
           current: researchData.currentResearch.aiRelevance?.current || '',
           potential: researchData.currentResearch.aiRelevance?.potential || '',
@@ -273,10 +292,11 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
       // Save all research data to Firebase and create company record
       setIsCreatingCompany(true);
       try {
-        // First check if company already exists
+        // First check if YOU already have a company with this name
         const existingCompany = await getCompany(companyName, userId);
+        console.log('Existing company check for current user:', existingCompany);
         
-        // If we found an existing company, update selected scenarios state
+        // If we found an existing company (yours), update selected scenarios state
         if (existingCompany?.selectedScenarios) {
           setSelectedScenarios(existingCompany.selectedScenarios);
           // Load selected scenarios into sidebar
@@ -290,7 +310,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
         // Save the research data
         await saveCompanyResearch(userId, companyName, researchData.currentResearch);
         
-        // Create or update company record
+        // Create or update YOUR company record
         const savedCompany = await saveCompany(
           userId,
           companyName,
@@ -300,11 +320,20 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
         
         // Set the company ID and scenarios after creation
         if (savedCompany && savedCompany.id) {
+          console.log('Company created/updated successfully:', {
+            id: savedCompany.id,
+            name: savedCompany.name,
+            createdBy: savedCompany.createdBy,
+            selectedScenarios: savedCompany.selectedScenarios,
+            isYours: savedCompany.createdBy === userId
+          });
           setCurrentCompanyId(savedCompany.id);
           if (savedCompany.selectedScenarios) {
             setSelectedScenarios(savedCompany.selectedScenarios);
             await loadSelectedScenariosIntoSidebar(savedCompany.selectedScenarios);
           }
+        } else {
+          console.error('Company save returned invalid data:', savedCompany);
         }
       } finally {
         setIsCreatingCompany(false);
@@ -394,41 +423,27 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
     
     setIsLoadingOpportunities(true);
     try {
+      // Clear any previously selected scenarios when finding opportunities (UI only)
+      setSelectedScenarios([]);
+
       // First, get all existing scenarios
       const existingScenarios = await getScenarios(userId);
-      
-      // Get existing selected scenarios that might not be in the current results
-      const selectedScenarioObjects = existingScenarios
-        .filter(scenario => selectedScenarios.includes(scenario.id))
-        .map(scenario => ({
-          ...scenario,
-          relevanceScore: 1, // Ensure selected scenarios show up with high relevance
-          relevanceReason: 'Previously selected scenario'
-        }));
 
-      // Get matches from existing scenarios
+      // Match against existing scenarios in the user's library
       const matchedScenarios = await findRelevantScenarios(companyInfo, existingScenarios);
+      const normalizedMatches = matchedScenarios
+        .filter(match => match.relevanceScore >= 0.1)
+        .map((match) => ({
+          ...match,
+          relevanceReason: match.relevanceReason || 'Matched to company profile'
+        }));
       
-      // Then, generate suggested scenarios
+      // Then, generate AI-suggested scenarios based on company research
       const suggestedScenarios = await findRelevantScenarios(companyInfo, [], true);
-      
-      // Get IDs of suggested scenarios that should be added to selected
-      const newSuggestedIds = suggestedScenarios
-        .filter(scenario => scenario.id && !selectedScenarios.includes(scenario.id))
-        .map(scenario => scenario.id);
 
-      // Add suggested scenarios to selected scenarios
-      if (newSuggestedIds.length > 0 && currentCompanyId) {
-        const updatedSelectedScenarios = [...selectedScenarios, ...newSuggestedIds];
-        setSelectedScenarios(updatedSelectedScenarios);
-        // Save to database
-        await updateCompanySelectedScenarios(currentCompanyId, userId, updatedSelectedScenarios);
-      }
-
-      // Combine and sort by relevance score
+      // Combine and sort by relevance score - only show relevant scenarios
       const combinedScenarios = [
-        ...selectedScenarioObjects, // Add selected scenarios first
-        ...matchedScenarios,
+        ...normalizedMatches,
         ...suggestedScenarios
       ]
         .filter(scenario => scenario && typeof scenario.relevanceScore === 'number')
@@ -438,8 +453,9 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
         )
         .sort((a, b) => b.relevanceScore - a.relevanceScore);
       
-      // Update the UI with all scenarios including newly suggested ones
+      // Update the UI with relevant scenarios (none pre-selected)
       setRelatedScenarios(combinedScenarios);
+      setIsSidebarOpen(true);
     } catch (error) {
       console.error('Failed to find opportunities:', error);
       setError(t('research.findOpportunitiesError'));
@@ -493,6 +509,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
         onToggleScenario={async (scenarioId: string) => {
           if (!currentCompanyId) {
             console.error('No company ID available');
+            setError(t('research.noCompanyToSaveScenarios'));
             return;
           }
           
@@ -504,8 +521,26 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
             // Optimistically update the UI
             setSelectedScenarios(updatedScenarios);
             
-            // Save to database
-            await updateCompanySelectedScenarios(currentCompanyId, userId, updatedScenarios);
+            // Try to save to database
+            try {
+              console.log('Attempting to save selected scenarios:', {
+                companyId: currentCompanyId,
+                userId,
+                scenarios: updatedScenarios
+              });
+              await updateCompanySelectedScenarios(currentCompanyId, userId, updatedScenarios);
+              console.log('Successfully saved selected scenarios');
+            } catch (authError: any) {
+              // If not authorized (user doesn't own this company), just keep the UI state
+              if (authError.message?.includes('Not authorized')) {
+                console.warn('Viewing company in read-only mode - selections not saved to database');
+                setError(t('research.readOnlyMode'));
+                // Keep the local UI state but don't persist to database
+              } else {
+                console.error('Error saving scenarios:', authError);
+                throw authError; // Re-throw other errors
+              }
+            }
 
             // Keep existing scenarios and add selected ones if they're not already present
             const existingScenarios = await getScenarios(userId);
@@ -527,11 +562,11 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
             setRelatedScenarios(updatedRelatedScenarios);
           } catch (error) {
             console.error('Failed to update selected scenarios:', error);
+            setError(t('research.failedToSaveScenarios'));
             // Revert the local state if save fails
             setSelectedScenarios(selectedScenarios);
           }
         }}
-        onSuggestSelected={handleFindOpportunities}
         isLoadingOpportunities={isLoadingOpportunities}
         userId={userId}
         companyId={currentCompanyId ?? undefined}

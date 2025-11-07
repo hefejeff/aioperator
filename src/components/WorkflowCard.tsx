@@ -13,6 +13,7 @@ interface WorkflowCardProps {
   onStartTraining: (scenario: Scenario) => void;
   onToggleFavorite?: (scenario: Scenario) => void;
   user?: User;
+  showFavoriteButton?: boolean;
 }
 
 const WorkflowCard: React.FC<WorkflowCardProps> = ({ 
@@ -23,7 +24,8 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({
   onViewWorkflow,
   onStartTraining,
   onToggleFavorite,
-  user
+  user,
+  showFavoriteButton = true
 }) => {
   const { t } = useTranslation();
   
@@ -116,7 +118,7 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({
           </div>
           
           {/* Star button */}
-          {onToggleFavorite && user && (
+          {onToggleFavorite && user && showFavoriteButton && (
             <button
               onClick={(e) => {
                 e.stopPropagation();

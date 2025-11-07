@@ -317,7 +317,14 @@ Return a ranked list of relevant scenarios with explanations.`;
       }
     });
 
-    const matches = JSON.parse(response.text ?? '[]');
+    const text = response.text ?? '[]';
+    let matches: any = [];
+    try {
+      matches = JSON.parse(text);
+    } catch (parseErr) {
+      console.warn('Unable to parse scenario relevance response:', text);
+      matches = [];
+    }
     console.log('Raw matches from AI:', matches);
     
     if (generateSuggestions) {
@@ -346,9 +353,21 @@ Return a ranked list of relevant scenarios with explanations.`;
     // For matching existing scenarios, ensure we have all the scenario data and relevance information
     const relevantScenarios = matches
       .map((match: any) => {
-        const scenario = allScenarios.find(s => s.id === match.id);
+        const id = match.id || match.scenarioId || match.identifier;
+        return {
+          ...match,
+          id
+        };
+      })
+      .map((match: any) => {
+        const scenarioId = match.id;
+        if (!scenarioId) {
+          console.log('Match missing scenario ID, skipping:', match);
+          return null;
+        }
+        const scenario = allScenarios.find(s => s.id === scenarioId);
         if (!scenario) {
-          console.log('Could not find matching scenario for:', match.id);
+          console.log('Could not find matching scenario for:', scenarioId);
           return null;
         }
         
@@ -659,6 +678,14 @@ export interface ElevatorPitch {
     seconds30: string;       // 30s version
     seconds90: string;       // 90s version
   };
+  slidePresentation?: {      // Professional slide deck outline
+    slides: Array<{
+      slideNumber: number;
+      title: string;
+      content: string[];     // Bullet points or key content
+      speakerNotes?: string; // Optional presenter notes
+    }>;
+  };
 }
 
 export async function generateElevatorPitch(
@@ -678,6 +705,9 @@ Rules:
 - Highlight audience, problem, solution, differentiation, and outcomes.
 - Produce two variants: 30s and 90s.
 - Keep jargon minimal.
+- Include a professional slide presentation outline (8-12 slides) suitable for a business pitch deck.
+- The slide deck should follow standard pitch deck structure: Title/Hook, Problem, Solution, How It Works, Market/Audience, Competition/Differentiation, Outcomes/Benefits, Business Model (if applicable), Roadmap/Next Steps, Call to Action, and optional Q&A slide.
+- Each slide should have a clear title, 3-5 bullet points or key content items, and optional speaker notes for the presenter.
 ${multiPlatformGuidance}`;
 
   const userContent = `Inputs:\n- Goal: ${goal}\n- Steps:\n${stepsText}${platforms ? `\n- Target Platforms: ${platforms.join(', ')}` : ''}`;
@@ -706,9 +736,28 @@ ${multiPlatformGuidance}`;
                 seconds90: { type: Type.STRING },
               },
               required: ['seconds30','seconds90']
+            },
+            slidePresentation: {
+              type: Type.OBJECT,
+              properties: {
+                slides: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      slideNumber: { type: Type.NUMBER },
+                      title: { type: Type.STRING },
+                      content: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      speakerNotes: { type: Type.STRING }
+                    },
+                    required: ['slideNumber', 'title', 'content']
+                  }
+                }
+              },
+              required: ['slides']
             }
           },
-          required: ['oneLiner','problem','solution','targetAudience','differentiation','outcomes','callToAction','pitches']
+          required: ['oneLiner','problem','solution','targetAudience','differentiation','outcomes','callToAction','pitches','slidePresentation']
         }
       }
     });
@@ -729,6 +778,9 @@ ${multiPlatformGuidance}`;
       pitches: {
         seconds30: `We help with: ${goal}.`,
         seconds90: `We help with: ${goal}. Using the described workflow, we streamline the process and improve outcomes.`,
+      },
+      slidePresentation: {
+        slides: []
       }
     };
   }
@@ -767,5 +819,33 @@ export function elevatorPitchToMarkdown(ep: ElevatorPitch): string {
   lines.push('');
   lines.push('## 90-second Version');
   lines.push(ep.pitches.seconds90);
+  
+  // Add slide presentation if available
+  if (ep.slidePresentation?.slides?.length) {
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+    lines.push('# Slide Presentation Outline');
+    lines.push('');
+    
+    ep.slidePresentation.slides.forEach(slide => {
+      lines.push(`## Slide ${slide.slideNumber}: ${slide.title}`);
+      lines.push('');
+      
+      if (slide.content?.length) {
+        slide.content.forEach(point => {
+          lines.push(`- ${point}`);
+        });
+      }
+      
+      if (slide.speakerNotes) {
+        lines.push('');
+        lines.push('**Speaker Notes:**');
+        lines.push(slide.speakerNotes);
+      }
+      
+      lines.push('');
+    });
+  }
   return lines.join('\n');
 }

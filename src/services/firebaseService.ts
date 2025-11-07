@@ -575,8 +575,17 @@ export const getScenarios = async (userId: string): Promise<Scenario[]> => {
         });
       }
     }
+
+    // Always include default scenarios to guarantee a rich catalog
+    const existingIds = new Set(scenarios.map((scenario) => scenario.id));
+    const defaultScenarios = ALL_SCENARIOS
+      .filter((scenario) => !existingIds.has(scenario.id))
+      .map((scenario) => ({
+        ...scenario,
+        favoritedBy: scenario.favoritedBy ?? {}
+      }));
     
-    return scenarios;
+    return [...scenarios, ...defaultScenarios];
   } catch (error) {
     console.error('Failed to fetch scenarios:', error);
     throw error;
@@ -714,15 +723,15 @@ export const uploadRfpDocument = async (
   file: File
 ): Promise<string> => {
   try {
-    const timestamp = Date.now();
-    const fileName = `${companyId}/rfp_${timestamp}_${file.name}`;
-    const fileRef = storageRef(storage, `rfp_documents/${fileName}`);
+  const timestamp = Date.now();
+  const fileName = `${companyId}/rfp_${timestamp}_${file.name}`;
+  const fileRef = storageRef(storage, `rfp_documents/${fileName}`);
     
     await uploadBytes(fileRef, file);
     const downloadURL = await getDownloadURL(fileRef);
     
     // Read the file content and analyze it
-    const fileContent = await file.text();
+  const fileContent = await file.text();
     const analysis = await analyzeRfpDocument(fileContent);
     
     // Update company record with the RFP document reference and analysis in the current research
@@ -735,17 +744,16 @@ export const uploadRfpDocument = async (
     const company = companySnapshot.val();
     const currentResearch = company.research?.currentResearch || {};
     
-    await update(companyRef, {
-      'research.currentResearch': {
-        ...currentResearch,
-        rfpDocument: {
-          content: await file.text(),
-          url: downloadURL,
-          fileName: file.name,
-          uploadedAt: timestamp,
-          path: `rfp_documents/${fileName}`,
-          analysis
-        }
+    const currentResearchRef = ref(db, `companies/${companyId}/research/currentResearch`);
+    await set(currentResearchRef, {
+      ...currentResearch,
+      rfpDocument: {
+        content: fileContent,
+        url: downloadURL,
+        fileName: file.name,
+        uploadedAt: timestamp,
+        path: `rfp_documents/${fileName}`,
+        analysis
       }
     });
     
@@ -790,9 +798,8 @@ export const deleteRfpDocument = async (companyId: string): Promise<void> => {
     const currentResearch = { ...company.research.currentResearch };
     delete currentResearch.rfpDocument;
     
-    await update(companyRef, {
-      'research.currentResearch': currentResearch
-    });
+    const currentResearchRef = ref(db, `companies/${companyId}/research/currentResearch`);
+    await set(currentResearchRef, currentResearch);
   } catch (error) {
     console.error('Failed to delete RFP document:', error);
     throw error;

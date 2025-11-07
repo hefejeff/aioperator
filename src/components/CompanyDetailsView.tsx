@@ -222,7 +222,6 @@ const CompanyDetailsView: React.FC<CompanyDetailsViewProps> = ({
           isLoadingOpportunities={true}
           userId={userId}
           onFindOpportunities={() => {}}
-          onSuggestSelected={() => {}}
           companyId={company.id}
           companyName={company.name}
         />
@@ -278,7 +277,6 @@ const CompanyDetailsView: React.FC<CompanyDetailsViewProps> = ({
           isLoadingOpportunities={isLoadingScenarios}
           userId={userId}
           onFindOpportunities={handleFindOpportunities}
-          onSuggestSelected={handleFindOpportunities}
           companyId={company.id}
           companyName={company.name}
         />
@@ -552,7 +550,6 @@ const CompanyDetailsView: React.FC<CompanyDetailsViewProps> = ({
         isLoadingOpportunities={isLoadingScenarios}
         userId={userId}
         onFindOpportunities={handleFindOpportunities}
-        onSuggestSelected={handleFindOpportunities}
         companyId={company.id}
         companyName={company.name}
       />
