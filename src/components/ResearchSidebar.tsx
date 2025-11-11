@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Icons } from '../constants';
-import type { RelatedScenario, WorkflowVersion } from '../types';
+import type { RelatedScenario, WorkflowVersion, Scenario } from '../types';
 import { useTranslation } from '../i18n';
 import { getWorkflowVersions } from '../services/firebaseService';
 
@@ -13,7 +13,7 @@ interface ResearchSidebarProps {
   relatedScenarios: RelatedScenario[];
   isOpen?: boolean;
   onClose?: () => void;
-  onSelectScenario?: (scenarioId: string) => void;
+  onSelectScenario?: (scenario: Scenario) => void;
   onFindOpportunities?: () => void;
   onCreateScenario?: (context?: ScenarioCreationContext) => void;
   selectedScenarios?: string[];
@@ -140,7 +140,7 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
                       className="flex items-center justify-between p-2 rounded bg-slate-800/60 border border-slate-700/30"
                     >
                       <button
-                        onClick={() => onSelectScenario?.(scenario.id)}
+                        onClick={() => onSelectScenario?.(scenario)}
                         className="text-xs text-white truncate hover:text-emerald-400 transition-colors text-left flex-1"
                       >
                         {scenario.title}
@@ -228,7 +228,7 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
                           {workflowExamples[scenario.id].map((workflow) => (
                             <div
                               key={workflow.id}
-                              onClick={() => onSelectScenario?.(scenario.id)}
+                              onClick={() => onSelectScenario?.(scenario)}
                               className="p-3 rounded bg-slate-900/60 hover:bg-slate-800/60 cursor-pointer transition-colors border border-slate-700/30 group"
                             >
                               <div className="flex items-center justify-between gap-2 mb-2">
@@ -253,7 +253,7 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
                     {/* View All Button */}
                     <div className="border-t border-slate-700/30 p-3">
                       <button
-                        onClick={() => onSelectScenario?.(scenario.id)}
+                        onClick={() => onSelectScenario?.(scenario)}
                         className="w-full text-xs text-emerald-400 hover:text-emerald-300 transition-colors flex items-center justify-center gap-1"
                       >
                         <Icons.ChevronLeft className="w-4 h-4 transform rotate-180" />

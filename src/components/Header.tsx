@@ -13,6 +13,7 @@ interface HeaderProps {
   user: User | null;
   userRole?: 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER' | null;
   onOpenWorkflowDrawer?: () => void;
+  onOpenChat?: () => void;
 }
 
   const Avatar: React.FC<{ user: User; onClick?: () => void }> = ({ user, onClick }) => {
@@ -31,7 +32,7 @@ interface HeaderProps {
 };
 
 
-const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkflowDrawer }) => {
+const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkflowDrawer, onOpenChat }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -156,6 +157,16 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                     </button>
                   )}
                   <div className="flex items-center space-x-3">
+                    {/* AI Chat button */}
+                    <button
+                      onClick={onOpenChat}
+                      className="p-2 rounded-md text-sky-300 hover:bg-sky-800/20 hover:text-sky-200 transition-colors border border-sky-700/40"
+                      title="Open AI Chat"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                      </svg>
+                    </button>
                     {/* Language selector */}
                     <select
                       value={lang}

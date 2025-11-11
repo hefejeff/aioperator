@@ -849,3 +849,50 @@ export function elevatorPitchToMarkdown(ep: ElevatorPitch): string {
   }
   return lines.join('\n');
 }
+
+/**
+ * Generate a chat response using conversation history
+ */
+export async function generateChatResponse(
+  userMessage: string,
+  conversationHistory: Array<{ role: string; content: string }>
+): Promise<string> {
+  const systemInstruction = `You are a helpful AI assistant specializing in business strategy, product development, and AI automation. 
+You provide clear, concise, and actionable advice. You can help with:
+- Business strategy and planning
+- Product requirements and specifications
+- AI and automation solutions
+- Market research and analysis
+- Workflow optimization
+- Technical architecture and design
+
+Be professional, friendly, and insightful in your responses.`;
+
+  try {
+    // Build the conversation context
+    const contents = conversationHistory.map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'model',
+      parts: [{ text: msg.content }],
+    }));
+
+    // Add the current user message
+    contents.push({
+      role: 'user',
+      parts: [{ text: userMessage }],
+    });
+
+    const request: any = {
+      model: 'gemini-2.0-flash-exp',
+      contents,
+      config: {
+        systemInstruction,
+      },
+    };
+
+    const result = await ai.models.generateContent(request);
+    return result.text || '';
+  } catch (error) {
+    console.error('Chat generation error:', error);
+    throw new Error('Failed to generate chat response');
+  }
+}

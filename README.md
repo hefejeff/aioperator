@@ -15,9 +15,27 @@ View your app in AI Studio: https://ai.studio/apps/drive/1s96r2IfCyZ-naByeplaGn-
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Copy `.env.example` to `.env.local` and configure:
+   - `API_KEY` - Your Gemini API key (required)
+   - `OPENAI_API_KEY` - Your OpenAI API key (optional, for custom AI agents)
+   - Firebase configuration variables (required)
+   - `VITE_GAMMA_API_KEY` - Gamma AI API key (optional, for presentation generation)
 3. Run the app:
    `npm run dev`
+
+## Features
+
+### AI Chat Interface
+- Full-screen ChatGPT-style interface
+- Switch between default Gemini AI and custom OpenAI Assistants
+- Support for personal OpenAI agents in the right sidebar
+- Press ESC to close, Enter to send, Shift+Enter for new lines
+
+### Custom AI Agents
+To use your own OpenAI Assistants:
+1. Add your `OPENAI_API_KEY` to `.env.local`
+2. Create assistants at https://platform.openai.com/assistants
+3. The app will automatically list your available assistants in the chat sidebar
 
 
 ## Contributor notes

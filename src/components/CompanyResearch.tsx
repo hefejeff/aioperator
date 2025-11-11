@@ -16,7 +16,7 @@ import CompanyResearchContent from './CompanyResearchContent';
 interface CompanyResearchProps {
   userId: string;
   initialCompany?: string;  // This is now expected to be a company ID
-  onSelectScenario?: (scenarioId: string) => void;
+  onSelectScenario?: (scenario: Scenario) => void;
   onCreateScenario?: (context?: { companyId?: string; companyName?: string }) => void;
   onViewWorkflow?: (workflowId: string) => void;
 }
@@ -414,8 +414,8 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
     }
   }, [view, selectedCompanyName, initialCompany, currentCompanyId]);
 
-  const handleScenarioSelect = (scenarioId: string) => {
-    onSelectScenario?.(scenarioId);
+  const handleScenarioSelect = (scenario: Scenario) => {
+    onSelectScenario?.(scenario);
   };
 
   const handleFindOpportunities = async () => {

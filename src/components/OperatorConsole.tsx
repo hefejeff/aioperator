@@ -5,6 +5,7 @@ import type { AIActionsPlatform, AIActionsApproach } from './AIActionsPanel';
 import { generateText, generatePRD, prdToMarkdown, generateElevatorPitch, elevatorPitchToMarkdown } from '../services/geminiService';
 import { getEvaluations, saveEvaluation, savePrd, savePitch, saveWorkflowVersion } from '../services/firebaseService';
 import { evaluateOperatorPerformance } from '../services/geminiService';
+import { generateGammaPresentation, getGammaApiKey, setGammaApiKey, clearGammaApiKey } from '../services/gammaService';
 import { Icons } from '../constants';
 import AIActionsPanel from './AIActionsPanel';
 import { useTranslation } from '../i18n';
@@ -228,6 +229,12 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, use
   const [pitchLoading, setPitchLoading] = useState(false);
   const [savingPitch, setSavingPitch] = useState(false);
   const [lastSavedPitchTs, setLastSavedPitchTs] = useState<number | null>(null);
+  
+  // Gamma AI presentation state
+  const [generatingGamma, setGeneratingGamma] = useState(false);
+  const [gammaDownloadUrl, setGammaDownloadUrl] = useState<string | null>(null);
+  const [gammaError, setGammaError] = useState<string | null>(null);
+  
   const [savingVersion, setSavingVersion] = useState(false);
   const [isVersionNameOpen, setIsVersionNameOpen] = useState(false);
   const [versionTitleInput, setVersionTitleInput] = useState('');
@@ -775,6 +782,73 @@ Return only the steps.`;
     }
   }, [savingPitch, user?.uid, scenario?.id, pitchMarkdown, localizedTitle, prdPlatforms, t]);
 
+  const handleGenerateGammaPresentation = useCallback(async () => {
+    if (generatingGamma) return;
+    
+    // Extract slide presentation section from pitch markdown
+    const slideSection = pitchMarkdown.split('# Slide Presentation Outline')[1];
+    if (!slideSection || !slideSection.trim()) {
+      setGammaError('No slide presentation outline found. Generate a pitch first.');
+      return;
+    }
+    
+    // Check for API key
+    let apiKey = getGammaApiKey();
+    if (!apiKey) {
+      const userKey = prompt('Please enter your Gamma AI API key:\n\nGet it from https://gamma.app/settings\n\n⚠️ Requires Pro/Ultra/Teams/Business plan');
+      if (!userKey || !userKey.trim()) {
+        setGammaError('Gamma AI API key is required');
+        return;
+      }
+      setGammaApiKey(userKey.trim());
+      apiKey = userKey.trim();
+    }
+    
+    console.log('Gamma API Key check:', {
+      hasKey: !!apiKey,
+      keyLength: apiKey?.length,
+      keyPrefix: apiKey?.substring(0, 10),
+    });
+    
+    try {
+      setGeneratingGamma(true);
+      setGammaError(null);
+      setGammaDownloadUrl(null);
+      
+      // Call Firebase Cloud Function to generate presentation
+      const result = await generateGammaPresentation(
+        slideSection.trim(),
+        apiKey,
+        'pptx'
+      );
+      
+      if (result.status === 'completed' && result.downloadUrl) {
+        setGammaDownloadUrl(result.downloadUrl);
+      } else if (result.status === 'failed') {
+        setGammaError(result.error || 'Presentation generation failed');
+      } else {
+        setGammaError('Unexpected response from Gamma AI');
+      }
+    } catch (error: any) {
+      console.error('Gamma presentation generation failed:', error);
+      
+      let errorMessage = error.message || 'Failed to generate presentation';
+      
+      // Provide more helpful error messages
+      if (error.message?.includes('Invalid API key')) {
+        errorMessage = 'Invalid Gamma API key. Please verify:\n' +
+          '1. You have a valid Gamma account at gamma.app\n' +
+          '2. API access is enabled (may require paid plan)\n' +
+          '3. API key is correctly copied from your Gamma dashboard\n\n' +
+          'Visit https://gamma.app/ to check your account status.';
+      }
+      
+      setGammaError(errorMessage);
+    } finally {
+      setGeneratingGamma(false);
+    }
+  }, [generatingGamma, pitchMarkdown]);
+
   const handleSaveWorkflowVersion = useCallback(async () => {
     if (savingVersion) return;
     if (!workflowExplanation.trim()) {
@@ -1166,6 +1240,78 @@ Return only the steps.`;
                 aria-label="Elevator Pitch Markdown"
               />
             </div>
+            
+            {/* Gamma AI Section */}
+            {pitchMarkdown.includes('# Slide Presentation Outline') && (
+              <div className="mt-4 p-3 bg-slate-800/40 border border-slate-600 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-medium text-slate-300">Create PowerPoint Presentation</h4>
+                  {getGammaApiKey() && (
+                    <button
+                      onClick={() => {
+                        if (confirm('Clear stored Gamma API key?')) {
+                          clearGammaApiKey();
+                          alert('API key cleared. You will be prompted for a new key on next generation.');
+                        }
+                      }}
+                      className="text-xs text-slate-400 hover:text-slate-300 underline"
+                    >
+                      Reset API Key
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mb-2">
+                  Generate a professional PowerPoint presentation from your slide outline using Gamma AI
+                </p>
+                <div className="mb-3 p-2 bg-amber-900/20 border border-amber-700/50 rounded text-xs text-amber-200">
+                  <strong>⚠️ Requires Gamma Pro/Ultra/Teams/Business plan</strong><br/>
+                  API access requires a paid Gamma subscription. Get your API key at{' '}
+                  <a href="https://gamma.app/settings" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-100">
+                    gamma.app/settings
+                  </a>
+                </div>
+                <button
+                  onClick={handleGenerateGammaPresentation}
+                  disabled={generatingGamma}
+                  className="w-full px-4 py-2 rounded-md bg-purple-600 text-white hover:bg-purple-500 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {generatingGamma ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin" />
+                      Generating Presentation...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                      Create PowerPoint with Gamma AI
+                    </>
+                  )}
+                </button>
+                
+                {gammaDownloadUrl && (
+                  <div className="mt-3 p-2 bg-emerald-900/30 border border-emerald-600 rounded flex items-center justify-between">
+                    <span className="text-xs text-emerald-300">✓ Presentation ready!</span>
+                    <a
+                      href={gammaDownloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-500"
+                    >
+                      Download PPTX
+                    </a>
+                  </div>
+                )}
+                
+                {gammaError && (
+                  <div className="mt-3 p-2 bg-red-900/30 border border-red-600 rounded">
+                    <span className="text-xs text-red-300">⚠ {gammaError}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            
             <div className="mt-4 flex flex-col sm:flex-row gap-2 sm:gap-3 sm:items-center sm:justify-end">
               <button onClick={copyPitchToClipboard} className="px-3 py-2 rounded-md bg-slate-800 border border-slate-600 text-slate-200 hover:bg-slate-700">
                 <span className="flex items-center gap-2">

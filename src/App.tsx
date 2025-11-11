@@ -20,6 +20,7 @@ import LoadingScreen from './components/LoadingScreen';
 import AdminDashboard from './components/AdminDashboard';
 import WorkflowDetailView from './components/WorkflowDetailView';
 import CompanyResearch from './components/CompanyResearch';
+import ChatInterface from './components/ChatInterface';
 import { ALL_SCENARIOS } from './constants';
 import { I18nProvider } from './i18n';
 
@@ -39,6 +40,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isWorkflowDrawerOpen, setIsWorkflowDrawerOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [highScores, setHighScores] = useState<Record<string, number>>({});
@@ -393,7 +395,7 @@ const App: React.FC = () => {
           return <CompanyResearch 
                     userId={user.uid} 
                     initialCompany={selectedCompanyId || undefined}
-                    onSelectScenario={handleNavigateToScenario}
+                    onSelectScenario={handleSelectScenario}
                     onCreateScenario={(ctx) => openScenarioCreator({
                       source: 'RESEARCH',
                       companyId: ctx?.companyId,
@@ -413,11 +415,12 @@ const App: React.FC = () => {
   return (
     <I18nProvider initial={initialLang}>
     <div className="min-h-screen bg-slate-900 font-sans">
-      <Header 
-        onNavigate={handleNavigate} 
+            <Header 
+        onNavigate={setView}
         user={user} 
         userRole={role} 
         onOpenWorkflowDrawer={() => setIsWorkflowDrawerOpen(true)}
+        onOpenChat={() => setIsChatOpen(true)}
       />
       {error && (
         <div className="bg-yellow-900/30 border-l-4 border-yellow-500 text-yellow-300 p-4 mx-4 my-6 sm:mx-6 md:mx-8 rounded-r-lg shadow-lg animate-fade-in" role="alert">
@@ -466,6 +469,9 @@ const App: React.FC = () => {
           </main>
         )}
       </div>
+      {isChatOpen && (
+        <ChatInterface onClose={() => setIsChatOpen(false)} />
+      )}
     </div>
   </I18nProvider>
   );
