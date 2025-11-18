@@ -8,6 +8,8 @@ interface Message {
   content: string;
   timestamp: Date;
   agentName?: string;
+  images?: string[];
+  files?: Array<{ name: string; type: string; url: string }>;
 }
 
 interface OpenAIAgent {
@@ -38,8 +40,11 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<string[]>([]);
+  const [attachedFiles, setAttachedFiles] = useState<Array<{ name: string; type: string; data: string }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load real assistants from OpenAI on mount
   useEffect(() => {
@@ -90,17 +95,25 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && attachedImages.length === 0 && attachedFiles.length === 0) || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input.trim(),
+      content: input || '(attached files)',
       timestamp: new Date(),
+      images: attachedImages.length > 0 ? [...attachedImages] : undefined,
+      files: attachedFiles.length > 0 ? attachedFiles.map(f => ({ name: f.name, type: f.type, url: f.data })) : undefined,
     };
+
+    // Store attachments before clearing state
+    const messageImages = [...attachedImages];
+    const messageFiles = [...attachedFiles];
 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
+    setAttachedImages([]);
+    setAttachedFiles([]);
     setIsLoading(true);
 
     try {
@@ -117,12 +130,16 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
         response = await sendMessageToAssistant(
           selectedAgent.assistantId,
           input.trim(),
-          conversationHistory
+          conversationHistory,
+          messageImages.length > 0 ? messageImages : undefined,
+          messageFiles.length > 0 ? messageFiles : undefined
         );
       } else {
         response = await generateChatResponse(
           input.trim(),
-          conversationHistory
+          conversationHistory,
+          messageImages.length > 0 ? messageImages : undefined,
+          messageFiles.length > 0 ? messageFiles : undefined
         );
       }
 
@@ -152,8 +169,44 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e);
+      handleSubmit(e as any);
     }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        
+        if (file.type.startsWith('image/')) {
+          setAttachedImages(prev => [...prev, result]);
+        } else {
+          setAttachedFiles(prev => [...prev, {
+            name: file.name,
+            type: file.type,
+            data: result
+          }]);
+        }
+      };
+      
+      reader.readAsDataURL(file);
+    });
+    
+    // Reset input
+    if (e.target) e.target.value = '';
+  };
+
+  const removeImage = (index: number) => {
+    setAttachedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const removeFile = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -228,6 +281,30 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                   <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
                     {message.content}
                   </div>
+                  
+                  {/* Display attached images */}
+                  {message.images && message.images.length > 0 && (
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {message.images.map((img, idx) => (
+                        <img key={idx} src={img} alt="Attachment" className="rounded-lg max-h-48 object-cover" />
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Display attached files */}
+                  {message.files && message.files.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {message.files.map((file, idx) => (
+                        <div key={idx} className="flex items-center gap-2 text-xs bg-slate-700/50 rounded px-2 py-1">
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
+                          </svg>
+                          <span className="truncate">{file.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
                   <div
                     className={`text-xs mt-2 ${
                       message.role === 'user' ? 'text-violet-200' : 'text-slate-500'
@@ -260,7 +337,61 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
         {!(selectedAgent && selectedAgent.assistantId.startsWith('wf_') && selectedAgent.domainPk) && (
           <div className="border-t border-slate-700 bg-slate-900/95 backdrop-blur-sm">
             <div className="max-w-4xl mx-auto p-4">
+              {/* Attachment previews */}
+              {(attachedImages.length > 0 || attachedFiles.length > 0) && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {attachedImages.map((img, idx) => (
+                    <div key={`img-${idx}`} className="relative group">
+                      <img src={img} alt="Attached" className="h-20 w-20 object-cover rounded-lg border border-slate-600" />
+                      <button
+                        onClick={() => removeImage(idx)}
+                        className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                  {attachedFiles.map((file, idx) => (
+                    <div key={`file-${idx}`} className="relative group flex items-center gap-2 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2">
+                      <svg className="w-4 h-4 text-slate-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
+                      </svg>
+                      <span className="text-xs text-slate-300 truncate max-w-[120px]">{file.name}</span>
+                      <button
+                        onClick={() => removeFile(idx)}
+                        className="ml-1 text-red-400 hover:text-red-300"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
               <form onSubmit={handleSubmit} className="flex gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.doc,.docx,.txt,.json,.csv"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+                className="px-3 py-3 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+                title="Attach files or images"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+              </button>
               <textarea
                 ref={inputRef}
                 value={input}
@@ -273,7 +404,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
               />
               <button
                 type="submit"
-                disabled={!input.trim() || isLoading}
+                disabled={(!input.trim() && attachedImages.length === 0 && attachedFiles.length === 0) || isLoading}
                 className="px-6 py-3 bg-violet-600 text-white rounded-xl hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 {isLoading ? (
@@ -286,7 +417,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
               </button>
             </form>
             <p className="text-xs text-slate-500 mt-2">
-              Press Enter to send, Shift+Enter for a new line, ESC to close
+              📎 Attach images & documents • Press Enter to send • Shift+Enter for new line • ESC to close
             </p>
           </div>
         </div>

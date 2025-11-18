@@ -13,7 +13,6 @@ interface HeaderProps {
   user: User | null;
   userRole?: 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER' | null;
   onOpenWorkflowDrawer?: () => void;
-  onOpenChat?: () => void;
 }
 
   const Avatar: React.FC<{ user: User; onClick?: () => void }> = ({ user, onClick }) => {
@@ -32,7 +31,7 @@ interface HeaderProps {
 };
 
 
-const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkflowDrawer, onOpenChat }) => {
+const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkflowDrawer }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -134,70 +133,64 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                     onClick={() => onNavigate('DASHBOARD')}
                     className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
                   >
-                      {t('nav.dashboard')}
+                    {t('nav.dashboard')}
                   </button>
+                  
+                  {/* Library/Resources with icon */}
                   <button 
                     onClick={() => onNavigate('TRAINING')}
-                    className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
                   >
-                      {t('nav.library')}
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                    {t('nav.resources')}
                   </button>
-                  <button 
-                    onClick={() => onNavigate('RESEARCH')}
-                    className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                  
+                  {/* Language selector */}
+                  <select
+                    value={lang}
+                    onChange={(e) => setLang(e.target.value as any)}
+                    className="bg-slate-900 border border-slate-700 text-slate-200 rounded-md px-2 py-1 text-sm"
+                    aria-label="Language selector"
                   >
-                    {t('nav.research')}
-                  </button>
+                    <option value="English">English</option>
+                    <option value="Spanish">Spanish</option>
+                  </select>
+
+                  {/* Avatar/Profile dropdown */}
+                  <div className="relative" ref={profileMenuRef}>
+                    <button
+                      onClick={() => setIsProfileMenuOpen(prev => !prev)}
+                      aria-haspopup="menu"
+                      aria-expanded={isProfileMenuOpen}
+                      className="flex items-center rounded-md focus:outline-none"
+                      title={String(user.displayName || '')}
+                    >
+                      <Avatar user={user} />
+                    </button>
+
+                    {isProfileMenuOpen && (
+                      <div className="absolute right-0 mt-2 w-44 bg-slate-800 border border-slate-700 rounded-md shadow-lg z-50">
+                        <button onClick={() => { setIsProfileOpen(true); setIsProfileMenuOpen(false); }} className="w-full text-left px-4 py-2 text-slate-200 hover:bg-slate-700">{t('header.editProfile')}</button>
+                        <button onClick={() => { setIsProfileMenuOpen(false); handleLogout(); }} className="w-full text-left px-4 py-2 text-slate-200 hover:bg-red-700/20">{t('header.logout')}</button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Admin with settings icon */}
                   {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
                     <button 
                       onClick={() => onNavigate('ADMIN')}
-                      className="px-3 py-2 rounded-md text-sm font-medium text-amber-300 hover:bg-amber-800/20 hover:text-amber-200 transition-colors border border-amber-700/40"
-                    >
-                        {t('nav.admin')}
-                    </button>
-                  )}
-                  <div className="flex items-center space-x-3">
-                    {/* AI Chat button */}
-                    <button
-                      onClick={onOpenChat}
-                      className="p-2 rounded-md text-sky-300 hover:bg-sky-800/20 hover:text-sky-200 transition-colors border border-sky-700/40"
-                      title="Open AI Chat"
+                      className="p-2 rounded-md text-amber-300 hover:bg-amber-800/20 hover:text-amber-200 transition-colors border border-amber-700/40"
+                      title={t('nav.admin')}
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
                     </button>
-                    {/* Language selector */}
-                    <select
-                      value={lang}
-                      onChange={(e) => setLang(e.target.value as any)}
-                      className="bg-slate-900 border border-slate-700 text-slate-200 rounded-md px-2 py-1 text-sm"
-                      aria-label="Language selector"
-                    >
-                      <option value="English">English</option>
-                      <option value="Spanish">Spanish</option>
-                    </select>
-
-                    {/* Avatar with dropdown menu for profile actions */}
-                    <div className="relative" ref={profileMenuRef}>
-                      <button
-                        onClick={() => setIsProfileMenuOpen(prev => !prev)}
-                        aria-haspopup="menu"
-                        aria-expanded={isProfileMenuOpen}
-                        className="flex items-center rounded-md focus:outline-none"
-                        title={String(user.displayName || '')}
-                      >
-                        <Avatar user={user} />
-                      </button>
-
-                      {isProfileMenuOpen && (
-                        <div className="absolute right-0 mt-2 w-44 bg-slate-800 border border-slate-700 rounded-md shadow-lg z-50">
-                          <button onClick={() => { setIsProfileOpen(true); setIsProfileMenuOpen(false); }} className="w-full text-left px-4 py-2 text-slate-200 hover:bg-slate-700">{t('header.editProfile')}</button>
-                          <button onClick={() => { setIsProfileMenuOpen(false); handleLogout(); }} className="w-full text-left px-4 py-2 text-slate-200 hover:bg-red-700/20">{t('header.logout')}</button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  )}
                 </div>
                 {/* Mobile Hamburger Button */}
                 <div className="md:hidden">

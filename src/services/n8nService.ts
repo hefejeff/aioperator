@@ -187,3 +187,48 @@ export function generateConnections(steps: WorkflowStep[]): Record<string, { mai
   
   return connections;
 }
+
+/**
+ * Push a workflow to local n8n instance
+ * Note: For local development, this downloads the workflow JSON file
+ * For production, you would set up a backend proxy to avoid CORS
+ */
+export async function pushWorkflowToN8N(workflow: N8NWorkflow): Promise<{ success: boolean; workflowId?: string; url?: string; error?: string }> {
+  try {
+    // For local development, download the workflow JSON file
+    // Users can manually import it into n8n
+    const workflowJson = JSON.stringify(workflow, null, 2);
+    const blob = new Blob([workflowJson], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${workflow.name.replace(/\s+/g, '_')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    const n8nUrl = import.meta.env.VITE_N8N_API_URL?.replace('/api/v1', '') || 'http://localhost:5678';
+
+    return {
+      success: true,
+      url: n8nUrl,
+    };
+  } catch (error) {
+    console.error('Error downloading workflow:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+    };
+  }
+}
+
+/**
+ * Check if n8n is available
+ */
+export async function checkN8NConnection(): Promise<boolean> {
+  // For local development, we can't check due to CORS
+  // Just check if the URL is configured
+  const n8nUrl = import.meta.env.VITE_N8N_API_URL || 'http://localhost:5678/api/v1';
+  return !!n8nUrl;
+}

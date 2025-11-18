@@ -851,11 +851,13 @@ export function elevatorPitchToMarkdown(ep: ElevatorPitch): string {
 }
 
 /**
- * Generate a chat response using conversation history
+ * Generate a chat response using conversation history with image and file support
  */
 export async function generateChatResponse(
   userMessage: string,
-  conversationHistory: Array<{ role: string; content: string }>
+  conversationHistory: Array<{ role: string; content: string }>,
+  images?: string[],
+  files?: Array<{ name: string; type: string; data: string }>
 ): Promise<string> {
   const systemInstruction = `You are a helpful AI assistant specializing in business strategy, product development, and AI automation. 
 You provide clear, concise, and actionable advice. You can help with:
@@ -865,6 +867,8 @@ You provide clear, concise, and actionable advice. You can help with:
 - Market research and analysis
 - Workflow optimization
 - Technical architecture and design
+- Document analysis and summarization
+- Image analysis and description
 
 Be professional, friendly, and insightful in your responses.`;
 
@@ -875,10 +879,49 @@ Be professional, friendly, and insightful in your responses.`;
       parts: [{ text: msg.content }],
     }));
 
+    // Prepare the current user message parts
+    const currentParts: any[] = [{ text: userMessage }];
+    
+    // Add images if provided
+    if (images && images.length > 0) {
+      images.forEach(imageData => {
+        // Extract base64 data and mime type from data URL
+        const matches = imageData.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches) {
+          currentParts.push({
+            inlineData: {
+              mimeType: matches[1],
+              data: matches[2]
+            }
+          });
+        }
+      });
+    }
+    
+    // Add file content as text if provided (for text-based files)
+    if (files && files.length > 0) {
+      files.forEach(file => {
+        if (file.type.includes('text') || file.type.includes('json') || file.type.includes('csv')) {
+          // Decode base64 text files
+          const matches = file.data.match(/^data:[^;]+;base64,(.+)$/);
+          if (matches) {
+            try {
+              const decodedContent = atob(matches[1]);
+              currentParts.push({ text: `\n\n[File: ${file.name}]\n${decodedContent}` });
+            } catch (e) {
+              currentParts.push({ text: `\n\n[File: ${file.name} - could not read content]` });
+            }
+          }
+        } else {
+          currentParts.push({ text: `\n\n[Attached file: ${file.name} (${file.type})]` });
+        }
+      });
+    }
+
     // Add the current user message
     contents.push({
       role: 'user',
-      parts: [{ text: userMessage }],
+      parts: currentParts,
     });
 
     const request: any = {

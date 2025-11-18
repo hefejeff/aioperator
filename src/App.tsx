@@ -420,7 +420,6 @@ const App: React.FC = () => {
         user={user} 
         userRole={role} 
         onOpenWorkflowDrawer={() => setIsWorkflowDrawerOpen(true)}
-        onOpenChat={() => setIsChatOpen(true)}
       />
       {error && (
         <div className="bg-yellow-900/30 border-l-4 border-yellow-500 text-yellow-300 p-4 mx-4 my-6 sm:mx-6 md:mx-8 rounded-r-lg shadow-lg animate-fade-in" role="alert">

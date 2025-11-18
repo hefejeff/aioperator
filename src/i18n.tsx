@@ -97,7 +97,8 @@ export const resources: Record<string, Record<string, string>> = {
     'nav.training': 'Training',
     'nav.history': 'History',
     'nav.research': 'Research',
-    'nav.library': 'Resources',
+    'nav.library': 'Library',
+    'nav.resources': 'Resources',
     'nav.admin': 'Admin Panel',
     'nav.home': 'Home',
 
@@ -562,7 +563,8 @@ export const resources: Record<string, Record<string, string>> = {
     'nav.training': 'Entrenamiento',
     'nav.history': 'Historial',
     'nav.research': 'Investigación',
-    'nav.library': 'Recursos',
+    'nav.library': 'Biblioteca',
+    'nav.resources': 'Recursos',
     'nav.admin': 'Panel de Admin',
     'nav.home': 'Inicio',
 

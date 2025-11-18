@@ -53,8 +53,22 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
 }) => {
   const [isN8NGenerating, setIsN8NGenerating] = useState(false);
   const [n8nWorkflow, setN8nWorkflow] = useState('');
+  const [isPushingToN8N, setIsPushingToN8N] = useState(false);
+  const [pushResult, setPushResult] = useState<{ success: boolean; url?: string; error?: string } | null>(null);
+  const [n8nAvailable, setN8nAvailable] = useState(false);
+
   const hasWorkflow = workflowExplanation.trim().length > 0;
   const baseDisabled = disabled || !hasWorkflow;
+
+  // Check if n8n is available on component mount
+  React.useEffect(() => {
+    const checkN8N = async () => {
+      const { checkN8NConnection } = await import('../services/n8nService');
+      const available = await checkN8NConnection();
+      setN8nAvailable(available);
+    };
+    checkN8N();
+  }, []);
 
   const clsBase = 'inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-60';
   const clsIndigo = clsBase + ' bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-600 disabled:text-slate-300 text-white';
@@ -349,6 +363,49 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-medium text-slate-300">Generated Workflow</h4>
               <div className="flex items-center gap-2">
+                {n8nAvailable && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setIsPushingToN8N(true);
+                      setPushResult(null);
+                      try {
+                        const { pushWorkflowToN8N } = await import('../services/n8nService');
+                        const workflow = JSON.parse(n8nWorkflow);
+                        const result = await pushWorkflowToN8N(workflow);
+                        setPushResult(result);
+                        if (result.success && result.url) {
+                          // Show success message, file was downloaded
+                          setTimeout(() => {
+                            setPushResult({ ...result, url: result.url });
+                          }, 100);
+                        }
+                      } catch (error) {
+                        console.error('Failed to download workflow:', error);
+                        setPushResult({
+                          success: false,
+                          error: error instanceof Error ? error.message : 'Unknown error'
+                        });
+                      } finally {
+                        setIsPushingToN8N(false);
+                      }
+                    }}
+                    disabled={isPushingToN8N}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-orange-300 bg-orange-900/20 hover:bg-orange-900/30 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isPushingToN8N ? (
+                      <>
+                        <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        <span>Downloading...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Icons.Download />
+                        <span>Download for n8n</span>
+                      </>
+                    )}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -361,7 +418,10 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setN8nWorkflow('')}
+                  onClick={() => {
+                    setN8nWorkflow('');
+                    setPushResult(null);
+                  }}
                   className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-300 bg-red-900/20 hover:bg-red-900/30 rounded-md transition-colors"
                 >
                   <Icons.Trash />
@@ -369,6 +429,31 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
                 </button>
               </div>
             </div>
+            
+            {pushResult && (
+              <div className={`p-3 rounded-lg ${pushResult.success ? 'bg-green-900/20 border border-green-500/30' : 'bg-red-900/20 border border-red-500/30'}`}>
+                <p className={`text-sm ${pushResult.success ? 'text-green-300' : 'text-red-300'}`}>
+                  {pushResult.success ? (
+                    <>
+                      ✓ Workflow downloaded! Import it in n8n: 
+                      <a 
+                        href={pushResult.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="ml-1 underline hover:text-green-200"
+                      >
+                        Open n8n →
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      ✗ Failed to download: {pushResult.error}
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
+            
             <div className="relative group">
               <pre className="overflow-x-auto p-4 rounded-lg bg-slate-900/50 border border-slate-700/50 text-sm text-slate-300">
                 <code>{n8nWorkflow}</code>
@@ -381,7 +466,7 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
         <div className="flex items-center gap-2 p-3 rounded-lg bg-slate-900/50 border border-orange-500/20">
           <Icons.Beaker />
           <p className="text-xs text-slate-400">
-            Export your workflow to N8N for advanced automation capabilities. The generated workflow can be imported directly into your N8N instance.
+            Download your workflow as JSON and import it into n8n: Click "Workflows" → "Import from File" → Select the downloaded JSON file.
           </p>
         </div>
       </div>
