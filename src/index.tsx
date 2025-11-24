@@ -3,6 +3,16 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 
+// Unregister any existing service workers
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const registration of registrations) {
+      console.log('Unregistering service worker:', registration);
+      registration.unregister();
+    }
+  });
+}
+
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");

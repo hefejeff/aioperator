@@ -8,7 +8,7 @@ import CreateScenarioForm from './components/CreateScenarioForm';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './services/firebaseInit';
 import type { Scenario } from './types';
-import { getScenarios, seedScenarios, updateUserProfile, getAllUserEvaluations, getUserProfile } from './services/firebaseService';
+import { getScenarios, seedScenarios, seedExampleCompany, updateUserProfile, getAllUserEvaluations, getUserProfile } from './services/firebaseService';
 import Header from './components/Header';
 import DashboardView from './components/DashboardView';
 import TrainingView from './components/TrainingView';
@@ -79,6 +79,14 @@ const App: React.FC = () => {
         setView('DASHBOARD'); // Default to dashboard on login
         // Store/update user profile info in the database
         await updateUserProfile(currentUser);
+
+        // Seed example company for first-time users
+        try {
+          await seedExampleCompany(currentUser.uid);
+        } catch (e) {
+          console.error('Failed to seed example company:', e);
+          // Non-critical error, continue with app initialization
+        }
 
         // Load scenarios and evaluations after user is confirmed
         try {
@@ -220,9 +228,9 @@ const App: React.FC = () => {
     if (view === 'WORKFLOW_DETAIL') {
       setView(previousView);
     }
-    // For scenarios always go back to training view
+    // For scenarios, go back to where we came from (could be TRAINING or RESEARCH)
     else if (view === 'SCENARIO') {
-      setView('TRAINING');
+      setView(previousView === 'RESEARCH' ? 'RESEARCH' : 'TRAINING');
     }
     // Default fallback to dashboard
     else {
@@ -395,6 +403,7 @@ const App: React.FC = () => {
           return <CompanyResearch 
                     userId={user.uid} 
                     initialCompany={selectedCompanyId || undefined}
+                    startWithNewForm={!selectedCompanyId}
                     onSelectScenario={handleSelectScenario}
                     onCreateScenario={(ctx) => openScenarioCreator({
                       source: 'RESEARCH',

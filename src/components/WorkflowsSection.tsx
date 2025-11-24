@@ -67,55 +67,52 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
   };
 
   return (
-    <div>
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold text-white mb-2">{t('dashboard.workflows')}</h2>
-            <p className="text-slate-400">{t('dashboard.workflowsSubtitle')}</p>
-          </div>
+    <div className="bg-gradient-to-br from-slate-700/60 to-slate-800/60 rounded-2xl p-6 border-2 border-slate-600/60 shadow-2xl backdrop-blur-md hover:shadow-sky-500/10 transition-shadow duration-300">
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <svg className="w-5 h-5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            {t('dashboard.workflows')}
+          </h2>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={onCreateScenario}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+              className="p-1.5 bg-sky-600/80 text-white rounded-md hover:bg-sky-500 transition-colors"
+              title={t('dashboard.newWorkflow')}
             >
               <Icons.Plus className="w-4 h-4" />
-              {t('dashboard.newWorkflow')}
             </button>
 
-            {/* Filters */}
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-slate-300">{t('dashboard.filters')}</span>
-              <button
-                onClick={onToggleStarred}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
-                  showStarredOnly
-                    ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                    : 'bg-slate-700/50 text-slate-400 border border-slate-600/50 hover:bg-slate-600/50 hover:text-slate-300'
+            <button
+              onClick={onToggleStarred}
+              className={`p-1.5 rounded-md transition-all duration-200 ${
+                showStarredOnly
+                  ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/40'
+                  : 'bg-slate-600/60 text-slate-400 border border-slate-500/40 hover:bg-slate-500/60'
+              }`}
+              title={showStarredOnly ? t('dashboard.starred') : t('dashboard.all')}
+            >
+              <svg
+                className={`w-4 h-4 transition-all duration-200 ${
+                  showStarredOnly ? 'fill-current' : 'fill-none stroke-current'
                 }`}
+                viewBox="0 0 24 24"
+                strokeWidth="2"
               >
-                <svg
-                  className={`w-4 h-4 transition-all duration-200 ${
-                    showStarredOnly ? 'fill-current' : 'fill-none stroke-current'
-                  }`}
-                  viewBox="0 0 24 24"
-                  strokeWidth="2"
-                >
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                </svg>
-                <span className="text-sm font-medium">
-                  {showStarredOnly ? t('dashboard.starred') : t('dashboard.all')}
-                </span>
-              </button>
-            </div>
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+            </button>
           </div>
         </div>
+        <p className="text-xs text-slate-400">{t('dashboard.workflowsSubtitle')}</p>
       </div>
 
       {/* Workflow Cards List */}
       {filteredScenarios.length > 0 ? (
-        <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="space-y-3 animate-in fade-in duration-500 max-h-[calc(100vh-16rem)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-800/20">
           {filteredScenarios.map((scenario, index) => {
             const isExpanded = expandedScenarios.has(scenario.id);
             const isFavorited = !!scenario.favoritedBy?.[user.uid];
@@ -127,22 +124,22 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
                 className="animate-in slide-in-from-bottom duration-300"
                 style={{ animationDelay: `${index * 100}ms` }}
               >
-                <div className="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-3 backdrop-blur-xl">
-                  <div className="flex items-center gap-3">
+                <div className="bg-slate-900/60 border-2 border-slate-600/50 rounded-xl p-3 backdrop-blur-sm hover:border-sky-500/40 transition-all duration-200 hover:shadow-lg">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => toggleScenarioExpansion(scenario.id)}
-                      className="flex-1 flex items-center justify-between gap-3 text-left px-3 py-2 rounded-xl hover:bg-slate-700/40 transition-colors"
+                      className="flex-1 flex items-center justify-between gap-2 text-left px-3 py-2 rounded-lg hover:bg-slate-700/40 transition-colors min-w-0"
                     >
-                      <div className="min-w-0">
-                        <h3 className="text-lg font-semibold text-white truncate">{scenario.title}</h3>
-                        <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
-                          <span className="uppercase tracking-wider">{workflowCount} {t('dashboard.workflows')}</span>
-                          {scenario.domain && <span>{scenario.domain}</span>}
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-semibold text-white truncate">{scenario.title}</h3>
+                        <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
+                          <span className="uppercase tracking-wider font-medium whitespace-nowrap">{workflowCount} {t('dashboard.workflows')}</span>
+                          {scenario.domain && <span className="text-sky-400 truncate">• {scenario.domain}</span>}
                         </div>
                       </div>
                       <span className={`flex-shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : '-rotate-90'}`}>
-                        <Icons.ChevronLeft />
+                        <Icons.ChevronLeft className="w-4 h-4" />
                       </span>
                     </button>
 
@@ -154,13 +151,13 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
                         }}
                         className={`flex-shrink-0 p-2 rounded-lg transition-all duration-200 ${
                           isFavorited
-                            ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40'
-                            : 'bg-slate-700/60 text-slate-400 border border-slate-600/60 hover:bg-slate-600/60 hover:text-yellow-400'
+                            ? 'bg-yellow-500/20 text-yellow-300 border-2 border-yellow-500/40 shadow-lg shadow-yellow-500/20'
+                            : 'bg-slate-700/60 text-slate-400 border-2 border-slate-600/60 hover:bg-slate-600/60 hover:text-yellow-300 hover:border-yellow-500/40'
                         }`}
                         aria-label={isFavorited ? t('dashboard.unfavorite') : t('dashboard.favorite')}
                       >
                         <svg
-                          className={`w-5 h-5 transition-all duration-200 ${
+                          className={`w-4 h-4 transition-all duration-200 ${
                             isFavorited ? 'fill-current' : 'fill-none stroke-current'
                           }`}
                           viewBox="0 0 24 24"
@@ -173,7 +170,7 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
                   </div>
 
                   {isExpanded && (
-                    <div className="mt-4 border-t border-slate-700/50 pt-4">
+                    <div className="mt-3 border-t border-slate-600/50 pt-3 max-h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-800/20">
                       <WorkflowCard
                         scenario={scenario}
                         workflowVersions={workflowsByScenario[scenario.id] || []}
@@ -193,25 +190,21 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
           })}
         </div>
       ) : (
-        <div className="text-center py-20 animate-in fade-in duration-700">
-          <div className="relative max-w-md mx-auto">
-            {/* Background glow effect */}
-            <div className="absolute inset-0 bg-gradient-to-r from-sky-500/10 via-blue-500/10 to-emerald-500/10 rounded-3xl blur-2xl animate-pulse"></div>
-            
+        <div className="text-center py-16 animate-in fade-in duration-700">
+          <div className="relative max-w-xs mx-auto">            
             {/* Icon container */}
-            <div className="relative w-32 h-32 bg-gradient-to-br from-slate-800/60 to-slate-900/60 backdrop-blur-xl rounded-3xl flex items-center justify-center mx-auto mb-8 border border-slate-700/50 group hover:border-sky-500/30 transition-all duration-500">
-              <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="relative text-slate-400 group-hover:text-sky-400 transition-colors duration-300">
-                <Icons.LightBulb />
+            <div className="relative w-20 h-20 bg-gradient-to-br from-slate-600/60 to-slate-700/60 backdrop-blur-sm rounded-2xl flex items-center justify-center mx-auto mb-6 border-2 border-slate-500/60 shadow-xl">
+              <div className="text-slate-300">
+                <Icons.LightBulb className="w-8 h-8" />
               </div>
             </div>
             
             {/* Content */}
             <div className="relative">
-              <h3 className="text-3xl font-bold text-white mb-4 bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+              <h3 className="text-lg font-bold text-white mb-3">
                 {showStarredOnly ? t('dashboard.noStarred') : t('dashboard.noWorkflows')}
               </h3>
-              <p className="text-lg text-slate-400 mb-10 max-w-sm mx-auto leading-relaxed">
+              <p className="text-sm text-slate-300 mb-8 max-w-xs mx-auto leading-relaxed">
                 {showStarredOnly 
                   ? t('dashboard.noStarredDesc')
                   : t('dashboard.noWorkflowsDesc')
@@ -220,12 +213,11 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
               {!showStarredOnly && (
                 <button
                   onClick={onCreateScenario}
-                  className="group relative px-10 py-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-semibold rounded-2xl hover:shadow-2xl hover:shadow-sky-500/25 transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm border border-sky-400/20 hover:border-sky-300/40"
+                  className="px-6 py-3 bg-gradient-to-r from-sky-600 to-sky-500 text-white text-sm font-semibold rounded-xl hover:from-sky-500 hover:to-sky-400 transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-sky-500/30"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  <span className="relative flex items-center gap-3">
-                    <Icons.Plus />
-                    <span className="text-lg">{t('dashboard.createFirst')}</span>
+                  <span className="flex items-center gap-2">
+                    <Icons.Plus className="w-4 h-4" />
+                    <span>{t('dashboard.createFirst')}</span>
                   </span>
                 </button>
               )}

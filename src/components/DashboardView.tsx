@@ -217,10 +217,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
       
       {/* Main Content Grid */}
       <div className="container mx-auto px-4 sm:px-6 md:px-8 py-16">
-  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* Companies Section */}
-          <div className="lg:col-span-1 order-1 lg:order-1">
+          {/* Companies Section - 2/3 width */}
+          <div className="lg:col-span-2 order-1 lg:order-1">
             <CompaniesSection
               companies={companies}
               onStartNewResearch={handleStartNewResearch}
@@ -228,22 +228,23 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
             />
           </div>
           
-          {/* Workflows Section */}
+          {/* Workflows Section - 1/3 width, sticky sidebar */}
           <div className="lg:col-span-1 order-2 lg:order-2">
-            <WorkflowsSection
-              user={user}
-              scenarios={filteredScenarios}
-              workflowVersions={workflowVersions}
-              evaluations={evaluations}
-              showStarredOnly={showStarredOnly}
-              onToggleStarred={() => setShowStarredOnly(!showStarredOnly)}
-              onViewDetails={handleViewDetails}
-              onViewWorkflow={onViewWorkflow}
-              onStartTraining={handleStartTraining}
-              onToggleFavorite={handleToggleFavorite}
-              onCreateScenario={() => setShowCreateModal(true)}
-            />
-
+            <div className="lg:sticky lg:top-24">
+              <WorkflowsSection
+                user={user}
+                scenarios={filteredScenarios}
+                workflowVersions={workflowVersions}
+                evaluations={evaluations}
+                showStarredOnly={showStarredOnly}
+                onToggleStarred={() => setShowStarredOnly(!showStarredOnly)}
+                onViewDetails={handleViewDetails}
+                onViewWorkflow={onViewWorkflow}
+                onStartTraining={handleStartTraining}
+                onToggleFavorite={handleToggleFavorite}
+                onCreateScenario={() => setShowCreateModal(true)}
+              />
+            </div>
           </div>
 
         </div>

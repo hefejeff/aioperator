@@ -5,7 +5,7 @@ import RfpUploadField from './RfpUploadField';
 import type { CompanyResearch as CompanyInfo, CompanyResearchEntry, RelatedScenario, Company, Scenario, StoredEvaluationResult } from '../types';
 import ResearchSidebar from './ResearchSidebar';
 import { getScenarios, getCompanyResearch, saveCompanyResearch, getEvaluations } from '../services/firebaseService';
-import { researchCompany, findRelevantScenarios } from '../services/geminiService';
+import { researchCompany, findRelevantScenarios, generatePresentationWebsite } from '../services/geminiService';
 import { saveCompany, getCompany, updateCompanySelectedScenarios } from '../services/companyService';
 import { ref, onValue } from 'firebase/database';
 import { db } from '../services/firebaseInit';
@@ -16,6 +16,7 @@ import CompanyResearchContent from './CompanyResearchContent';
 interface CompanyResearchProps {
   userId: string;
   initialCompany?: string;  // This is now expected to be a company ID
+  startWithNewForm?: boolean; // Start directly in research form view
   onSelectScenario?: (scenario: Scenario) => void;
   onCreateScenario?: (context?: { companyId?: string; companyName?: string }) => void;
   onViewWorkflow?: (workflowId: string) => void;
@@ -26,11 +27,12 @@ type View = 'LIST' | 'RESEARCH';
 const CompanyResearch: React.FC<CompanyResearchProps> = ({
   userId,
   initialCompany,
+  startWithNewForm,
   onSelectScenario,
   onCreateScenario,
   onViewWorkflow,
 }) => {
-  const [view, setView] = useState<View>(initialCompany ? 'RESEARCH' : 'LIST');
+  const [view, setView] = useState<View>(initialCompany || startWithNewForm ? 'RESEARCH' : 'LIST');
   const [companyName, setCompanyName] = useState('');
   const [isLoadingResearch, setIsLoadingResearch] = useState(false);
   const [isLoadingOpportunities, setIsLoadingOpportunities] = useState(false);
@@ -50,6 +52,12 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
   const [scenarioCatalog, setScenarioCatalog] = useState<Record<string, Scenario>>({});
   const [scenarioRuns, setScenarioRuns] = useState<Record<string, StoredEvaluationResult[]>>({});
   const [isLoadingScenarioRuns, setIsLoadingScenarioRuns] = useState(false);
+  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [generatedPrompt, setGeneratedPrompt] = useState('');
+  const [isGeneratingPresentation, setIsGeneratingPresentation] = useState(false);
+  const [presentationUrl, setPresentationUrl] = useState<string | null>(null);
+  const [showCopiedMessage, setShowCopiedMessage] = useState(false);
 
   const { t } = useTranslation();
 
@@ -418,6 +426,85 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
     onSelectScenario?.(scenario);
   };
 
+  const handleToggleRunId = (runId: string) => {
+    setSelectedRunIds(prev => 
+      prev.includes(runId) ? prev.filter(id => id !== runId) : [...prev, runId]
+    );
+  };
+
+  const getPresentationPrompt = () => {
+    if (!companyInfo || !selectedRunIds.length) return '';
+
+    // Gather selected runs
+    const selectedRuns: { scenario: Scenario; run: StoredEvaluationResult }[] = [];
+    
+    Object.entries(scenarioRuns).forEach(([scenarioId, runs]) => {
+      runs.forEach(run => {
+        if (selectedRunIds.includes(run.id)) {
+          const scenario = scenarioCatalog[scenarioId];
+          if (scenario) {
+            selectedRuns.push({ scenario, run });
+          }
+        }
+      });
+    });
+
+    return `Create a professional sales presentation website for ${companyInfo.name} using West Monroe branding.
+
+Company Overview:
+${companyInfo.currentResearch.description}
+
+Industry: ${companyInfo.currentResearch.industry}
+Market Position: ${companyInfo.currentResearch.marketPosition}
+
+Key Challenges:
+${companyInfo.currentResearch.challenges.map(c => `- ${c}`).join('\n')}
+
+Proposed AI Solutions:
+${selectedRuns.map(({ scenario, run }) => `
+Scenario: ${scenario.title}
+Solution Overview: ${run.workflowExplanation}
+Impact Score: ${run.score}/100
+Key Benefits:
+- Addresses specific challenge: ${scenario.goal}
+- Demonstrates clear ROI through automated workflow
+`).join('\n')}
+
+Please structure the website presentation to include:
+1. Executive Summary
+2. Company Analysis & Challenges
+3. Proposed AI Solutions (showcasing the selected scenarios)
+4. Implementation Roadmap
+5. Expected ROI & Impact
+
+The tone should be professional, consultative, and focused on digital transformation. Use West Monroe's signature style: bold, clean, and data-driven.`;
+  };
+
+  const handleGeneratePrompt = () => {
+    const prompt = getPresentationPrompt();
+    if (!prompt) return;
+    setGeneratedPrompt(prompt);
+    setShowPromptModal(true);
+  };
+
+  const handleCreatePresentation = async () => {
+    const prompt = getPresentationPrompt();
+    if (!prompt) return;
+
+    setIsGeneratingPresentation(true);
+    try {
+      const html = await generatePresentationWebsite(prompt);
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      setPresentationUrl(url);
+    } catch (error) {
+      console.error('Failed to create presentation:', error);
+      setError('Failed to create presentation. Please try again.');
+    } finally {
+      setIsGeneratingPresentation(false);
+    }
+  };
+
   const handleFindOpportunities = async () => {
     if (!companyInfo || !currentCompanyId) return;
     
@@ -667,6 +754,10 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
               scenariosById={scenarioCatalog}
               isScenarioRunsLoading={isLoadingScenarioRuns}
               onViewWorkflow={onViewWorkflow}
+              selectedRunIds={selectedRunIds}
+              onToggleRunId={handleToggleRunId}
+              onGeneratePrompt={handleGeneratePrompt}
+              onCreatePresentation={handleCreatePresentation}
             />
 
             {/* RFP Analysis Section - Completely Separate */}
@@ -690,6 +781,127 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
           </div>
         )}
       </div>
+
+      {/* Prompt Generation Modal */}
+      {showPromptModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-white">Generated Presentation Prompt</h2>
+              <button 
+                onClick={() => setShowPromptModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <Icons.X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto bg-slate-900 p-4 rounded-lg mb-4 border border-slate-700">
+              <pre className="whitespace-pre-wrap text-slate-300 font-mono text-sm">
+                {generatedPrompt}
+              </pre>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowPromptModal(false)}
+                className="px-4 py-2 text-slate-300 hover:text-white"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedPrompt);
+                  // Optional: Show copied toast
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              >
+                <Icons.Copy className="w-4 h-4" />
+                Copy to Clipboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Presentation Created Modal */}
+      {presentationUrl && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-white">Presentation Created</h2>
+              <button 
+                onClick={() => setPresentationUrl(null)}
+                className="text-slate-400 hover:text-white"
+              >
+                <Icons.X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <p className="text-slate-300 mb-6">
+              Your sales presentation website has been generated successfully.
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <a
+                href={presentationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-center font-medium"
+              >
+                View Presentation
+              </a>
+              
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-700"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-slate-800 text-slate-500">or continue editing</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <a
+                  href="https://aistudio.google.com/prompts/new_chat?model=gemini-1.5-pro"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`px-4 py-3 rounded-lg text-center flex items-center justify-center gap-2 transition-all w-full ${
+                    showCopiedMessage 
+                      ? 'bg-emerald-600 text-white hover:bg-emerald-700' 
+                      : 'bg-slate-700 text-white hover:bg-slate-600'
+                  }`}
+                  onClick={() => {
+                    const prompt = getPresentationPrompt();
+                    if (prompt) {
+                      navigator.clipboard.writeText(prompt);
+                      setShowCopiedMessage(true);
+                      setTimeout(() => setShowCopiedMessage(false), 3000);
+                    }
+                  }}
+                >
+                  <span>{showCopiedMessage ? 'Prompt Copied! Paste in AI Studio' : 'Continue in Google AI Studio'}</span>
+                  {!showCopiedMessage && <Icons.ExternalLink className="w-4 h-4 text-slate-400" />}
+                </a>
+                <p className="text-xs text-slate-500 text-center">
+                  The prompt will be automatically copied to your clipboard.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Overlay */}
+      {isGeneratingPresentation && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-8 flex flex-col items-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mb-4"></div>
+            <h3 className="text-xl font-semibold text-white mb-2">Creating Presentation...</h3>
+            <p className="text-slate-400">Generating website content with Gemini AI</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

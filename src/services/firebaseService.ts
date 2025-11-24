@@ -922,7 +922,10 @@ export const listCompanyResearch = async (userId: string): Promise<CompanyResear
     
     return Object.values<any>(snapshot.val())
       .filter(company => company.research) // Only include companies with research data
-      .map(company => company.research);
+      .map(company => ({
+        ...company.research,
+        selectedScenarios: company.selectedScenarios || [] // Include selectedScenarios from Company level
+      }));
   } catch (error) {
     console.error('Failed to list company research:', error);
     throw error;
@@ -1322,6 +1325,114 @@ export const seedScenarios = async (): Promise<void> => {
     console.log('Successfully seeded default scenarios');
   } catch (error) {
     console.error('Failed to seed scenarios:', error);
+    throw error;
+  }
+};
+
+// Seed example company for first-time users
+export const seedExampleCompany = async (userId: string): Promise<void> => {
+  try {
+    // Check if user already has companies
+    const companiesRef = ref(db, 'companies');
+    const companiesQuery = query(companiesRef, orderByChild('createdBy'), equalTo(userId));
+    const snapshot = await get(companiesQuery);
+    
+    if (snapshot.exists()) {
+      console.log('User already has companies, skipping example company seed');
+      return;
+    }
+    
+    console.log('No companies found, seeding example company');
+    
+    // Get first scenario to link to workflow
+    const scenariosRef = ref(db, 'scenarios');
+    const scenariosSnapshot = await get(scenariosRef);
+    let firstScenarioId = '';
+    
+    if (scenariosSnapshot.exists()) {
+      const scenarios = scenariosSnapshot.val();
+      firstScenarioId = Object.keys(scenarios)[0];
+    }
+    
+    const timestamp = Date.now();
+    
+    // Create example company
+    const newCompanyRef = push(companiesRef);
+    const companyId = newCompanyRef.key as string;
+    
+    const exampleResearchEntry = {
+      summary: 'Acme Company is a leading provider of innovative business solutions, specializing in workflow automation and AI-powered tools for enterprises.',
+      keyInsights: [
+        'Strong focus on customer success with 95% retention rate',
+        'Expanding into new markets with 40% YoY growth',
+        'Recently launched AI-powered automation platform'
+      ],
+      recommendations: [
+        'Enhance mobile app capabilities for remote workforce',
+        'Integrate more third-party connectors',
+        'Develop advanced analytics dashboard'
+      ],
+      timestamp
+    };
+    
+    const companyData = {
+      id: companyId,
+      name: 'Acme Company',
+      createdBy: userId,
+      createdAt: timestamp,
+      lastUpdated: timestamp,
+      selectedScenarios: firstScenarioId ? [firstScenarioId] : [],
+      research: {
+        name: 'Acme Company',
+        currentResearch: exampleResearchEntry,
+        history: [exampleResearchEntry],
+        lastUpdated: timestamp
+      }
+    };
+    
+    await set(newCompanyRef, companyData);
+    console.log('Example company created:', companyId);
+    
+    // Create example workflow if we have a scenario
+    if (firstScenarioId) {
+      const workflowsRef = ref(db, `workflowVersions/${userId}/${firstScenarioId}`);
+      const newWorkflowRef = push(workflowsRef);
+      
+      const exampleMermaidCode = `graph TD
+    A[Start: Customer Request] --> B[Analyze Requirements]
+    B --> C{Complexity Level}
+    C -->|Simple| D[Automated Response]
+    C -->|Complex| E[Route to Specialist]
+    D --> F[Send Solution]
+    E --> G[Expert Analysis]
+    G --> F
+    F --> H[Follow-up]
+    H --> I[End: Satisfied Customer]`;
+      
+      const workflowData = {
+        userId,
+        scenarioId: firstScenarioId,
+        workflowExplanation: 'This workflow demonstrates an intelligent customer support system that automatically routes requests based on complexity, ensuring efficient resolution while maintaining high quality service.',
+        versionTitle: 'Example: Customer Support Automation',
+        mermaidCode: exampleMermaidCode,
+        mermaidSvg: null,
+        imageBase64: null,
+        imageMimeType: null,
+        sourceEvaluationId: null,
+        prdMarkdown: null,
+        pitchMarkdown: null,
+        evaluationScore: null,
+        evaluationFeedback: null,
+        timestamp
+      };
+      
+      await set(newWorkflowRef, workflowData);
+      console.log('Example workflow created for scenario:', firstScenarioId);
+    }
+    
+    console.log('Successfully seeded example company and workflow');
+  } catch (error) {
+    console.error('Failed to seed example company:', error);
     throw error;
   }
 };

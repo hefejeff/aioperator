@@ -8,6 +8,10 @@ interface CompanyResearchContentProps {
   scenariosById?: Record<string, Scenario>;
   isScenarioRunsLoading?: boolean;
   onViewWorkflow?: (workflowId: string) => void;
+  selectedRunIds?: string[];
+  onToggleRunId?: (runId: string) => void;
+  onGeneratePrompt?: () => void;
+  onCreatePresentation?: () => void;
 }
 
 const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
@@ -16,6 +20,10 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
   scenariosById = {},
   isScenarioRunsLoading = false,
   onViewWorkflow,
+  selectedRunIds = [],
+  onToggleRunId,
+  onGeneratePrompt,
+  onCreatePresentation,
 }) => {
   const { t } = useTranslation();
   const scenarioEntries = Object.entries(scenarioRuns)
@@ -117,7 +125,27 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
         </div>
 
         <div className="border-t border-slate-700 pt-6">
-          <h3 className="text-white font-medium mb-4">{t('research.scenarioRuns')}</h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-white font-medium">{t('research.scenarioRuns')}</h3>
+            {onGeneratePrompt && selectedRunIds.length > 0 && (
+              <div className="flex gap-2">
+                <button
+                  onClick={onGeneratePrompt}
+                  className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+                >
+                  Generate Presentation Prompt
+                </button>
+                {onCreatePresentation && (
+                  <button
+                    onClick={onCreatePresentation}
+                    className="px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-2"
+                  >
+                    Create Presentation
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           {isScenarioRunsLoading ? (
             <div className="space-y-3">
               <div className="h-4 bg-slate-700/60 rounded w-1/2 animate-pulse"></div>
@@ -138,7 +166,17 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
                         const hasWorkflowVersion = Boolean(run.workflowVersionId);
 
                         return (
-                          <li key={run.id}>
+                          <li key={run.id} className="flex items-start gap-3">
+                            {onToggleRunId && (
+                              <div className="pt-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRunIds.includes(run.id)}
+                                  onChange={() => onToggleRunId(run.id)}
+                                  className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-slate-800"
+                                />
+                              </div>
+                            )}
                             <button
                               type="button"
                               onClick={() => hasWorkflowVersion && onViewWorkflow?.(run.workflowVersionId!)}

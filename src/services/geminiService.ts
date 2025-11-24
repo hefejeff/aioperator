@@ -8,11 +8,13 @@ import type {
   RfpAnalysis
 } from '../types';
 
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable not set");
+const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.API_KEY;
+
+if (!apiKey) {
+  throw new Error("Google AI API key not set. Please set VITE_GOOGLE_AI_API_KEY or API_KEY in your environment variables.");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey });
 
 interface ImagePart {
   base64: string;
@@ -937,5 +939,40 @@ Be professional, friendly, and insightful in your responses.`;
   } catch (error) {
     console.error('Chat generation error:', error);
     throw new Error('Failed to generate chat response');
+  }
+}
+
+export async function generatePresentationWebsite(prompt: string): Promise<string> {
+  const systemInstruction = `You are an expert web developer and designer specializing in creating high-impact sales presentations.
+Your task is to generate a single-file HTML website that serves as a professional sales presentation.
+The website should:
+- Be fully responsive and modern.
+- Use West Monroe branding (bold, clean, data-driven, professional).
+- Include sections for Executive Summary, Company Analysis, Proposed Solutions, Roadmap, and ROI.
+- Use Tailwind CSS via CDN for styling.
+- Include interactive elements (e.g., smooth scrolling, simple animations) where appropriate.
+- Be self-contained in a single HTML file (CSS and JS included).
+- NOT require any external assets other than standard CDNs (like Tailwind or FontAwesome).
+- Be ready to be opened in a browser directly.
+
+The content should be based strictly on the provided prompt.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: { parts: [{ text: prompt }] },
+      config: {
+        systemInstruction,
+        responseMimeType: 'text/plain', // We want HTML code
+      }
+    });
+
+    let html = response.text ?? '';
+    // Clean up markdown code blocks if present
+    html = html.replace(/^```html\n/, '').replace(/\n```$/, '');
+    return html;
+  } catch (error) {
+    console.error('Error generating presentation website:', error);
+    throw new Error('Failed to generate presentation website');
   }
 }
