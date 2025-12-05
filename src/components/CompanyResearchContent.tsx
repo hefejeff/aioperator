@@ -7,7 +7,7 @@ interface CompanyResearchContentProps {
   scenarioRuns?: Record<string, StoredEvaluationResult[]>;
   scenariosById?: Record<string, Scenario>;
   isScenarioRunsLoading?: boolean;
-  onViewWorkflow?: (workflowId: string) => void;
+  onViewWorkflow?: (workflowId: string, companyName?: string) => void;
   selectedRunIds?: string[];
   onToggleRunId?: (runId: string) => void;
   onGeneratePrompt?: () => void;
@@ -15,6 +15,7 @@ interface CompanyResearchContentProps {
   isCreatingWordPressPage?: boolean;
   wordPressPageUrl?: string | null;
   onCreatePresentation?: () => void;
+  onDeleteRun?: (runId: string) => void;
 }
 
 const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
@@ -30,6 +31,7 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
   isCreatingWordPressPage = false,
   wordPressPageUrl = null,
   onCreatePresentation,
+  onDeleteRun,
 }) => {
   const { t } = useTranslation();
   const scenarioEntries = Object.entries(scenarioRuns)
@@ -219,8 +221,8 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
                             )}
                             <button
                               type="button"
-                              onClick={() => hasWorkflowVersion && onViewWorkflow?.(run.workflowVersionId!)}
-                              className={`w-full text-left text-wm-blue/70 text-sm flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md px-3 py-2 ${hasWorkflowVersion ? 'hover:bg-wm-neutral/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-wm-accent' : 'cursor-default opacity-70'}`}
+                              onClick={() => hasWorkflowVersion && onViewWorkflow?.(run.workflowVersionId!, companyInfo.name)}
+                              className={`flex-1 text-left text-wm-blue/70 text-sm flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md px-3 py-2 ${hasWorkflowVersion ? 'hover:bg-wm-neutral/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-wm-accent' : 'cursor-default opacity-70'}`}
                               disabled={!hasWorkflowVersion}
                             >
                               <span className="font-bold text-wm-blue">{scenario?.title || t('research.untitledVersion')}</span>
@@ -229,6 +231,23 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
                                 <span>{t('research.ranOn', { date: formattedDate })}</span>
                               </span>
                             </button>
+                            {onDeleteRun && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm(t('research.confirmDeleteRun'))) {
+                                    onDeleteRun(run.id);
+                                  }
+                                }}
+                                className="p-2 text-wm-pink hover:bg-wm-pink/10 rounded-md transition-colors flex-shrink-0"
+                                title={t('common.delete')}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
                           </li>
                         );
                       })}

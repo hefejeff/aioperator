@@ -1,6 +1,7 @@
 
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { User } from 'firebase/auth';
 import { getWorkflowVersion, saveUserScenario } from './services/firebaseService';
 import { getCompany, updateCompanySelectedScenarios } from './services/companyService';
@@ -32,8 +33,42 @@ type ScenarioCreationContext = {
   companyName?: string;
 };
 
+// Route path to View mapping
+const pathToView: Record<string, View> = {
+  '/': 'DASHBOARD',
+  '': 'DASHBOARD',
+  '/dashboard': 'DASHBOARD',
+  '/training': 'TRAINING',
+  '/scenario': 'SCENARIO',
+  '/admin': 'ADMIN',
+  '/workflow': 'WORKFLOW_DETAIL',
+  '/research': 'RESEARCH',
+};
+
+const viewToPath: Record<View, string> = {
+  'DASHBOARD': '/dashboard',
+  'TRAINING': '/training',
+  'SCENARIO': '/scenario',
+  'ADMIN': '/admin',
+  'WORKFLOW_DETAIL': '/workflow',
+  'RESEARCH': '/research',
+};
+
 const App: React.FC = () => {
-  const [view, setView] = useState<View>('TRAINING');
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Derive view from current path
+  const getViewFromPath = (pathname: string): View => {
+    // Root path or empty should always go to dashboard
+    if (pathname === '/' || pathname === '' || !pathname) {
+      return 'DASHBOARD';
+    }
+    const basePath = '/' + pathname.split('/')[1];
+    return pathToView[basePath] || 'DASHBOARD';
+  };
+  
+  const [view, setView] = useState<View>(() => getViewFromPath(location.pathname));
   const [previousView, setPreviousView] = useState<View>('TRAINING');
   const [activeScenario, setActiveScenario] = useState<Scenario | null>(null);
   const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(null);
@@ -76,7 +111,15 @@ const App: React.FC = () => {
         } catch (e) {
           // ignore
         }
-        setView('DASHBOARD'); // Default to dashboard on login
+        // Only navigate to dashboard if on root path, otherwise respect the current URL
+        const currentPath = window.location.pathname;
+        if (currentPath === '/' || currentPath === '') {
+          setView('DASHBOARD');
+          navigate('/dashboard', { replace: true });
+        } else {
+          // Respect the current URL and set view accordingly
+          setView(getViewFromPath(currentPath));
+        }
         // Store/update user profile info in the database
         await updateUserProfile(currentUser);
 
@@ -157,45 +200,63 @@ const App: React.FC = () => {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [activeCompanyName, setActiveCompanyName] = useState<string | null>(null);
 
+  // Sync view state with URL changes and redirect root to dashboard for logged-in users
+  useEffect(() => {
+    const newView = getViewFromPath(location.pathname);
+    if (newView !== view) {
+      setView(newView);
+    }
+    // Redirect logged-in users from root to dashboard
+    if (user && (location.pathname === '/' || location.pathname === '')) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [location.pathname, user, navigate]);
+
   const handleNavigate = useCallback((newView: 'DASHBOARD' | 'TRAINING' | 'ADMIN' | 'RESEARCH', companyId?: string) => {
     setPreviousView(view);
     setActiveScenario(null);
     setActiveCompanyName(null);
     if (newView === 'RESEARCH' && companyId) {
       setSelectedCompanyId(companyId);
+      navigate(`/research/${companyId}`);
     } else {
       setSelectedCompanyId(null);
+      navigate(viewToPath[newView]);
     }
     setView(newView);
-  }, [view]);
+  }, [view, navigate]);
 
   const handleStartTraining = useCallback((scenario?: Scenario) => {
     setPreviousView(view);
     if (scenario) {
       setActiveScenario(scenario);
+      navigate(`/scenario/${scenario.id}`);
       setView('SCENARIO');
     } else {
+      navigate('/training');
       setView('TRAINING');
     }
-  }, [view]);
+  }, [view, navigate]);
 
   const handleNavigateToScenario = useCallback((scenarioId: string) => {
     const scenario = scenarios.find(s => s.id === scenarioId);
     if (scenario) {
       setPreviousView(view);
       setActiveScenario(scenario);
+      navigate(`/scenario/${scenarioId}`);
       setView('SCENARIO');
     }
-  }, [scenarios, view]);
+  }, [scenarios, view, navigate]);
   
   const handleSelectScenario = useCallback((scenario: Scenario, companyName?: string) => {
     setPreviousView(view);
     setActiveScenario(scenario);
     setActiveCompanyName(companyName || null);
+    navigate(`/scenario/${scenario.id}${companyName ? `?company=${encodeURIComponent(companyName)}` : ''}`);
     setView('SCENARIO');
-  }, [view]);
+  }, [view, navigate]);
 
-  const handleSelectWorkflow = useCallback(async (workflowId: string) => {
+  const handleSelectWorkflow = useCallback(async (workflowId: string, companyName?: string) => {
     if (!user?.uid) {
       console.error('No user logged in');
       return;
@@ -216,12 +277,16 @@ const App: React.FC = () => {
       // Save the current view before navigating
       setPreviousView(view);
       setActiveWorkflowId(workflowId);
+      if (companyName) {
+        setActiveCompanyName(companyName);
+      }
+      navigate(`/workflow/${workflowId}`);
       setView('WORKFLOW_DETAIL');
       
     } catch (error) {
       console.error('Error checking workflow:', error);
     }
-  }, [user?.uid, view]);
+  }, [user?.uid, view, navigate]);
 
   const handleBack = useCallback(() => {
     setActiveScenario(null);
@@ -230,23 +295,29 @@ const App: React.FC = () => {
     
     // If we're in a workflow detail view, return to the previous view
     if (view === 'WORKFLOW_DETAIL') {
+      navigate(viewToPath[previousView]);
       setView(previousView);
     }
     // For scenarios, go back to where we came from (could be TRAINING or RESEARCH)
     else if (view === 'SCENARIO') {
-      setView(previousView === 'RESEARCH' ? 'RESEARCH' : 'TRAINING');
+      const targetView = previousView === 'RESEARCH' ? 'RESEARCH' : 'TRAINING';
+      navigate(viewToPath[targetView]);
+      setView(targetView);
     }
     // Default fallback to dashboard
     else {
+      navigate('/dashboard');
       setView('DASHBOARD');
     }
-  }, [view, previousView]);
+  }, [view, previousView, navigate]);
 
   const handleScenarioCreated = (newScenario: Scenario) => {
     setScenarios(prevScenarios => [...prevScenarios, newScenario]);
     if (scenarioCreationContext?.source === 'RESEARCH') {
+      navigate('/research');
       setView('RESEARCH');
     } else {
+      navigate('/training');
       setView('TRAINING');
     }
     setScenarioCreationContext(null);
@@ -385,6 +456,7 @@ const App: React.FC = () => {
                     workflowId={activeWorkflowId}
                     userId={user.uid}
                     onBack={handleBack}
+                    companyName={activeCompanyName || undefined}
                  />;
         }
         return null;

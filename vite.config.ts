@@ -9,6 +9,14 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    server: {
+      // Enable history API fallback for SPA routing
+      historyApiFallback: true,
+    },
+    preview: {
+      // Also enable for preview mode
+      historyApiFallback: true,
+    },
     define: {
       'process.env.GOOGLE_AI_API_KEY': JSON.stringify(env.VITE_GOOGLE_AI_API_KEY || env.API_KEY),
       'process.env.API_KEY': JSON.stringify(env.API_KEY),

@@ -8,9 +8,10 @@ interface WorkflowDetailViewProps {
   workflowId: string;
   userId: string;
   onBack: () => void;
+  companyName?: string;
 }
 
-const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, userId, onBack }) => {
+const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, userId, onBack, companyName }) => {
   const [workflow, setWorkflow] = useState<WorkflowVersion | null>(null);
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -717,31 +718,31 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-slate-300">{t('loading')}</div>
+        <div className="text-wm-blue/70">{t('loading')}</div>
       </div>
     );
   }
 
   if (error || !workflow) {
     return (
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+      <div className="bg-wm-white border border-wm-neutral rounded-xl p-6 shadow-sm">
         <div className="flex items-center gap-4 mb-4">
           <button 
             onClick={onBack}
-            className="text-slate-400 hover:text-white transition-colors"
+            className="text-wm-blue/60 hover:text-wm-blue transition-colors"
             aria-label={t('common.close')}
           >
             <Icons.ChevronLeft />
           </button>
-          <h1 className="text-xl font-semibold text-white">{t('workflowDetail.error')}</h1>
+          <h1 className="text-xl font-semibold text-wm-blue">{t('workflowDetail.error')}</h1>
         </div>
         <div className="space-y-4">
-          <p className="text-slate-300">{error || t('workflowDetail.notFound')}</p>
+          <p className="text-wm-blue/70">{error || t('workflowDetail.notFound')}</p>
           
           <div className="flex items-center gap-4 mt-4">
             <button
               onClick={onBack}
-              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+              className="px-4 py-2 bg-wm-accent hover:bg-wm-accent/90 text-wm-white rounded-lg transition-colors font-bold"
             >
               {t('dashboard.back')}
             </button>
@@ -763,29 +764,34 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
 
   return (
     <div className="space-y-6">
+      {/* Company Name Heading */}
+      {companyName && (
+        <h1 className="text-3xl font-bold text-wm-blue">{companyName}</h1>
+      )}
+      
       {/* Header */}
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+      <div className="bg-wm-white border border-wm-neutral rounded-xl p-6 shadow-sm">
         <div className="flex items-center gap-4 mb-4">
           <button 
             onClick={onBack}
-            className="text-slate-400 hover:text-white transition-colors"
+            className="text-wm-blue/60 hover:text-wm-blue transition-colors"
           >
             <Icons.ChevronLeft />
           </button>
           <div className="flex-1">
-            <h1 className="text-xl font-semibold text-white">
+            <h1 className="text-xl font-semibold text-wm-blue">
               {(workflow.versionTitle && workflow.versionTitle.trim()) || scenario?.title || t('workflowDetail.untitled')}
             </h1>
-            <p className="text-slate-400 text-sm mt-1">
+            <p className="text-wm-blue/60 text-sm mt-1">
               {t('workflowDetail.scenario')}: {scenario?.title || workflow.scenarioId}
             </p>
             {scenario?.description && (
-              <p className="text-slate-500 text-xs mt-1 line-clamp-2">
+              <p className="text-wm-blue/50 text-xs mt-1 line-clamp-2">
                 {scenario.description}
               </p>
             )}
           </div>
-          <div className="text-right text-sm text-slate-400">
+          <div className="text-right text-sm text-wm-blue/60">
             <div>{new Date(workflow.timestamp).toLocaleDateString()}</div>
             <div>{new Date(workflow.timestamp).toLocaleTimeString()}</div>
           </div>
@@ -794,24 +800,24 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
         {workflow.evaluationScore !== null && (
           <div className="flex items-center gap-2 text-sm">
             <Icons.Star />
-            <span className="text-slate-300">
-              {t('workflowDetail.score')}: <span className="font-semibold text-white">{workflow.evaluationScore}/10</span>
+            <span className="text-wm-blue/70">
+              {t('workflowDetail.score')}: <span className="font-semibold text-wm-blue">{workflow.evaluationScore}/10</span>
             </span>
           </div>
         )}
       </div>
 
       {/* Tab Navigation */}
-      <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
-        <div className="flex border-b border-slate-700">
+      <div className="bg-wm-white border border-wm-neutral rounded-xl overflow-hidden shadow-sm">
+        <div className="flex border-b border-wm-neutral">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
                 activeTab === tab.id
-                  ? 'bg-slate-700 text-white border-b-2 border-sky-400'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                  ? 'bg-wm-accent/10 text-wm-accent border-b-2 border-wm-accent'
+                  : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/30'
               }`}
             >
               <tab.icon />
@@ -827,65 +833,65 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
               {scenario ? (
                 <>
                   <div>
-                    <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.title')}</h3>
-                    <div className="bg-slate-100 p-4 rounded-lg border border-slate-300">
-                      <p className="text-slate-900">{scenario.title}</p>
+                    <h3 className="text-lg font-semibold text-wm-blue mb-3">{t('workflowDetail.title')}</h3>
+                    <div className="bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral">
+                      <p className="text-wm-blue">{scenario.title}</p>
                       {scenario.title_es && (
-                        <p className="text-slate-600 text-sm mt-2 italic">ES: {scenario.title_es}</p>
+                        <p className="text-wm-blue/60 text-sm mt-2 italic">ES: {scenario.title_es}</p>
                       )}
                     </div>
                   </div>
                   
                   <div>
-                    <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.problemDescription')}</h3>
-                    <div className="bg-slate-100 p-4 rounded-lg border border-slate-300">
-                      <p className="text-slate-900 whitespace-pre-wrap">{scenario.description}</p>
+                    <h3 className="text-lg font-semibold text-wm-blue mb-3">{t('workflowDetail.problemDescription')}</h3>
+                    <div className="bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral">
+                      <p className="text-wm-blue whitespace-pre-wrap">{scenario.description}</p>
                       {scenario.description_es && (
-                        <p className="text-slate-600 text-sm mt-3 italic whitespace-pre-wrap">ES: {scenario.description_es}</p>
+                        <p className="text-wm-blue/60 text-sm mt-3 italic whitespace-pre-wrap">ES: {scenario.description_es}</p>
                       )}
                     </div>
                   </div>
                   
                   <div>
-                    <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.target')}</h3>
-                    <div className="bg-slate-100 p-4 rounded-lg border border-slate-300">
-                      <p className="text-slate-900 whitespace-pre-wrap">{scenario.goal}</p>
+                    <h3 className="text-lg font-semibold text-wm-blue mb-3">{t('workflowDetail.target')}</h3>
+                    <div className="bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral">
+                      <p className="text-wm-blue whitespace-pre-wrap">{scenario.goal}</p>
                       {scenario.goal_es && (
-                        <p className="text-slate-600 text-sm mt-3 italic whitespace-pre-wrap">ES: {scenario.goal_es}</p>
+                        <p className="text-wm-blue/60 text-sm mt-3 italic whitespace-pre-wrap">ES: {scenario.goal_es}</p>
                       )}
                     </div>
                   </div>
                   
                   {/* Business Context - Lean Canvas Elements */}
                   <div>
-                    <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.businessContext')}</h3>
+                    <h3 className="text-lg font-semibold text-wm-blue mb-3">{t('workflowDetail.businessContext')}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="bg-slate-100 p-4 rounded-lg border border-slate-300">
-                        <h4 className="text-slate-900 font-medium mb-2 flex items-center gap-2">
+                      <div className="bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral">
+                        <h4 className="text-wm-blue font-medium mb-2 flex items-center gap-2">
                           <Icons.Star />
                           {t('workflowDetail.customerSegments')}
                         </h4>
-                        <p className="text-slate-800 text-sm">
+                        <p className="text-wm-blue/80 text-sm">
                           {inferCustomerSegments(scenario)}
                         </p>
                       </div>
                       
-                      <div className="bg-slate-100 p-4 rounded-lg border border-slate-300">
-                        <h4 className="text-slate-900 font-medium mb-2 flex items-center gap-2">
+                      <div className="bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral">
+                        <h4 className="text-wm-blue font-medium mb-2 flex items-center gap-2">
                           <Icons.Sparkles />
                           {t('workflowDetail.valueProposition')}
                         </h4>
-                        <p className="text-slate-800 text-sm">
+                        <p className="text-wm-blue/80 text-sm">
                           {extractValueProp(scenario.description)}
                         </p>
                       </div>
                       
-                      <div className="bg-slate-100 p-4 rounded-lg border border-slate-300">
-                        <h4 className="text-slate-900 font-medium mb-2 flex items-center gap-2">
+                      <div className="bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral">
+                        <h4 className="text-wm-blue font-medium mb-2 flex items-center gap-2">
                           <Icons.ChartBar />
                           {t('workflowDetail.keyMetrics')}
                         </h4>
-                        <p className="text-slate-800 text-sm">
+                        <p className="text-wm-blue/80 text-sm">
                           {suggestKeyMetrics(scenario, workflow?.evaluationScore || undefined)}
                         </p>
                       </div>
@@ -893,7 +899,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                   </div>
                 </>
               ) : (
-                <p className="text-slate-400 italic">{t('workflowDetail.noScenario')}</p>
+                <p className="text-wm-blue/50 italic">{t('workflowDetail.noScenario')}</p>
               )}
             </div>
           )}
@@ -901,9 +907,9 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
           {activeTab === 'workflow' && (
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.explanation')}</h3>
-                <div className="prose prose-slate max-w-none">
-                  <pre className="whitespace-pre-wrap text-slate-900 bg-slate-100 p-4 rounded-lg border border-slate-300">
+                <h3 className="text-lg font-semibold text-wm-blue mb-3">{t('workflowDetail.explanation')}</h3>
+                <div className="prose prose-wm-blue max-w-none">
+                  <pre className="whitespace-pre-wrap text-wm-blue bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral">
                     {workflow.workflowExplanation}
                   </pre>
                 </div>
@@ -912,11 +918,11 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
               {/* Current/Before Workflow */}
               {scenario?.currentWorkflowImage && (
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-3">Current Workflow</h3>
+                  <h3 className="text-lg font-semibold text-wm-blue mb-3">Current Workflow</h3>
                   <img 
                     src={scenario.currentWorkflowImage}
                     alt="Current workflow diagram"
-                    className="max-w-full h-auto rounded-lg border border-slate-600"
+                    className="max-w-full h-auto rounded-lg border border-wm-neutral"
                   />
                 </div>
               )}
@@ -924,8 +930,8 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
               {/* Mermaid Diagram */}
               {workflow.mermaidSvg && (
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.diagram')}</h3>
-                  <div className="bg-white p-4 rounded-lg border border-slate-600">
+                  <h3 className="text-lg font-semibold text-wm-blue mb-3">{t('workflowDetail.diagram')}</h3>
+                  <div className="bg-wm-white p-4 rounded-lg border border-wm-neutral">
                     <div dangerouslySetInnerHTML={{ __html: workflow.mermaidSvg }} />
                   </div>
                 </div>
@@ -934,11 +940,11 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
               {/* Proposed/After Workflow */}
               {workflow.imageBase64 && workflow.imageMimeType && (
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-3">Proposed Workflow</h3>
+                  <h3 className="text-lg font-semibold text-wm-blue mb-3">Proposed Workflow</h3>
                   <img 
                     src={`data:${workflow.imageMimeType};base64,${workflow.imageBase64}`}
                     alt="Proposed workflow diagram"
-                    className="max-w-full h-auto rounded-lg border border-slate-600"
+                    className="max-w-full h-auto rounded-lg border border-wm-neutral"
                   />
                 </div>
               )}
@@ -947,52 +953,52 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
 
           {activeTab === 'prd' && (
             <div>
-              <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.prdContent')}</h3>
+              <h3 className="text-lg font-semibold text-wm-blue mb-3">{t('workflowDetail.prdContent')}</h3>
               {workflow.prdMarkdown ? (
-                <div className="prose prose-slate max-w-none">
-                  <pre className="whitespace-pre-wrap text-slate-900 bg-slate-100 p-4 rounded-lg border border-slate-300">
+                <div className="prose prose-wm-blue max-w-none">
+                  <pre className="whitespace-pre-wrap text-wm-blue bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral">
                     {workflow.prdMarkdown}
                   </pre>
                 </div>
               ) : relatedPrd ? (
                 <div>
-                  <div className="text-sm text-slate-400 mb-2">
+                  <div className="text-sm text-wm-blue/60 mb-2">
                     Latest PRD from {new Date(relatedPrd.timestamp).toLocaleDateString()}:
                   </div>
-                  <div className="prose prose-slate max-w-none">
-                    <pre className="whitespace-pre-wrap text-slate-900 bg-slate-100 p-4 rounded-lg border border-slate-300">
+                  <div className="prose prose-wm-blue max-w-none">
+                    <pre className="whitespace-pre-wrap text-wm-blue bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral">
                       {relatedPrd.markdown}
                     </pre>
                   </div>
                 </div>
               ) : (
-                <p className="text-slate-400 italic">{t('workflowDetail.noPrd')}</p>
+                <p className="text-wm-blue/50 italic">{t('workflowDetail.noPrd')}</p>
               )}
             </div>
           )}
 
           {activeTab === 'pitch' && (
             <div>
-              <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.pitchContent')}</h3>
+              <h3 className="text-lg font-semibold text-wm-blue mb-3">{t('workflowDetail.pitchContent')}</h3>
               {workflow.pitchMarkdown ? (
-                <div className="prose prose-slate max-w-none">
-                  <pre className="whitespace-pre-wrap text-slate-900 bg-slate-100 p-4 rounded-lg border border-slate-300">
+                <div className="prose prose-wm-blue max-w-none">
+                  <pre className="whitespace-pre-wrap text-wm-blue bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral">
                     {workflow.pitchMarkdown}
                   </pre>
                 </div>
               ) : relatedPitch ? (
                 <div>
-                  <div className="text-sm text-slate-400 mb-2">
+                  <div className="text-sm text-wm-blue/60 mb-2">
                     Latest Elevator Pitch from {new Date(relatedPitch.timestamp).toLocaleDateString()}:
                   </div>
-                  <div className="prose prose-slate max-w-none">
-                    <pre className="whitespace-pre-wrap text-slate-900 bg-slate-100 p-4 rounded-lg border border-slate-300">
+                  <div className="prose prose-wm-blue max-w-none">
+                    <pre className="whitespace-pre-wrap text-wm-blue bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral">
                       {relatedPitch.markdown}
                     </pre>
                   </div>
                 </div>
               ) : (
-                <p className="text-slate-400 italic">{t('workflowDetail.noPitch')}</p>
+                <p className="text-wm-blue/50 italic">{t('workflowDetail.noPitch')}</p>
               )}
             </div>
           )}
@@ -1000,15 +1006,15 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
           {activeTab === 'evaluation' && (
             <div className="space-y-4">
               <div>
-                <h3 className="text-lg font-semibold text-white mb-3">{t('workflowDetail.evaluationDetails')}</h3>
+                <h3 className="text-lg font-semibold text-wm-blue mb-3">{t('workflowDetail.evaluationDetails')}</h3>
                 
                 {workflow.evaluationScore !== null ? (
-                  <div className="bg-slate-100 p-4 rounded-lg border border-slate-300 space-y-3">
+                  <div className="bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral space-y-3">
                     <div className="flex items-center gap-3 mb-4">
                       <Icons.Star />
-                      <span className="text-slate-700">
+                      <span className="text-wm-blue/70">
                         {t('workflowDetail.finalScore')}: 
-                        <span className="font-semibold text-slate-900 ml-2">{workflow.evaluationScore}/10</span>
+                        <span className="font-semibold text-wm-blue ml-2">{workflow.evaluationScore}/10</span>
                       </span>
                     </div>
                     
@@ -1032,51 +1038,51 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                       
                       return evaluationContent ? (
                         <div>
-                          <h4 className="text-slate-900 font-medium mb-2">{t('workflowDetail.feedback')}</h4>
-                          <div className="bg-white rounded-lg border border-slate-300 p-4 whitespace-pre-wrap">
-                            <pre className="text-slate-800 whitespace-pre-wrap leading-relaxed font-sans">
+                          <h4 className="text-wm-blue font-medium mb-2">{t('workflowDetail.feedback')}</h4>
+                          <div className="bg-wm-white rounded-lg border border-wm-neutral p-4 whitespace-pre-wrap">
+                            <pre className="text-wm-blue/80 whitespace-pre-wrap leading-relaxed font-sans">
                               {evaluationContent}
                             </pre>
                           </div>
                         </div>
                       ) : (
-                        <div className="text-slate-400 italic">No evaluation feedback available</div>
+                        <div className="text-wm-blue/50 italic">No evaluation feedback available</div>
                       );
                     })()}
                     
                     {workflow.sourceEvaluationId && (
-                      <div className="text-xs text-slate-600 mt-2">
+                      <div className="text-xs text-wm-blue/50 mt-2">
                         {t('workflowDetail.evaluationId')}: {workflow.sourceEvaluationId}
                       </div>
                     )}
                   </div>
                 ) : relatedEvaluations.length > 0 ? (
                   <div>
-                    <div className="text-sm text-slate-600 mb-4">All evaluations for this scenario:</div>
+                    <div className="text-sm text-wm-blue/60 mb-4">All evaluations for this scenario:</div>
                     <div className="space-y-4">
                       {relatedEvaluations.map((evaluation) => (
-                        <div key={evaluation.id} className="bg-slate-100 p-4 rounded-lg border border-slate-300 space-y-3">
+                        <div key={evaluation.id} className="bg-wm-neutral/20 p-4 rounded-lg border border-wm-neutral space-y-3">
                           <div className="flex items-center gap-3">
                             <Icons.Star />
-                            <span className="text-slate-700">
+                            <span className="text-wm-blue/70">
                               {t('workflowDetail.finalScore')}: 
-                              <span className="font-semibold text-slate-900 ml-2">{evaluation.score}/10</span>
+                              <span className="font-semibold text-wm-blue ml-2">{evaluation.score}/10</span>
                             </span>
-                            <span className="text-sm text-slate-500">
+                            <span className="text-sm text-wm-blue/50">
                               ({new Date(evaluation.timestamp).toLocaleDateString()})
                             </span>
                           </div>
                           
                           <div>
-                            <h4 className="text-slate-900 font-medium mb-2">{t('workflowDetail.feedback')}</h4>
-                            <div className="bg-white rounded-lg border border-slate-300 p-4">
-                              <p className="text-slate-800 whitespace-pre-wrap leading-relaxed">
+                            <h4 className="text-wm-blue font-medium mb-2">{t('workflowDetail.feedback')}</h4>
+                            <div className="bg-wm-white rounded-lg border border-wm-neutral p-4">
+                              <p className="text-wm-blue/80 whitespace-pre-wrap leading-relaxed">
                                 {evaluation.feedback}
                               </p>
                             </div>
                           </div>
                           
-                          <div className="text-xs text-slate-600">
+                          <div className="text-xs text-wm-blue/50">
                             {t('workflowDetail.evaluationId')}: {evaluation.id}
                           </div>
                         </div>
@@ -1084,7 +1090,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                     </div>
                   </div>
                 ) : (
-                  <p className="text-slate-400 italic">{t('workflowDetail.noEvaluation')}</p>
+                  <p className="text-wm-blue/50 italic">{t('workflowDetail.noEvaluation')}</p>
                 )}
               </div>
             </div>
@@ -1092,14 +1098,14 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
 
           {activeTab === 'canvas' && scenario && workflow && (
             <div className="space-y-6">
-              <div className="bg-white/5 p-6 rounded-lg">
+              <div className="bg-wm-blue/5 p-6 rounded-lg border border-wm-neutral">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-semibold text-white">{t('workflowDetail.canvas')}</h3>
+                  <h3 className="text-xl font-semibold text-wm-blue">{t('workflowDetail.canvas')}</h3>
                   <div className="flex items-center gap-2">
                     {!isCanvasEditing ? (
                       <button
                         onClick={startCanvasEditing}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+                        className="flex items-center gap-2 px-3 py-1.5 bg-wm-accent hover:bg-wm-accent/90 text-wm-white text-sm rounded-lg transition-colors font-bold"
                       >
                         <Icons.Edit />
                         {t('canvas.edit')}
@@ -1108,14 +1114,14 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                       <div className="flex items-center gap-2">
                         <button
                           onClick={saveCanvasChanges}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors"
+                          className="flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-wm-white text-sm rounded-lg transition-colors font-bold"
                         >
                           <Icons.Check />
                           {t('canvas.save')}
                         </button>
                         <button
                           onClick={cancelCanvasEditing}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded-lg transition-colors"
+                          className="flex items-center gap-2 px-3 py-1.5 bg-wm-neutral hover:bg-wm-neutral/80 text-wm-blue text-sm rounded-lg transition-colors font-bold"
                         >
                           <Icons.X />
                           {t('canvas.cancel')}
@@ -1134,33 +1140,33 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                     return (
                       <>
                         {/* Problem */}
-                        {renderCanvasSection('problem', canvas.problem, 'bg-red-500/20 border-red-500/30 text-red-200')}
+                        {renderCanvasSection('problem', canvas.problem, 'bg-red-600 border-red-700 text-white')}
 
                         {/* Solution */}
-                        {renderCanvasSection('solution', canvas.solution, 'bg-green-500/20 border-green-500/30 text-green-200')}
+                        {renderCanvasSection('solution', canvas.solution, 'bg-green-600 border-green-700 text-white')}
 
                         {/* Key Metrics */}
-                        {renderCanvasSection('keyMetrics', canvas.keyMetrics, 'bg-blue-500/20 border-blue-500/30 text-blue-200')}
+                        {renderCanvasSection('keyMetrics', canvas.keyMetrics, 'bg-blue-600 border-blue-700 text-white')}
 
                         {/* Unique Value Proposition */}
-                        {renderCanvasSection('uniqueValueProposition', canvas.uniqueValueProposition, 'bg-yellow-500/20 border-yellow-500/30 text-yellow-200')}
+                        {renderCanvasSection('uniqueValueProposition', canvas.uniqueValueProposition, 'bg-amber-600 border-amber-700 text-white')}
 
                         {/* Unfair Advantage */}
-                        {renderCanvasSection('unfairAdvantage', canvas.unfairAdvantage, 'bg-purple-500/20 border-purple-500/30 text-purple-200')}
+                        {renderCanvasSection('unfairAdvantage', canvas.unfairAdvantage, 'bg-purple-600 border-purple-700 text-white')}
 
                         {/* Second Row */}
                         
                         {/* Channels */}
-                        {renderCanvasSection('channels', canvas.channels, 'bg-indigo-500/20 border-indigo-500/30 text-indigo-200')}
+                        {renderCanvasSection('channels', canvas.channels, 'bg-indigo-600 border-indigo-700 text-white')}
 
                         {/* Customer Segments - spans 2 columns */}
-                        {renderCanvasSection('customerSegments', canvas.customerSegments, 'bg-orange-500/20 border-orange-500/30 text-orange-200', 'col-span-2')}
+                        {renderCanvasSection('customerSegments', canvas.customerSegments, 'bg-orange-600 border-orange-700 text-white', 'col-span-2')}
 
                         {/* Cost Structure */}
-                        {renderCanvasSection('costStructure', canvas.costStructure, 'bg-gray-500/20 border-gray-500/30 text-gray-200')}
+                        {renderCanvasSection('costStructure', canvas.costStructure, 'bg-slate-600 border-slate-700 text-white')}
 
                         {/* Revenue Streams */}
-                        {renderCanvasSection('revenueStreams', canvas.revenueStreams, 'bg-teal-500/20 border-teal-500/30 text-teal-200')}
+                        {renderCanvasSection('revenueStreams', canvas.revenueStreams, 'bg-teal-600 border-teal-700 text-white')}
                       </>
                     );
                   })()}
@@ -1171,39 +1177,39 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
 
           {activeTab === 'team' && (
             <div className="space-y-6">
-              <div className="bg-white/5 p-6 rounded-lg">
+              <div className="bg-wm-blue/5 p-6 rounded-lg border border-wm-neutral">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-semibold text-white">{t('workflowDetail.teamCollaboration')}</h3>
+                  <h3 className="text-xl font-semibold text-wm-blue">{t('workflowDetail.teamCollaboration')}</h3>
                 </div>
                 
                 <div className="space-y-4">
                   {/* Existing Team Members */}
                   {workflow?.team?.members && Object.keys(workflow.team.members).length > 0 && (
                     <div>
-                      <h4 className="text-lg font-medium text-white mb-3">{t('workflowDetail.teamMembers')}</h4>
+                      <h4 className="text-lg font-medium text-wm-blue mb-3">{t('workflowDetail.teamMembers')}</h4>
                       <div className="space-y-2">
                         {Object.entries(workflow.team.members).map(([memberId, member]) => (
                           <div
                             key={memberId}
-                            className="flex items-center justify-between p-3 bg-slate-800/60 rounded-lg border border-slate-700/30"
+                            className="flex items-center justify-between p-3 bg-wm-neutral/20 rounded-lg border border-wm-neutral"
                           >
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">
+                              <div className="w-8 h-8 bg-wm-accent rounded-full flex items-center justify-center text-wm-white text-sm font-semibold">
                                 {member.displayName ? member.displayName.charAt(0).toUpperCase() : member.email.charAt(0).toUpperCase()}
                               </div>
                               <div>
-                                <div className="text-sm font-medium text-white flex items-center gap-2">
+                                <div className="text-sm font-medium text-wm-blue flex items-center gap-2">
                                   {member.displayName || member.email}
                                   {member.userId === userId && (
-                                    <span className="px-2 py-0.5 text-xs bg-emerald-500/20 text-emerald-300 rounded-full">
+                                    <span className="px-2 py-0.5 text-xs bg-wm-accent/20 text-wm-accent rounded-full">
                                       Owner
                                     </span>
                                   )}
                                 </div>
                                 {member.displayName && (
-                                  <div className="text-xs text-slate-400">{member.email}</div>
+                                  <div className="text-xs text-wm-blue/60">{member.email}</div>
                                 )}
-                                <div className="text-xs text-slate-500">
+                                <div className="text-xs text-wm-blue/50">
                                   Added {new Date(member.addedAt).toLocaleDateString()}
                                 </div>
                               </div>
@@ -1211,7 +1217,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                             <div className="flex items-center gap-2">
                               {member.userId === userId ? (
                                 // Show owner badge instead of dropdown for workflow owner
-                                <span className="px-2 py-1 text-xs rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                <span className="px-2 py-1 text-xs rounded-full bg-wm-accent/20 text-wm-accent border border-wm-accent/30">
                                   OWNER
                                 </span>
                               ) : (
@@ -1223,8 +1229,8 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                                     disabled={updatingRoles.has(member.userId)}
                                     className={`px-2 py-1 text-xs rounded-full border focus:outline-none transition-colors ${
                                       member.role === 'EDITOR'
-                                        ? 'bg-orange-500/20 text-orange-300 border-orange-500/30 focus:border-orange-400'
-                                        : 'bg-blue-500/20 text-blue-300 border-blue-500/30 focus:border-blue-400'
+                                        ? 'bg-wm-yellow/20 text-wm-blue border-wm-yellow/30 focus:border-wm-yellow'
+                                        : 'bg-wm-accent/20 text-wm-accent border-wm-accent/30 focus:border-wm-accent'
                                     } ${updatingRoles.has(member.userId) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                     title={`Current role: ${member.role}. Click to change.`}
                                   >
@@ -1233,7 +1239,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                                   </select>
                                   {updatingRoles.has(member.userId) && (
                                     <div className="absolute right-1 top-1/2 transform -translate-y-1/2">
-                                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-wm-blue"></div>
                                     </div>
                                   )}
                                 </div>
@@ -1241,7 +1247,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                               {member.userId !== userId && (
                                 <button 
                                   onClick={() => handleRemoveTeamMember(member.userId)}
-                                  className="text-slate-400 hover:text-red-400 p-1"
+                                  className="text-wm-blue/60 hover:text-wm-pink p-1"
                                   title="Remove team member"
                                 >
                                   <Icons.X />
@@ -1256,7 +1262,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
 
                   {/* Invite New Collaborator */}
                   <div>
-                    <h4 className="text-lg font-medium text-white mb-3">{t('workflowDetail.inviteCollaborator')}</h4>
+                    <h4 className="text-lg font-medium text-wm-blue mb-3">{t('workflowDetail.inviteCollaborator')}</h4>
                     <div className="space-y-3">
                       <div className="relative">
                         {/* Hidden dummy input to fool browser autofill */}
@@ -1274,7 +1280,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                           onChange={handleEmailInputChange}
                           onFocus={handleInputFocus}
                           placeholder={t('workflowDetail.emailPlaceholder')}
-                          className="w-full bg-slate-900 text-white p-3 rounded-lg border border-slate-600 focus:border-emerald-500 focus:outline-none"
+                          className="w-full bg-wm-neutral/10 text-wm-blue p-3 rounded-lg border border-wm-neutral focus:border-wm-accent focus:outline-none placeholder:text-wm-blue/40"
                           autoComplete="new-password"
                           autoCorrect="off"
                           autoCapitalize="off"
@@ -1288,20 +1294,20 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                         {showUserDropdown && filteredUsers.length > 0 && (
                           <div 
                             ref={dropdownRef}
-                            className="absolute z-10 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+                            className="absolute z-10 w-full mt-1 bg-wm-white border border-wm-neutral rounded-lg shadow-lg max-h-48 overflow-y-auto"
                           >
                             {filteredUsers.map((userItem) => (
                               <div
                                 key={userItem.uid}
                                 onClick={() => handleUserSelect(userItem)}
-                                className="p-3 hover:bg-slate-700 cursor-pointer flex items-center space-x-3 border-b border-slate-700 last:border-b-0"
+                                className="p-3 hover:bg-wm-neutral/30 cursor-pointer flex items-center space-x-3 border-b border-wm-neutral last:border-b-0"
                               >
                                 <div className="flex-1">
-                                  <div className="text-sm font-medium text-white">
+                                  <div className="text-sm font-medium text-wm-blue">
                                     {userItem.displayName || userItem.email}
                                   </div>
                                   {userItem.displayName && (
-                                    <div className="text-xs text-slate-400">{userItem.email}</div>
+                                    <div className="text-xs text-wm-blue/60">{userItem.email}</div>
                                   )}
                                 </div>
                               </div>
@@ -1314,7 +1320,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                         <select
                           value={inviteRole}
                           onChange={(e) => setInviteRole(e.target.value as TeamRole)}
-                          className="flex-1 bg-slate-900 text-white p-3 rounded-lg border border-slate-600 focus:border-emerald-500 focus:outline-none"
+                          className="flex-1 bg-wm-neutral/10 text-wm-blue p-3 rounded-lg border border-wm-neutral focus:border-wm-accent focus:outline-none"
                         >
                           <option value="VIEWER">{t('workflowDetail.roles.viewer')}</option>
                           <option value="EDITOR">{t('workflowDetail.roles.editor')}</option>
@@ -1322,11 +1328,11 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                         <button
                           onClick={handleInviteTeamMember}
                           disabled={!inviteEmail.includes('@') || isInviting}
-                          className="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          className="px-6 py-3 bg-wm-accent text-wm-white rounded-lg hover:bg-wm-accent/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-bold"
                         >
                           {isInviting ? (
                             <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-wm-white"></div>
                               {t('workflowDetail.inviting')}
                             </>
                           ) : (
@@ -1340,11 +1346,11 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                     </div>
                   </div>
                   
-                  <div className="pt-4 border-t border-slate-700">
-                    <p className="text-sm text-slate-400 mb-2">
+                  <div className="pt-4 border-t border-wm-neutral">
+                    <p className="text-sm text-wm-blue/60 mb-2">
                       {t('workflowDetail.teamCollaborationDesc')}
                     </p>
-                    <div className="text-xs text-slate-500 space-y-1">
+                    <div className="text-xs text-wm-blue/50 space-y-1">
                       <div><strong>VIEWER:</strong> Can view the workflow but cannot make changes</div>
                       <div><strong>EDITOR:</strong> Can view and edit the workflow content</div>
                       <div><strong>OWNER:</strong> Full control over the workflow and team management</div>

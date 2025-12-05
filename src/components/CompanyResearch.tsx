@@ -4,7 +4,7 @@ import { useTranslation } from '../i18n';
 import RfpUploadField from './RfpUploadField';
 import type { CompanyResearch as CompanyInfo, CompanyResearchEntry, RelatedScenario, Company, Scenario, StoredEvaluationResult } from '../types';
 import ResearchSidebar from './ResearchSidebar';
-import { getScenarios, getCompanyResearch, saveCompanyResearch, getEvaluations, getLatestPrdForScenario, getLatestPitchForScenario, getWorkflowVersions } from '../services/firebaseService';
+import { getScenarios, getCompanyResearch, saveCompanyResearch, getEvaluations, getLatestPrdForScenario, getLatestPitchForScenario, getWorkflowVersions, deleteEvaluation, deleteWorkflowVersion } from '../services/firebaseService';
 import { researchCompany, findRelevantScenarios, generatePresentationWebsite } from '../services/geminiService';
 import { saveCompany, getCompany, updateCompanySelectedScenarios } from '../services/companyService';
 import { createWordPressPage, isWordPressConfigured } from '../services/wordpressService';
@@ -20,7 +20,7 @@ interface CompanyResearchProps {
   startWithNewForm?: boolean; // Start directly in research form view
   onSelectScenario?: (scenario: Scenario, companyName?: string) => void;
   onCreateScenario?: (context?: { companyId?: string; companyName?: string }) => void;
-  onViewWorkflow?: (workflowId: string) => void;
+  onViewWorkflow?: (workflowId: string, companyName?: string) => void;
 }
 
 type View = 'LIST' | 'RESEARCH';
@@ -464,6 +464,62 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
     );
   };
 
+  const handleDeleteRun = async (runId: string) => {
+    try {
+      // Find the run to get its details
+      let runToDelete: StoredEvaluationResult | null = null;
+      let scenarioIdForRun: string | null = null;
+      
+      for (const [scenarioId, runs] of Object.entries(scenarioRuns)) {
+        const run = runs.find(r => r.id === runId);
+        if (run) {
+          runToDelete = run;
+          scenarioIdForRun = scenarioId;
+          break;
+        }
+      }
+      
+      if (!runToDelete || !scenarioIdForRun) {
+        console.error('Run not found:', runId);
+        return;
+      }
+      
+      // Delete the evaluation (the run record)
+      try {
+        await deleteEvaluation(userId, runId);
+      } catch (evalError) {
+        // Evaluation might not exist if this is just a workflow version
+        console.log('No evaluation to delete or already deleted');
+      }
+      
+      // Also delete the workflow version if it exists
+      if (runToDelete.workflowVersionId) {
+        try {
+          await deleteWorkflowVersion(userId, scenarioIdForRun, runToDelete.workflowVersionId);
+        } catch (wvError) {
+          console.log('No workflow version to delete or already deleted');
+        }
+      }
+      
+      // Remove from local state
+      setScenarioRuns(prev => {
+        const next = { ...prev };
+        for (const scenarioId of Object.keys(next)) {
+          next[scenarioId] = next[scenarioId].filter(run => run.id !== runId);
+          if (next[scenarioId].length === 0) {
+            delete next[scenarioId];
+          }
+        }
+        return next;
+      });
+      // Also remove from selected runs if it was selected
+      setSelectedRunIds(prev => prev.filter(id => id !== runId));
+    } catch (error) {
+      console.error('Failed to delete scenario run:', error);
+      setError(t('common.errorDeleting'));
+    }
+  };
+
   const getPresentationPrompt = () => {
     if (!companyInfo || !selectedRunIds.length) return '';
 
@@ -823,81 +879,87 @@ The tone should be professional, consultative, and focused on digital transforma
         companyName={companyName || undefined}
       />
 
-      {/* Search Input */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-wm-blue">{t('research.title')}</h1>
-          <button
-            onClick={() => setView('LIST')}
-            className="text-wm-accent hover:text-wm-accent/80 transition-colors mt-2 flex items-center gap-1 font-bold"
-          >
-            <Icons.ChevronLeft className="w-4 h-4" />
-            {t('common.back')}
-          </button>
-        </div>
-        <button
-          onClick={() => setSelectedCompanyName(null)}
-          className="px-4 py-2 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2 font-bold"
-        >
-          {t('research.clearCompany')}
-        </button>
-      </div>
-
-      <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
-        <div className="space-y-4">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder={t('research.searchPlaceholder')}
-              className="flex-1 bg-wm-neutral/10 text-wm-blue p-3 rounded-lg border border-wm-neutral/30 focus:border-wm-accent focus:outline-none placeholder:text-wm-blue/40"
-            />
+      {/* Search Input - only show if no research exists yet */}
+      {!companyInfo?.currentResearch && (
+        <>
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-wm-blue">{t('research.title')}</h1>
+            </div>
             <button
-              onClick={handleResearch}
-              disabled={isLoadingResearch || !companyName.trim()}
-              className="px-6 py-3 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-bold"
+              onClick={() => setSelectedCompanyName(null)}
+              className="px-4 py-2 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2 font-bold"
             >
-              {isLoadingResearch ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  {t('research.searching')}
-                </>
-              ) : (
-                <>
-                  <Icons.Search className="w-5 h-5" />
-                  {t('common.search')}
-                </>
-              )}
+              {t('research.clearCompany')}
             </button>
           </div>
-          <RfpUploadField
-            companyId={currentCompanyId}
-            onUploadSuccess={async () => {
-              if (currentCompanyId) {
-                // Add a small delay to allow for RFP analysis to complete
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                // Then reload the company data to get the latest RFP analysis
-                await loadExistingResearch(currentCompanyId);
-                setRfpDocument(null);
-              }
-            }}
-            onUploadError={(error) => {
-              console.error('RFP upload failed:', error);
-              setError(t('research.rfpUploadError'));
-            }}
-            onDelete={async () => {
-              if (currentCompanyId) {
-                setRfpDocument(null);
-                // Add a small delay to allow for RFP deletion to complete
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                // Then reload the company data
-                await loadExistingResearch(currentCompanyId);
-              }
-            }}
-          />
-        </div>
+
+          <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={t('research.searchPlaceholder')}
+                  className="flex-1 bg-wm-neutral/10 text-wm-blue p-3 rounded-lg border border-wm-neutral/30 focus:border-wm-accent focus:outline-none placeholder:text-wm-blue/40"
+                />
+                <button
+                  onClick={handleResearch}
+                  disabled={isLoadingResearch || !companyName.trim()}
+                  className="px-6 py-3 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-bold"
+                >
+                  {isLoadingResearch ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      {t('research.searching')}
+                    </>
+                  ) : (
+                    <>
+                      <Icons.Search className="w-5 h-5" />
+                      {t('common.search')}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Company Name Header - show when research exists */}
+      {companyInfo?.name && (
+        <h1 className="text-3xl font-bold text-wm-blue">{companyInfo.name}</h1>
+      )}
+
+      {/* RFP Upload - always available */}
+      <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
+        <RfpUploadField
+          companyId={currentCompanyId}
+          onUploadSuccess={async () => {
+            if (currentCompanyId) {
+              // Add a small delay to allow for RFP analysis to complete
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              // Then reload the company data to get the latest RFP analysis
+              await loadExistingResearch(currentCompanyId);
+              setRfpDocument(null);
+            }
+          }}
+          onUploadError={(error) => {
+            console.error('RFP upload failed:', error);
+            setError(t('research.rfpUploadError'));
+          }}
+          onDelete={async () => {
+            if (currentCompanyId) {
+              setRfpDocument(null);
+              // Add a small delay to allow for RFP deletion to complete
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              // Then reload the company data
+              await loadExistingResearch(currentCompanyId);
+            }
+          }}
+        />
       </div>
 
       {error && (
@@ -924,6 +986,7 @@ The tone should be professional, consultative, and focused on digital transforma
               isCreatingWordPressPage={isCreatingWordPressPage}
               wordPressPageUrl={wordPressPageUrl}
               onCreatePresentation={handleCreatePresentation}
+              onDeleteRun={handleDeleteRun}
             />
 
             {/* RFP Analysis Section - Completely Separate */}

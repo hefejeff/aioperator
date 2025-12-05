@@ -80,6 +80,16 @@ export interface RfpAnalysis {
 }
 
 // Company Research types
+export interface UploadedDocument {
+  id: string;
+  content: string;
+  fileName: string;
+  uploadedAt: number;
+  url?: string;
+  path?: string;
+  analysis?: RfpAnalysis;
+}
+
 export interface CompanyResearchEntry {
   description: string;
   industry: string;
@@ -97,6 +107,7 @@ export interface CompanyResearchEntry {
     path?: string;
     analysis?: RfpAnalysis;
   };
+  documents?: UploadedDocument[]; // Support up to 5 documents
   aiRelevance: {
     current: string;
     potential: string;

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import type { User } from 'firebase/auth';
 import { auth } from '../services/firebaseInit';
 import { signOut } from 'firebase/auth';
@@ -32,6 +33,8 @@ interface HeaderProps {
 
 
 const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkflowDrawer }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -40,9 +43,13 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
   const { t, lang, setLang } = useTranslation();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  
+  // Helper to check if current path matches
+  const isActive = (path: string) => location.pathname.startsWith(path);
 
   const handleLogout = () => {
     signOut(auth).catch(error => console.error('Logout Error:', error));
+    navigate('/');
   };
 
   const handleMobileNav = (view: 'DASHBOARD' | 'TRAINING' | 'ADMIN' | 'RESEARCH') => {
@@ -106,13 +113,14 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
         <nav className="container mx-auto px-4 sm:px-6 md:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
-              <div 
-                className="flex items-center space-x-2 cursor-pointer"
+              <Link 
+                to="/dashboard"
+                className="flex items-center space-x-2"
                 onClick={() => onNavigate('DASHBOARD')}
               >
                 <img src={brainIcon} alt="Logo" className="h-8 w-8 object-contain drop-shadow" />
                 <span className="text-xl font-bold text-wm-white">{t('app.title')}</span>
-              </div>
+              </Link>
               
               {/* Workflow Drawer Button */}
               {user && onOpenWorkflowDrawer && (
@@ -129,23 +137,33 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
               <>
                 {/* Desktop Navigation */}
                 <div className="hidden md:flex items-center space-x-4">
-                  <button 
+                  <Link 
+                    to="/dashboard"
                     onClick={() => onNavigate('DASHBOARD')}
-                    className="px-3 py-2 rounded-md text-sm font-bold text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white transition-colors"
+                    className={`px-3 py-2 rounded-md text-sm font-bold transition-colors ${
+                      isActive('/dashboard') 
+                        ? 'bg-wm-white/20 text-wm-white' 
+                        : 'text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white'
+                    }`}
                   >
                     {t('nav.dashboard')}
-                  </button>
+                  </Link>
                   
                   {/* Library/Resources with icon */}
-                  <button 
+                  <Link 
+                    to="/training"
                     onClick={() => onNavigate('TRAINING')}
-                    className="p-2 rounded-md text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white transition-colors"
+                    className={`p-2 rounded-md transition-colors ${
+                      isActive('/training') 
+                        ? 'bg-wm-white/20 text-wm-white' 
+                        : 'text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white'
+                    }`}
                     title={t('nav.resources')}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                     </svg>
-                  </button>
+                  </Link>
                   
                   {/* Language selector */}
                   <select
@@ -180,16 +198,21 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                   
                   {/* Admin with settings icon */}
                   {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
-                    <button 
+                    <Link 
+                      to="/admin"
                       onClick={() => onNavigate('ADMIN')}
-                      className="p-2 rounded-md text-wm-yellow hover:bg-wm-yellow/20 hover:text-wm-yellow transition-colors border border-wm-yellow/40"
+                      className={`p-2 rounded-md transition-colors border border-wm-yellow/40 ${
+                        isActive('/admin')
+                          ? 'bg-wm-yellow/20 text-wm-yellow'
+                          : 'text-wm-yellow hover:bg-wm-yellow/20 hover:text-wm-yellow'
+                      }`}
                       title={t('nav.admin')}
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
-                    </button>
+                    </Link>
                   )}
                 </div>
                 {/* Mobile Hamburger Button */}
@@ -271,31 +294,51 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
             <button onClick={() => { setIsProfileOpen(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 rounded-md text-wm-white/80 hover:bg-wm-white/10">{t('header.editProfile')}</button>
           </div>
 
-        <button 
+        <Link 
+          to="/dashboard"
           onClick={() => handleMobileNav('DASHBOARD')}
-          className="w-full text-xl py-4 rounded-md font-bold text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white transition-colors"
+          className={`w-full text-xl py-4 rounded-md font-bold transition-colors ${
+            isActive('/dashboard')
+              ? 'bg-wm-white/20 text-wm-white'
+              : 'text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white'
+          }`}
         >
           {t('nav.dashboard')}
-        </button>
-        <button 
+        </Link>
+        <Link 
+          to="/training"
           onClick={() => handleMobileNav('TRAINING')}
-          className="w-full text-xl py-4 rounded-md font-bold text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white transition-colors"
+          className={`w-full text-xl py-4 rounded-md font-bold transition-colors ${
+            isActive('/training')
+              ? 'bg-wm-white/20 text-wm-white'
+              : 'text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white'
+          }`}
         >
           {t('nav.library')}
-        </button>
-        <button 
+        </Link>
+        <Link 
+          to="/research"
           onClick={() => handleMobileNav('RESEARCH')}
-          className="w-full text-xl py-4 rounded-md font-bold text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white transition-colors"
+          className={`w-full text-xl py-4 rounded-md font-bold transition-colors ${
+            isActive('/research')
+              ? 'bg-wm-white/20 text-wm-white'
+              : 'text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white'
+          }`}
         >
           {t('nav.research')}
-        </button>
+        </Link>
         {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
-          <button 
+          <Link 
+            to="/admin"
             onClick={() => handleMobileNav('ADMIN')}
-            className="w-full text-xl py-4 rounded-md font-bold text-wm-yellow hover:bg-wm-yellow/20 transition-colors border border-wm-yellow/40"
+            className={`w-full text-xl py-4 rounded-md font-bold transition-colors border border-wm-yellow/40 ${
+              isActive('/admin')
+                ? 'bg-wm-yellow/20 text-wm-yellow'
+                : 'text-wm-yellow hover:bg-wm-yellow/20'
+            }`}
           >
             {t('nav.admin')}
-          </button>
+          </Link>
         )}
                 
                 <div className="absolute bottom-8 left-0 right-0 px-4 space-y-3">
