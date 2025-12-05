@@ -4,9 +4,10 @@ import { useTranslation } from '../i18n';
 import RfpUploadField from './RfpUploadField';
 import type { CompanyResearch as CompanyInfo, CompanyResearchEntry, RelatedScenario, Company, Scenario, StoredEvaluationResult } from '../types';
 import ResearchSidebar from './ResearchSidebar';
-import { getScenarios, getCompanyResearch, saveCompanyResearch, getEvaluations } from '../services/firebaseService';
+import { getScenarios, getCompanyResearch, saveCompanyResearch, getEvaluations, getLatestPrdForScenario, getLatestPitchForScenario, getWorkflowVersions } from '../services/firebaseService';
 import { researchCompany, findRelevantScenarios, generatePresentationWebsite } from '../services/geminiService';
 import { saveCompany, getCompany, updateCompanySelectedScenarios } from '../services/companyService';
+import { createWordPressPage, isWordPressConfigured } from '../services/wordpressService';
 import { ref, onValue } from 'firebase/database';
 import { db } from '../services/firebaseInit';
 import ResearchListView from './ResearchListView';
@@ -17,7 +18,7 @@ interface CompanyResearchProps {
   userId: string;
   initialCompany?: string;  // This is now expected to be a company ID
   startWithNewForm?: boolean; // Start directly in research form view
-  onSelectScenario?: (scenario: Scenario) => void;
+  onSelectScenario?: (scenario: Scenario, companyName?: string) => void;
   onCreateScenario?: (context?: { companyId?: string; companyName?: string }) => void;
   onViewWorkflow?: (workflowId: string) => void;
 }
@@ -58,6 +59,8 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
   const [isGeneratingPresentation, setIsGeneratingPresentation] = useState(false);
   const [presentationUrl, setPresentationUrl] = useState<string | null>(null);
   const [showCopiedMessage, setShowCopiedMessage] = useState(false);
+  const [isCreatingWordPressPage, setIsCreatingWordPressPage] = useState(false);
+  const [wordPressPageUrl, setWordPressPageUrl] = useState<string | null>(null);
 
   const { t } = useTranslation();
 
@@ -213,8 +216,37 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
       try {
         const runEntries = await Promise.all(
           selectedScenarios.map(async scenarioId => {
-            const runs = await getEvaluations(userId, scenarioId);
-            return [scenarioId, runs] as [string, StoredEvaluationResult[]];
+            // Get evaluations (scored runs)
+            const evaluations = await getEvaluations(userId, scenarioId);
+            
+            // Get workflow versions (saved work)
+            const workflowVersions = await getWorkflowVersions(userId, scenarioId);
+            
+            // Get IDs of evaluations that already have workflow versions linked
+            const linkedWorkflowIds = new Set(
+              evaluations.map(e => e.workflowVersionId).filter(Boolean)
+            );
+            
+            // Convert workflow versions that don't have evaluations to a compatible format
+            const unlinkedWorkflows: StoredEvaluationResult[] = workflowVersions
+              .filter(wv => !linkedWorkflowIds.has(wv.id))
+              .map(wv => ({
+                id: wv.id,
+                userId: wv.userId,
+                scenarioId: scenarioId,
+                score: wv.evaluationScore || 0,
+                feedback: wv.evaluationFeedback || 'Saved workflow (not evaluated)',
+                workflowExplanation: wv.workflowExplanation,
+                imageUrl: wv.imageBase64 ? `data:${wv.imageMimeType || 'image/png'};base64,${wv.imageBase64}` : null,
+                workflowVersionId: wv.id,
+                timestamp: wv.timestamp,
+              }));
+            
+            // Combine evaluations with unlinked workflow versions
+            const combinedRuns = [...evaluations, ...unlinkedWorkflows]
+              .sort((a, b) => b.timestamp - a.timestamp);
+            
+            return [scenarioId, combinedRuns] as [string, StoredEvaluationResult[]];
           })
         );
 
@@ -423,7 +455,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
   }, [view, selectedCompanyName, initialCompany, currentCompanyId]);
 
   const handleScenarioSelect = (scenario: Scenario) => {
-    onSelectScenario?.(scenario);
+    onSelectScenario?.(scenario, companyName || selectedCompanyName || undefined);
   };
 
   const handleToggleRunId = (runId: string) => {
@@ -487,13 +519,144 @@ The tone should be professional, consultative, and focused on digital transforma
     setShowPromptModal(true);
   };
 
+  const handleGenerateDiviPrompt = async () => {
+    if (!companyInfo || !selectedRunIds.length) return;
+
+    // Check if WordPress is configured
+    if (!isWordPressConfigured()) {
+      setError('WordPress is not configured. Please set VITE_WP_BASE_URL, VITE_WP_USERNAME, and VITE_WP_APP_PASSWORD in your environment variables.');
+      return;
+    }
+
+    // Gather selected runs
+    const selectedRuns: { scenario: Scenario; run: StoredEvaluationResult }[] = [];
+    
+    Object.entries(scenarioRuns).forEach(([scenarioId, runs]) => {
+      runs.forEach(run => {
+        if (selectedRunIds.includes(run.id)) {
+          const scenario = scenarioCatalog[scenarioId];
+          if (scenario) {
+            selectedRuns.push({ scenario, run });
+          }
+        }
+      });
+    });
+
+    setIsCreatingWordPressPage(true);
+    setWordPressPageUrl(null);
+    setError(null);
+
+    try {
+      // Fetch PRD and Pitch data for each selected scenario
+      const solutionsWithDetails = await Promise.all(
+        selectedRuns.map(async ({ scenario, run }) => {
+          // Fetch PRD for this scenario
+          const prd = await getLatestPrdForScenario(userId, scenario.id);
+          // Fetch Pitch for this scenario
+          const pitch = await getLatestPitchForScenario(userId, scenario.id);
+          
+          // Extract key info from PRD markdown for summary
+          let prdSummary = '';
+          let prdKeyFeatures: string[] = [];
+          if (prd?.markdown) {
+            // Try to extract summary from PRD
+            const summaryMatch = prd.markdown.match(/##\s*(?:Executive\s+)?Summary[^\n]*\n+([\s\S]*?)(?=\n##|$)/i);
+            if (summaryMatch) {
+              prdSummary = summaryMatch[1].trim().substring(0, 300);
+            }
+            // Try to extract key features
+            const featuresMatch = prd.markdown.match(/##\s*(?:Key\s+)?Features[^\n]*\n+([\s\S]*?)(?=\n##|$)/i);
+            if (featuresMatch) {
+              const featureLines = featuresMatch[1].match(/[-*]\s+(.+)/g);
+              if (featureLines) {
+                prdKeyFeatures = featureLines.slice(0, 4).map(f => f.replace(/^[-*]\s+/, '').trim());
+              }
+            }
+          }
+          
+          // Extract value proposition summary from pitch
+          let valueProposition = '';
+          if (pitch?.markdown) {
+            // Try to extract value prop from pitch
+            const valueMatch = pitch.markdown.match(/##\s*Value\s+Proposition[^\n]*\n+([\s\S]*?)(?=\n##|$)/i);
+            if (valueMatch) {
+              valueProposition = valueMatch[1].trim().substring(0, 300);
+            } else {
+              // Fallback: use the first paragraph as value prop
+              const firstPara = pitch.markdown.match(/^(?:#+.*\n)?\n*([\s\S]*?)(?:\n\n|$)/);
+              if (firstPara) {
+                valueProposition = firstPara[1].trim().substring(0, 200);
+              }
+            }
+          }
+          
+          return {
+            title: scenario.title,
+            description: run.workflowExplanation || scenario.description || '',
+            impactScore: run.score || 0,
+            keyBenefit: scenario.goal || '',
+            // Summary extracts
+            prdSummary,
+            prdKeyFeatures,
+            valueProposition,
+            // Full content for tabs
+            problemStatement: scenario.description || scenario.goal || '',
+            prdMarkdown: prd?.markdown || '',
+            pitchMarkdown: pitch?.markdown || '',
+          };
+        })
+      );
+
+      const pageTitle = `AI Solutions for ${companyInfo.name}`;
+      const pageContent = {
+        companyName: companyInfo.name,
+        industry: companyInfo.currentResearch.industry,
+        description: companyInfo.currentResearch.description,
+        marketPosition: companyInfo.currentResearch.marketPosition,
+        // Additional company research fields
+        challenges: companyInfo.currentResearch.challenges,
+        opportunities: companyInfo.currentResearch.opportunities,
+        products: companyInfo.currentResearch.products,
+        competitors: companyInfo.currentResearch.competitors,
+        aiRelevance: companyInfo.currentResearch.aiRelevance,
+        // Solutions with full PRD and pitch content for tabs
+        solutions: solutionsWithDetails,
+      };
+
+      const response = await createWordPressPage(pageTitle, pageContent, 'draft');
+      setWordPressPageUrl(response.link);      // Open the page in a new tab
+      window.open(response.link, '_blank');
+    } catch (err) {
+      console.error('Failed to create WordPress page:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create WordPress page. Please try again.');
+    } finally {
+      setIsCreatingWordPressPage(false);
+    }
+  };
+
+  const fetchBrandingContext = async (): Promise<string> => {
+    try {
+      const response = await fetch('/branding/BRANDING.md');
+      if (!response.ok) {
+        console.warn('Failed to fetch branding guidelines');
+        return '';
+      }
+      return await response.text();
+    } catch (error) {
+      console.error('Error loading branding guidelines:', error);
+      return '';
+    }
+  };
+
   const handleCreatePresentation = async () => {
     const prompt = getPresentationPrompt();
     if (!prompt) return;
 
     setIsGeneratingPresentation(true);
     try {
-      const html = await generatePresentationWebsite(prompt);
+      const brandingContext = await fetchBrandingContext();
+      // Pass brandingContext as the 3rd argument, files (2nd arg) is undefined
+      const html = await generatePresentationWebsite(prompt, undefined, brandingContext);
       const blob = new Blob([html], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       setPresentationUrl(url);
@@ -555,10 +718,10 @@ The tone should be professional, consultative, and focused on digital transforma
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-semibold text-white">{t('research.researchList')}</h1>
+          <h1 className="text-2xl font-bold text-wm-blue">{t('research.researchList')}</h1>
           <button
             onClick={handleNewResearch}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+            className="px-4 py-2 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2 font-bold"
           >
             <Icons.Plus className="w-5 h-5" />
             {t('research.newResearch')}
@@ -663,10 +826,10 @@ The tone should be professional, consultative, and focused on digital transforma
       {/* Search Input */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-white">{t('research.title')}</h1>
+          <h1 className="text-2xl font-bold text-wm-blue">{t('research.title')}</h1>
           <button
             onClick={() => setView('LIST')}
-            className="text-blue-400 hover:text-blue-300 transition-colors mt-2 flex items-center gap-1"
+            className="text-wm-accent hover:text-wm-accent/80 transition-colors mt-2 flex items-center gap-1 font-bold"
           >
             <Icons.ChevronLeft className="w-4 h-4" />
             {t('common.back')}
@@ -674,13 +837,13 @@ The tone should be professional, consultative, and focused on digital transforma
         </div>
         <button
           onClick={() => setSelectedCompanyName(null)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+          className="px-4 py-2 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2 font-bold"
         >
           {t('research.clearCompany')}
         </button>
       </div>
 
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+      <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
         <div className="space-y-4">
           <div className="flex gap-2">
             <input
@@ -689,12 +852,12 @@ The tone should be professional, consultative, and focused on digital transforma
               onChange={(e) => setCompanyName(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder={t('research.searchPlaceholder')}
-              className="flex-1 bg-slate-900 text-white p-3 rounded-lg border border-slate-600 focus:border-emerald-500 focus:outline-none"
+              className="flex-1 bg-wm-neutral/10 text-wm-blue p-3 rounded-lg border border-wm-neutral/30 focus:border-wm-accent focus:outline-none placeholder:text-wm-blue/40"
             />
             <button
               onClick={handleResearch}
               disabled={isLoadingResearch || !companyName.trim()}
-              className="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-6 py-3 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-bold"
             >
               {isLoadingResearch ? (
                 <>
@@ -738,7 +901,7 @@ The tone should be professional, consultative, and focused on digital transforma
       </div>
 
       {error && (
-        <div className="bg-red-900/30 border-l-4 border-red-500 text-red-300 p-4 rounded-r-lg">
+        <div className="bg-wm-pink/10 border-l-4 border-wm-pink text-wm-pink p-4 rounded-r-lg">
           {error}
         </div>
       )}
@@ -757,6 +920,9 @@ The tone should be professional, consultative, and focused on digital transforma
               selectedRunIds={selectedRunIds}
               onToggleRunId={handleToggleRunId}
               onGeneratePrompt={handleGeneratePrompt}
+              onGenerateDiviPrompt={handleGenerateDiviPrompt}
+              isCreatingWordPressPage={isCreatingWordPressPage}
+              wordPressPageUrl={wordPressPageUrl}
               onCreatePresentation={handleCreatePresentation}
             />
 
@@ -766,13 +932,13 @@ The tone should be professional, consultative, and focused on digital transforma
                 analysis={companyInfo.currentResearch.rfpDocument.analysis} 
               />
             ) : companyInfo?.currentResearch?.rfpDocument && (
-              <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+              <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
                 <div className="animate-pulse flex space-x-4">
                   <div className="flex-1 space-y-4 py-1">
-                    <div className="h-4 bg-slate-700 rounded w-3/4"></div>
+                    <div className="h-4 bg-wm-neutral/40 rounded w-3/4"></div>
                     <div className="space-y-2">
-                      <div className="h-4 bg-slate-700 rounded"></div>
-                      <div className="h-4 bg-slate-700 rounded w-5/6"></div>
+                      <div className="h-4 bg-wm-neutral/40 rounded"></div>
+                      <div className="h-4 bg-wm-neutral/40 rounded w-5/6"></div>
                     </div>
                   </div>
                 </div>
@@ -785,19 +951,19 @@ The tone should be professional, consultative, and focused on digital transforma
       {/* Prompt Generation Modal */}
       {showPromptModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] flex flex-col">
+          <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] flex flex-col shadow-xl">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-white">Generated Presentation Prompt</h2>
+              <h2 className="text-xl font-bold text-wm-blue">Generated Presentation Prompt</h2>
               <button 
                 onClick={() => setShowPromptModal(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-wm-blue/50 hover:text-wm-blue"
               >
                 <Icons.X className="w-6 h-6" />
               </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto bg-slate-900 p-4 rounded-lg mb-4 border border-slate-700">
-              <pre className="whitespace-pre-wrap text-slate-300 font-mono text-sm">
+            <div className="flex-1 overflow-y-auto bg-wm-neutral/10 p-4 rounded-lg mb-4 border border-wm-neutral/30">
+              <pre className="whitespace-pre-wrap text-wm-blue/80 font-mono text-sm">
                 {generatedPrompt}
               </pre>
             </div>
@@ -805,7 +971,7 @@ The tone should be professional, consultative, and focused on digital transforma
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowPromptModal(false)}
-                className="px-4 py-2 text-slate-300 hover:text-white"
+                className="px-4 py-2 text-wm-blue/70 hover:text-wm-blue font-bold"
               >
                 Close
               </button>
@@ -814,7 +980,7 @@ The tone should be professional, consultative, and focused on digital transforma
                   navigator.clipboard.writeText(generatedPrompt);
                   // Optional: Show copied toast
                 }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                className="px-4 py-2 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 flex items-center gap-2 font-bold"
               >
                 <Icons.Copy className="w-4 h-4" />
                 Copy to Clipboard
@@ -827,18 +993,18 @@ The tone should be professional, consultative, and focused on digital transforma
       {/* Presentation Created Modal */}
       {presentationUrl && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-md w-full">
+          <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 max-w-md w-full shadow-xl">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-white">Presentation Created</h2>
+              <h2 className="text-xl font-bold text-wm-blue">Presentation Created</h2>
               <button 
                 onClick={() => setPresentationUrl(null)}
-                className="text-slate-400 hover:text-white"
+                className="text-wm-blue/50 hover:text-wm-blue"
               >
                 <Icons.X className="w-6 h-6" />
               </button>
             </div>
             
-            <p className="text-slate-300 mb-6">
+            <p className="text-wm-blue/70 mb-6">
               Your sales presentation website has been generated successfully.
             </p>
 
@@ -847,17 +1013,17 @@ The tone should be professional, consultative, and focused on digital transforma
                 href={presentationUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-center font-medium"
+                className="px-4 py-3 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 text-center font-bold"
               >
                 View Presentation
               </a>
               
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-700"></div>
+                  <div className="w-full border-t border-wm-neutral"></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-slate-800 text-slate-500">or continue editing</span>
+                  <span className="px-2 bg-white text-wm-blue/50">or continue editing</span>
                 </div>
               </div>
 
@@ -866,10 +1032,10 @@ The tone should be professional, consultative, and focused on digital transforma
                   href="https://aistudio.google.com/prompts/new_chat?model=gemini-1.5-pro"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`px-4 py-3 rounded-lg text-center flex items-center justify-center gap-2 transition-all w-full ${
+                  className={`px-4 py-3 rounded-lg text-center flex items-center justify-center gap-2 transition-all w-full font-bold ${
                     showCopiedMessage 
-                      ? 'bg-emerald-600 text-white hover:bg-emerald-700' 
-                      : 'bg-slate-700 text-white hover:bg-slate-600'
+                      ? 'bg-wm-accent text-white hover:bg-wm-accent/90' 
+                      : 'bg-wm-neutral/30 text-wm-blue hover:bg-wm-neutral/50'
                   }`}
                   onClick={() => {
                     const prompt = getPresentationPrompt();
@@ -881,9 +1047,9 @@ The tone should be professional, consultative, and focused on digital transforma
                   }}
                 >
                   <span>{showCopiedMessage ? 'Prompt Copied! Paste in AI Studio' : 'Continue in Google AI Studio'}</span>
-                  {!showCopiedMessage && <Icons.ExternalLink className="w-4 h-4 text-slate-400" />}
+                  {!showCopiedMessage && <Icons.ExternalLink className="w-4 h-4 text-wm-blue/50" />}
                 </a>
-                <p className="text-xs text-slate-500 text-center">
+                <p className="text-xs text-wm-blue/50 text-center">
                   The prompt will be automatically copied to your clipboard.
                 </p>
               </div>
@@ -895,10 +1061,10 @@ The tone should be professional, consultative, and focused on digital transforma
       {/* Loading Overlay */}
       {isGeneratingPresentation && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-8 flex flex-col items-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mb-4"></div>
-            <h3 className="text-xl font-semibold text-white mb-2">Creating Presentation...</h3>
-            <p className="text-slate-400">Generating website content with Gemini AI</p>
+          <div className="bg-white border border-wm-neutral/30 rounded-xl p-8 flex flex-col items-center shadow-xl">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-wm-accent mb-4"></div>
+            <h3 className="text-xl font-bold text-wm-blue mb-2">Creating Presentation...</h3>
+            <p className="text-wm-blue/60">Generating website content with Gemini AI</p>
           </div>
         </div>
       )}

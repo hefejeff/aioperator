@@ -91,7 +91,7 @@ const RfpUploadField: React.FC<RfpUploadFieldProps> = ({
 
   if (!companyId) {
     return (
-      <div className="text-slate-400 text-sm">
+      <div className="text-wm-blue/50 text-sm">
         {t('research.rfpNoCompany')}
       </div>
     );
@@ -100,28 +100,28 @@ const RfpUploadField: React.FC<RfpUploadFieldProps> = ({
   return (
     <div className="space-y-4">
       <div className="flex flex-col space-y-2">
-        <label className="text-sm font-medium text-slate-200">
+        <label className="text-sm font-bold text-wm-blue">
           {t('research.rfpUpload')}
         </label>
-        <div className="text-xs text-slate-400">
+        <div className="text-xs text-wm-blue/50">
           {t('research.rfpUploadHint')}
         </div>
       </div>
 
       {documentUrl ? (
-        <div className="flex items-center space-x-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+        <div className="flex items-center space-x-4 p-3 bg-wm-neutral/10 rounded-lg border border-wm-neutral/30">
           <a
             href={documentUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center space-x-2 text-sky-400 hover:text-sky-300 flex-1"
+            className="flex items-center space-x-2 text-wm-accent hover:text-wm-accent/80 flex-1"
           >
             <Icons.Document className="w-4 h-4" />
             <span>{t('research.rfpDocumentLink')}</span>
           </a>
           <button
             onClick={handleDelete}
-            className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded"
+            className="p-1.5 text-wm-pink hover:text-wm-pink/80 hover:bg-wm-pink/10 rounded"
             title={t('research.rfpDelete')}
           >
             <Icons.Trash className="w-4 h-4" />
@@ -134,25 +134,25 @@ const RfpUploadField: React.FC<RfpUploadFieldProps> = ({
             onChange={handleFileChange}
             accept=".pdf,.doc,.docx"
             disabled={isUploading}
-            className="block w-full text-sm text-slate-400
+            className="block w-full text-sm text-wm-blue/60
               file:mr-4 file:py-2 file:px-4
               file:rounded-lg file:border-0
-              file:text-sm file:font-medium
-              file:bg-slate-700 file:text-slate-200
-              file:cursor-pointer file:hover:bg-slate-600
+              file:text-sm file:font-bold
+              file:bg-wm-accent file:text-white
+              file:cursor-pointer file:hover:bg-wm-accent/90
               file:transition-colors
               disabled:opacity-50 disabled:cursor-not-allowed"
           />
           {isUploading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/50">
-              <Icons.Spinner className="w-5 h-5 animate-spin text-sky-400" />
+            <div className="absolute inset-0 flex items-center justify-center bg-white/50">
+              <Icons.Spinner className="w-5 h-5 animate-spin text-wm-accent" />
             </div>
           )}
         </div>
       )}
 
       {error && (
-        <div className="text-sm text-red-400">
+        <div className="text-sm text-wm-pink">
           {error}
         </div>
       )}

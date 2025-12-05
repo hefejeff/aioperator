@@ -70,10 +70,10 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
     checkN8N();
   }, []);
 
-  const clsBase = 'inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-60';
-  const clsIndigo = clsBase + ' bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-600 disabled:text-slate-300 text-white';
-  const clsTeal = clsBase + ' bg-teal-600 hover:bg-teal-500 disabled:bg-slate-600 disabled:text-slate-300 text-white';
-  const clsAmber = clsBase + ' bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:text-slate-300 text-white';
+  const clsBase = 'inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-60';
+  const clsIndigo = clsBase + ' bg-wm-accent hover:bg-wm-accent/90 disabled:bg-wm-neutral disabled:text-wm-blue/50 text-white';
+  const clsTeal = clsBase + ' bg-wm-pink hover:bg-wm-pink/90 disabled:bg-wm-neutral disabled:text-wm-blue/50 text-white';
+  const clsAmber = clsBase + ' bg-wm-yellow hover:bg-wm-yellow/90 disabled:bg-wm-neutral disabled:text-wm-blue/50 text-wm-blue';
   const now = Date.now();
   const isNew = (ts?: number | null) => !!ts && (now - ts) < 2 * 60 * 1000; // < 2 minutes
 
@@ -99,12 +99,12 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
 
   return (
     <>
-    <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-5" aria-labelledby="tools-docs-heading">
+    <section className="rounded-xl border border-wm-neutral/30 bg-white p-5 space-y-5 shadow-sm" aria-labelledby="tools-docs-heading">
       <header className="space-y-1">
-        <h3 id="tools-docs-heading" className="text-sm font-semibold tracking-wide text-slate-300 uppercase">
+        <h3 id="tools-docs-heading" className="text-sm font-bold tracking-wide text-wm-blue uppercase">
           {t('toolsDocs.title') || 'Tools & Docs'}
         </h3>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-wm-blue/60">
           {t('aiActions.subtitle').replace('{platform}', getPlatformDisplayNames())}
         </p>
       </header>
@@ -113,11 +113,11 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
         {/* Core Platforms Section */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-slate-400">
+            <label className="text-xs font-bold text-wm-blue/70">
               {'Platform'}
             </label>
             {!hasWorkflow && (
-              <span className="text-[11px] text-slate-400 ml-auto">
+              <span className="text-[11px] text-wm-blue/50 ml-auto">
                 {t('aiActions.needWorkflow')}
               </span>
             )}
@@ -134,13 +134,13 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
               };
                 
               return (
-                <label key={platform} className="flex items-center space-x-2 text-sm text-slate-200 cursor-pointer">
+                <label key={platform} className="flex items-center space-x-2 text-sm text-wm-blue cursor-pointer">
                   <input
                     type="radio"
                     name="platform"
                     checked={platforms[0] === platform}
                     onChange={() => handlePlatformSelect(platform as AIActionsPlatform)}
-                    className="border-slate-600 bg-slate-900 text-sky-600 focus:ring-sky-500 focus:ring-offset-slate-900"
+                    className="border-wm-neutral/50 bg-white text-wm-accent focus:ring-wm-accent focus:ring-offset-white"
                   />
                   <span>{getPlatformLabel(platform as AIActionsPlatform) || platform}</span>
                 </label>
@@ -150,9 +150,9 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
         </div>
 
         {/* Advanced Integration Section */}
-        <div className="space-y-3 pt-2 border-t border-slate-700">
+        <div className="space-y-3 pt-2 border-t border-wm-neutral/30">
           <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-slate-400">
+            <label className="text-xs font-bold text-wm-blue/70">
               {'Approach'}
             </label>
           </div>
@@ -172,7 +172,7 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
 
               if (availableApproaches.length === 0) {
                 return (
-                  <div className="col-span-2 text-center text-sm text-slate-400 py-2">
+                  <div className="col-span-2 text-center text-sm text-wm-blue/50 py-2">
                     Select a platform to see available approaches
                   </div>
                 );
@@ -198,12 +198,12 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
               return (
                 <>
                   {availableApproaches.map((approach) => (
-                    <label key={approach} className="flex items-center space-x-2 text-sm text-slate-200 cursor-pointer">
+                    <label key={approach} className="flex items-center space-x-2 text-sm text-wm-blue cursor-pointer">
                       <input
                         type="checkbox"
                         checked={approaches.includes(approach)}
                         onChange={() => handleApproachSelect(approach)}
-                        className="rounded border-slate-600 bg-slate-900 text-sky-600 focus:ring-sky-500 focus:ring-offset-slate-900"
+                        className="rounded border-wm-neutral/50 bg-white text-wm-accent focus:ring-wm-accent focus:ring-offset-white"
                       />
                       <span>{getApproachLabel(approach) || approach}</span>
                     </label>
@@ -246,14 +246,14 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
       </div>
 
       {(lastSavedPrdTs || lastSavedPitchTs) && (
-        <div className="mt-2 rounded-lg border border-sky-700/50 bg-gradient-to-br from-slate-900/70 via-slate-900/40 to-slate-800/60 p-4 shadow-inner ring-1 ring-sky-500/10">
+        <div className="mt-2 rounded-lg border border-wm-accent/30 bg-wm-accent/5 p-4 shadow-sm">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] font-semibold tracking-wider text-sky-300 flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-sky-400 animate-pulse" />
+            <p className="text-[11px] font-bold tracking-wider text-wm-accent flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-wm-accent animate-pulse" />
               {(t('toolsDocs.recent') || 'Recent Docs').toUpperCase()}
             </p>
             {(isNew(lastSavedPrdTs) || isNew(lastSavedPitchTs)) && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 animate-pulse">NEW</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-wm-yellow/30 text-wm-blue border border-wm-yellow/50 animate-pulse">NEW</span>
             )}
           </div>
           <div className="flex flex-wrap gap-2">
@@ -261,22 +261,22 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
               <button
                 type="button"
                 onClick={onOpenLastPrd}
-                className="group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-sky-700/30 hover:bg-sky-600/40 text-sky-300 hover:text-white text-xs font-medium border border-sky-600/40 hover:border-sky-500 transition"
+                className="group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-wm-accent/10 hover:bg-wm-accent/20 text-wm-accent hover:text-wm-accent text-xs font-bold border border-wm-accent/30 hover:border-wm-accent/50 transition"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"/><path d="M8 10h4v1H8v-1zm0 2h4v1H8v-1z"/></svg>
                 <span>{t('toolsDocs.latestPrd') || 'Latest PRD'}</span>
-                <span className="text-[9px] text-slate-400 group-hover:text-slate-300 ml-1">{new Date(lastSavedPrdTs).toLocaleTimeString()}</span>
+                <span className="text-[9px] text-wm-blue/50 group-hover:text-wm-blue/70 ml-1">{new Date(lastSavedPrdTs).toLocaleTimeString()}</span>
               </button>
             )}
             {lastSavedPitchTs && (
               <button
                 type="button"
                 onClick={onOpenLastPitch}
-                className="group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-violet-700/30 hover:bg-violet-600/40 text-violet-300 hover:text-white text-xs font-medium border border-violet-600/40 hover:border-violet-500 transition"
+                className="group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-wm-pink/10 hover:bg-wm-pink/20 text-wm-pink hover:text-wm-pink text-xs font-bold border border-wm-pink/30 hover:border-wm-pink/50 transition"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6"/></svg>
                 <span>{t('toolsDocs.latestPitch') || 'Latest Pitch'}</span>
-                <span className="text-[9px] text-slate-400 group-hover:text-slate-300 ml-1">{new Date(lastSavedPitchTs).toLocaleTimeString()}</span>
+                <span className="text-[9px] text-wm-blue/50 group-hover:text-wm-blue/70 ml-1">{new Date(lastSavedPitchTs).toLocaleTimeString()}</span>
               </button>
             )}
           </div>
@@ -289,10 +289,10 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
             type="button"
             onClick={onSaveVersion}
             disabled={!!savingVersion || !(canSaveVersion ?? hasWorkflow)}
-            className="inline-flex items-center gap-2 rounded-md bg-slate-700 hover:bg-slate-600 disabled:opacity-50 px-4 py-2 text-sm text-slate-200"
+            className="inline-flex items-center gap-2 rounded-md bg-wm-neutral/30 hover:bg-wm-neutral/50 disabled:opacity-50 px-4 py-2 text-sm font-bold text-wm-blue"
           >
             {savingVersion ? (
-              <div className="w-4 h-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-wm-blue/70 border-t-transparent rounded-full animate-spin" />
             ) : null}
             <span>Save Version</span>
           </button>
@@ -301,16 +301,16 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
     </section>
 
     {/* N8N Workflow Generator Section */}
-    <section className="mt-4 rounded-xl border border-slate-700 bg-slate-800/60 p-5 space-y-5" aria-labelledby="n8n-heading">
+    <section className="mt-4 rounded-xl border border-wm-neutral/30 bg-white p-5 space-y-5 shadow-sm" aria-labelledby="n8n-heading">
       <header className="space-y-1">
         <div className="flex items-center gap-2">
-          <h3 id="n8n-heading" className="text-sm font-semibold tracking-wide text-slate-300 uppercase">
+          <h3 id="n8n-heading" className="text-sm font-bold tracking-wide text-wm-blue uppercase">
             N8N Workflow Generator
           </h3>
           <div className="flex-1" />
           <img src="https://n8n.io/favicon.ico" alt="N8N Logo" className="h-5 w-5" />
         </div>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-wm-blue/60">
           Generate an N8N workflow from your automation scenario
         </p>
       </header>
@@ -332,16 +332,16 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
               }
             }}
             disabled={!hasWorkflow || isN8NGenerating}
-            className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
+            className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-bold transition-all duration-200 ${
               !hasWorkflow
-                ? 'bg-slate-700/50 text-slate-400 cursor-not-allowed'
+                ? 'bg-wm-neutral/30 text-wm-blue/40 cursor-not-allowed'
                 : isN8NGenerating
-                ? 'bg-orange-600/20 text-orange-400 cursor-wait'
-                : 'bg-orange-600/20 text-orange-400 hover:bg-orange-500/30 hover:text-orange-300'
+                ? 'bg-wm-pink/20 text-wm-pink cursor-wait'
+                : 'bg-wm-pink/20 text-wm-pink hover:bg-wm-pink/30 hover:text-wm-pink'
             } border ${
               !hasWorkflow
-                ? 'border-slate-600/50'
-                : 'border-orange-500/30 hover:border-orange-400/50'
+                ? 'border-wm-neutral/30'
+                : 'border-wm-pink/30 hover:border-wm-pink/50'
             }`}
           >
             {isN8NGenerating ? (
@@ -361,7 +361,7 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
         {n8nWorkflow && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium text-slate-300">Generated Workflow</h4>
+              <h4 className="text-sm font-bold text-wm-blue">Generated Workflow</h4>
               <div className="flex items-center gap-2">
                 {n8nAvailable && (
                   <button
@@ -391,7 +391,7 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
                       }
                     }}
                     disabled={isPushingToN8N}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-orange-300 bg-orange-900/20 hover:bg-orange-900/30 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-wm-pink bg-wm-pink/10 hover:bg-wm-pink/20 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isPushingToN8N ? (
                       <>
@@ -411,7 +411,7 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
                   onClick={() => {
                     navigator.clipboard.writeText(n8nWorkflow);
                   }}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-700/50 hover:bg-slate-600/50 rounded-md transition-colors"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-wm-blue bg-wm-neutral/30 hover:bg-wm-neutral/50 rounded-md transition-colors"
                 >
                   <Icons.Document />
                   <span>Copy</span>
@@ -422,7 +422,7 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
                     setN8nWorkflow('');
                     setPushResult(null);
                   }}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-300 bg-red-900/20 hover:bg-red-900/30 rounded-md transition-colors"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-wm-pink bg-wm-pink/10 hover:bg-wm-pink/20 rounded-md transition-colors"
                 >
                   <Icons.Trash />
                   <span>Clear</span>
@@ -431,8 +431,8 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
             </div>
             
             {pushResult && (
-              <div className={`p-3 rounded-lg ${pushResult.success ? 'bg-green-900/20 border border-green-500/30' : 'bg-red-900/20 border border-red-500/30'}`}>
-                <p className={`text-sm ${pushResult.success ? 'text-green-300' : 'text-red-300'}`}>
+              <div className={`p-3 rounded-lg ${pushResult.success ? 'bg-green-50 border border-green-300' : 'bg-wm-pink/10 border border-wm-pink/30'}`}>
+                <p className={`text-sm font-bold ${pushResult.success ? 'text-green-700' : 'text-wm-pink'}`}>
                   {pushResult.success ? (
                     <>
                       ✓ Workflow downloaded! Import it in n8n: 
@@ -440,7 +440,7 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
                         href={pushResult.url} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="ml-1 underline hover:text-green-200"
+                        className="ml-1 underline hover:text-green-600"
                       >
                         Open n8n →
                       </a>
@@ -455,17 +455,17 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
             )}
             
             <div className="relative group">
-              <pre className="overflow-x-auto p-4 rounded-lg bg-slate-900/50 border border-slate-700/50 text-sm text-slate-300">
+              <pre className="overflow-x-auto p-4 rounded-lg bg-wm-blue/5 border border-wm-neutral/30 text-sm text-wm-blue">
                 <code>{n8nWorkflow}</code>
               </pre>
-              <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-slate-900/90 to-transparent pointer-events-none" />
+              <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-white/90 to-transparent pointer-events-none" />
             </div>
           </div>
         )}
 
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-slate-900/50 border border-orange-500/20">
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-wm-neutral/10 border border-wm-neutral/30">
           <Icons.Beaker />
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-wm-blue/60">
             Download your workflow as JSON and import it into n8n: Click "Workflows" → "Import from File" → Select the downloaded JSON file.
           </p>
         </div>

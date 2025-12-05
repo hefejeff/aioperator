@@ -198,7 +198,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
   if (error) {
     return (
       <div className="animate-fade-in-up">
-        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400">
+        <div className="bg-wm-pink/10 border border-wm-pink/20 rounded-lg p-4 text-wm-pink">
           <p>{error}</p>
         </div>
       </div>
@@ -206,7 +206,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ user, onStartTraining, on
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <div className="min-h-screen bg-wm-white">
       {/* Create Scenario Modal */}
       {showCreateModal && (
         <CreateScenarioForm

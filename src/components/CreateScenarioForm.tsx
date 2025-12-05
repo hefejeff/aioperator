@@ -259,20 +259,20 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
       onClick={onClose}
     >
       <div 
-        className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-6 w-full max-w-2xl text-left relative animate-fade-in-up overflow-y-auto max-h-[90vh]"
+        className="bg-white border border-wm-neutral/30 rounded-xl shadow-2xl p-6 w-full max-w-2xl text-left relative animate-fade-in-up overflow-y-auto max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-2xl font-bold text-white mb-4">{t('form.workflow.title')}</h2>
+        <h2 className="text-2xl font-bold text-wm-blue mb-4">{t('form.workflow.title')}</h2>
         <form onSubmit={handleSave} className="space-y-5">
           {/* Domain */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-slate-300">{t('form.domain')}</label>
+              <label className="block text-sm font-bold text-wm-blue">{t('form.domain')}</label>
               <button
                 type="button"
                 onClick={handleGenerateExample}
                 disabled={!domain || generatingExample}
-                className="text-xs px-2 py-1 rounded-md bg-sky-700 text-white disabled:opacity-40 hover:bg-sky-600 transition-colors"
+                className="text-xs px-2 py-1 rounded-md bg-wm-accent text-white disabled:opacity-40 hover:bg-wm-accent/90 transition-colors font-bold"
               >
                 {generatingExample ? t('loading') : t('aiExample.button')}
               </button>
@@ -280,7 +280,7 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
             <select
               value={domain}
               onChange={(e) => { setDomain(e.target.value); }}
-              className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
+              className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow"
             >
               <option value="">{t('form.selectDomain')}</option>
               {translatedDomainOptions.map(opt => (
@@ -290,54 +290,54 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
           </div>
           {/* Workflow Title */}
           <div>
-            <label htmlFor="title" className="block text-sm font-medium text-slate-300 mb-1">{t('form.title')}</label>
+            <label htmlFor="title" className="block text-sm font-bold text-wm-blue mb-1">{t('form.title')}</label>
             <input
               id="title"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={t('form.titlePlaceholder')}
-              className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
+              className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow placeholder:text-wm-blue/40"
             />
           </div>
           {/* Your Problem (Description) */}
           <div>
-            <label htmlFor="description" className="block text-sm font-medium text-slate-300 mb-1">{t('form.description')}</label>
+            <label htmlFor="description" className="block text-sm font-bold text-wm-blue mb-1">{t('form.description')}</label>
             <textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
               placeholder={t('form.descriptionPlaceholder')}
-              className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
+              className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow placeholder:text-wm-blue/40"
             />
           </div>
           {/* Target (Goal) */}
           <div>
-            <label htmlFor="goal" className="block text-sm font-medium text-slate-300 mb-1">{t('form.goal')}</label>
+            <label htmlFor="goal" className="block text-sm font-bold text-wm-blue mb-1">{t('form.goal')}</label>
             <textarea
               id="goal"
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               rows={4}
               placeholder={t('form.goalPlaceholder')}
-              className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-slate-200 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow"
+              className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow placeholder:text-wm-blue/40"
             />
           </div>
 
           {/* Current Workflow Image Upload */}
-          <div className="mt-4 pt-4 border-t border-slate-700">
+          <div className="mt-4 pt-4 border-t border-wm-neutral/30">
             <div className="mb-2">
-              <label className="block text-sm font-medium text-slate-300">
+              <label className="block text-sm font-bold text-wm-blue">
                 {t('form.currentWorkflow')}
-                <span className="ml-1 text-slate-500">({t('form.optional')})</span>
+                <span className="ml-1 text-wm-blue/50">({t('form.optional')})</span>
               </label>
-              <p className="text-sm text-slate-400 mt-1">{t('form.uploadImage')}</p>
+              <p className="text-sm text-wm-blue/60 mt-1">{t('form.uploadImage')}</p>
             </div>
             
             <div className="mt-3">
               {previewUrl ? (
-                <div className="relative rounded-lg border-2 border-sky-500/50 bg-sky-500/10 p-4">
+                <div className="relative rounded-lg border-2 border-wm-accent/50 bg-wm-accent/10 p-4">
                   <img
                     src={previewUrl}
                     alt="Current workflow preview"
@@ -349,7 +349,7 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
                       setCurrentWorkflowImage(null);
                       setPreviewUrl(null);
                     }}
-                    className="absolute top-2 right-2 p-1 bg-red-500/90 hover:bg-red-600 text-white rounded-full transition-colors"
+                    className="absolute top-2 right-2 p-1 bg-wm-pink/90 hover:bg-wm-pink text-white rounded-full transition-colors"
                     title={t('form.removeImage')}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -360,14 +360,14 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
               ) : (
                 <label
                   htmlFor="workflow-image"
-                  className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-600 hover:border-slate-500 rounded-lg cursor-pointer bg-slate-900/50 hover:bg-slate-800/50 transition-all duration-200"
+                  className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-wm-neutral/50 hover:border-wm-accent rounded-lg cursor-pointer bg-wm-neutral/10 hover:bg-wm-neutral/20 transition-all duration-200"
                 >
                   <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <svg className="w-8 h-8 mb-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <svg className="w-8 h-8 mb-3 text-wm-blue/40" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
-                    <p className="mb-2 text-sm text-slate-400">{t('form.dragToUpload')}</p>
-                    <p className="text-xs text-slate-500">{t('form.imageTypes')}</p>
+                    <p className="mb-2 text-sm text-wm-blue/60">{t('form.dragToUpload')}</p>
+                    <p className="text-xs text-wm-blue/40">{t('form.imageTypes')}</p>
                   </div>
                   <input
                     id="workflow-image"
@@ -384,27 +384,27 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
           <div>
             {domain && (
               <div className="mt-2">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-700 text-emerald-100">{domain}</span>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-wm-accent/20 text-wm-accent">{domain}</span>
               </div>
             )}
           </div>
           
           {error && (
-            <p className="text-sm text-red-400 bg-red-900/30 p-3 rounded-lg text-center">{error}</p>
+            <p className="text-sm text-wm-pink bg-wm-pink/10 p-3 rounded-lg text-center font-bold">{error}</p>
           )}
 
           <div className="flex items-center justify-end gap-4 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-700 transition-colors"
+              className="px-4 py-2 rounded-md text-sm font-bold text-wm-blue/60 hover:bg-wm-neutral/20 transition-colors"
             >
               {t('common.cancel')}
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="flex items-center justify-center px-6 py-2 bg-sky-600 text-white font-bold rounded-lg hover:bg-sky-500 transition-colors disabled:bg-slate-700 disabled:cursor-not-allowed"
+              className="flex items-center justify-center px-6 py-2 bg-wm-accent text-white font-bold rounded-lg hover:bg-wm-accent/90 transition-colors disabled:bg-wm-neutral disabled:cursor-not-allowed"
             >
               {isLoading ? <LoadingSpinner /> : t('common.save')}
             </button>
@@ -412,7 +412,7 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
         </form>
         <button 
             onClick={onClose}
-            className="absolute top-3 right-3 text-slate-500 hover:text-slate-300 transition-colors"
+            className="absolute top-3 right-3 text-wm-blue/40 hover:text-wm-blue/60 transition-colors"
                 aria-label={t('common.close')}
         >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

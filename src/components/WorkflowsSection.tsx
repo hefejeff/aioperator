@@ -67,11 +67,11 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
   };
 
   return (
-    <div className="bg-gradient-to-br from-slate-700/60 to-slate-800/60 rounded-2xl p-6 border-2 border-slate-600/60 shadow-2xl backdrop-blur-md hover:shadow-sky-500/10 transition-shadow duration-300">
+    <div className="bg-wm-white rounded-2xl p-6 border border-wm-neutral shadow-lg">
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <svg className="w-5 h-5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <h2 className="text-lg font-bold text-wm-blue flex items-center gap-2">
+            <svg className="w-5 h-5 text-wm-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
             {t('dashboard.workflows')}
@@ -80,7 +80,7 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
           <div className="flex items-center gap-1.5">
             <button
               onClick={onCreateScenario}
-              className="p-1.5 bg-sky-600/80 text-white rounded-md hover:bg-sky-500 transition-colors"
+              className="p-1.5 bg-wm-accent text-wm-white rounded-md hover:bg-wm-accent/90 transition-colors"
               title={t('dashboard.newWorkflow')}
             >
               <Icons.Plus className="w-4 h-4" />
@@ -90,8 +90,8 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
               onClick={onToggleStarred}
               className={`p-1.5 rounded-md transition-all duration-200 ${
                 showStarredOnly
-                  ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/40'
-                  : 'bg-slate-600/60 text-slate-400 border border-slate-500/40 hover:bg-slate-500/60'
+                  ? 'bg-wm-yellow/20 text-wm-blue border border-wm-yellow/40'
+                  : 'bg-wm-neutral/40 text-wm-blue/60 border border-wm-neutral hover:bg-wm-neutral/60'
               }`}
               title={showStarredOnly ? t('dashboard.starred') : t('dashboard.all')}
             >
@@ -107,12 +107,12 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
             </button>
           </div>
         </div>
-        <p className="text-xs text-slate-400">{t('dashboard.workflowsSubtitle')}</p>
+        <p className="text-xs text-wm-blue/50">{t('dashboard.workflowsSubtitle')}</p>
       </div>
 
       {/* Workflow Cards List */}
       {filteredScenarios.length > 0 ? (
-        <div className="space-y-3 animate-in fade-in duration-500 max-h-[calc(100vh-16rem)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-800/20">
+        <div className="space-y-3 animate-in fade-in duration-500 max-h-[calc(100vh-16rem)] overflow-y-auto pr-2">
           {filteredScenarios.map((scenario, index) => {
             const isExpanded = expandedScenarios.has(scenario.id);
             const isFavorited = !!scenario.favoritedBy?.[user.uid];
@@ -124,21 +124,21 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
                 className="animate-in slide-in-from-bottom duration-300"
                 style={{ animationDelay: `${index * 100}ms` }}
               >
-                <div className="bg-slate-900/60 border-2 border-slate-600/50 rounded-xl p-3 backdrop-blur-sm hover:border-sky-500/40 transition-all duration-200 hover:shadow-lg">
+                <div className="bg-wm-neutral/20 border border-wm-neutral rounded-xl p-3 hover:border-wm-accent/40 transition-all duration-200 hover:shadow-lg">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => toggleScenarioExpansion(scenario.id)}
-                      className="flex-1 flex items-center justify-between gap-2 text-left px-3 py-2 rounded-lg hover:bg-slate-700/40 transition-colors min-w-0"
+                      className="flex-1 flex items-center justify-between gap-2 text-left px-3 py-2 rounded-lg hover:bg-wm-neutral/40 transition-colors min-w-0"
                     >
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-semibold text-white truncate">{scenario.title}</h3>
-                        <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
+                        <h3 className="text-sm font-bold text-wm-blue truncate">{scenario.title}</h3>
+                        <div className="flex items-center gap-2 text-xs text-wm-blue/60 mt-1">
                           <span className="uppercase tracking-wider font-medium whitespace-nowrap">{workflowCount} {t('dashboard.workflows')}</span>
-                          {scenario.domain && <span className="text-sky-400 truncate">• {scenario.domain}</span>}
+                          {scenario.domain && <span className="text-wm-accent truncate">• {scenario.domain}</span>}
                         </div>
                       </div>
-                      <span className={`flex-shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : '-rotate-90'}`}>
+                      <span className={`flex-shrink-0 text-wm-blue/60 transition-transform ${isExpanded ? 'rotate-90' : '-rotate-90'}`}>
                         <Icons.ChevronLeft className="w-4 h-4" />
                       </span>
                     </button>
@@ -151,8 +151,8 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
                         }}
                         className={`flex-shrink-0 p-2 rounded-lg transition-all duration-200 ${
                           isFavorited
-                            ? 'bg-yellow-500/20 text-yellow-300 border-2 border-yellow-500/40 shadow-lg shadow-yellow-500/20'
-                            : 'bg-slate-700/60 text-slate-400 border-2 border-slate-600/60 hover:bg-slate-600/60 hover:text-yellow-300 hover:border-yellow-500/40'
+                            ? 'bg-wm-yellow/20 text-wm-blue border border-wm-yellow/40 shadow-lg'
+                            : 'bg-wm-neutral/40 text-wm-blue/60 border border-wm-neutral hover:bg-wm-neutral/60 hover:text-wm-blue hover:border-wm-yellow/40'
                         }`}
                         aria-label={isFavorited ? t('dashboard.unfavorite') : t('dashboard.favorite')}
                       >
@@ -170,7 +170,7 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
                   </div>
 
                   {isExpanded && (
-                    <div className="mt-3 border-t border-slate-600/50 pt-3 max-h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-800/20">
+                    <div className="mt-3 border-t border-wm-neutral pt-3 max-h-96 overflow-y-auto">
                       <WorkflowCard
                         scenario={scenario}
                         workflowVersions={workflowsByScenario[scenario.id] || []}
@@ -193,18 +193,18 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
         <div className="text-center py-16 animate-in fade-in duration-700">
           <div className="relative max-w-xs mx-auto">            
             {/* Icon container */}
-            <div className="relative w-20 h-20 bg-gradient-to-br from-slate-600/60 to-slate-700/60 backdrop-blur-sm rounded-2xl flex items-center justify-center mx-auto mb-6 border-2 border-slate-500/60 shadow-xl">
-              <div className="text-slate-300">
+            <div className="relative w-20 h-20 bg-wm-neutral/30 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-wm-neutral shadow-lg">
+              <div className="text-wm-blue/40">
                 <Icons.LightBulb className="w-8 h-8" />
               </div>
             </div>
             
             {/* Content */}
             <div className="relative">
-              <h3 className="text-lg font-bold text-white mb-3">
+              <h3 className="text-lg font-bold text-wm-blue mb-3">
                 {showStarredOnly ? t('dashboard.noStarred') : t('dashboard.noWorkflows')}
               </h3>
-              <p className="text-sm text-slate-300 mb-8 max-w-xs mx-auto leading-relaxed">
+              <p className="text-sm text-wm-blue/60 mb-8 max-w-xs mx-auto leading-relaxed">
                 {showStarredOnly 
                   ? t('dashboard.noStarredDesc')
                   : t('dashboard.noWorkflowsDesc')
@@ -213,7 +213,7 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
               {!showStarredOnly && (
                 <button
                   onClick={onCreateScenario}
-                  className="px-6 py-3 bg-gradient-to-r from-sky-600 to-sky-500 text-white text-sm font-semibold rounded-xl hover:from-sky-500 hover:to-sky-400 transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-sky-500/30"
+                  className="px-6 py-3 bg-wm-accent text-wm-white text-sm font-bold rounded-xl hover:bg-wm-accent/90 transition-all duration-300 shadow-lg hover:shadow-xl"
                 >
                   <span className="flex items-center gap-2">
                     <Icons.Plus className="w-4 h-4" />

@@ -17,6 +17,7 @@ interface OperatorConsoleProps {
   user: User;
   onEvaluationCompleted: (scenarioId: string, newScore: number) => void;
   onViewWorkflow?: (workflowId: string) => void;
+  companyName?: string;
 }
 
 export const LoadingSpinner: React.FC = () => (
@@ -27,7 +28,7 @@ export const LoadingSpinner: React.FC = () => (
     </div>
 );
 
-const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, user, onEvaluationCompleted: _onEvaluationCompleted, onViewWorkflow }) => {
+const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, user, onEvaluationCompleted: _onEvaluationCompleted, onViewWorkflow, companyName }) => {
   const [workflowExplanation, setWorkflowExplanation] = useState('');
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -921,23 +922,38 @@ Return only the steps.`;
       <div className="flex flex-col lg:flex-row gap-8 max-w-7xl mx-auto animate-fade-in">
         {/* Main Console */}
         <div className="w-full lg:flex-1 min-w-0">
-          <button onClick={onBack} className="flex items-center space-x-2 text-sm text-sky-400 hover:text-sky-300 mb-6 transition-colors">
+          {/* Company Context Banner */}
+          {companyName && (
+            <div className="mb-4 px-4 py-3 bg-wm-accent/10 border border-wm-accent/30 rounded-lg flex items-center gap-3">
+              <div className="w-8 h-8 bg-wm-accent/20 rounded-full flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-wm-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-wm-accent/70 uppercase tracking-wide">Running scenario for</p>
+                <p className="text-lg font-bold text-wm-accent">{companyName}</p>
+              </div>
+            </div>
+          )}
+
+          <button onClick={onBack} className="flex items-center space-x-2 text-sm text-wm-accent hover:text-wm-accent/80 mb-6 transition-colors font-bold">
             <Icons.ChevronLeft />
             <span>{t('operator.back')}</span>
           </button>
 
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mb-6">
-            <h1 className="text-2xl font-bold text-white mb-2">{localizedTitle}</h1>
-            <p className="text-slate-400 mb-4">{localizedDescription}</p>
-            <div className="bg-slate-900 border border-slate-600 rounded-lg p-4">
-              <h2 className="font-semibold text-sky-400 mb-1">{lang === 'es' ? 'Tu Objetivo:' : 'Your Goal:'}</h2>
-              <p className="text-slate-300">{localizedGoal}</p>
+          <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 mb-6 shadow-sm">
+            <h1 className="text-2xl font-bold text-wm-blue mb-2">{localizedTitle}</h1>
+            <p className="text-wm-blue/60 mb-4">{localizedDescription}</p>
+            <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-4">
+              <h2 className="font-bold text-wm-accent mb-1">{lang === 'es' ? 'Tu Objetivo:' : 'Your Goal:'}</h2>
+              <p className="text-wm-blue/70">{localizedGoal}</p>
             </div>
 
             {/* Current Workflow Image Section */}
             <div className="mt-4">
-              <h2 className="font-semibold text-sky-400 mb-1">Current Workflow</h2>
-              <div className="mt-3 bg-slate-900 border-2 border-dashed border-slate-600 rounded-lg p-4 hover:border-sky-500 transition-colors">
+              <h2 className="font-bold text-wm-accent mb-1">Current Workflow</h2>
+              <div className="mt-3 bg-wm-neutral/10 border-2 border-dashed border-wm-neutral/50 rounded-lg p-4 hover:border-wm-accent transition-colors">
                 <input
                   type="file"
                   ref={currentImageInputRef}
@@ -949,8 +965,8 @@ Return only the steps.`;
                 {!currentImage ? (
                   <div className="cursor-pointer flex flex-col items-center justify-center" onClick={() => currentImageInputRef.current?.click()}>
                     <Icons.Upload />
-                    <p className="mt-2 text-sm text-slate-400 text-center">Upload a screenshot or diagram of your current process</p>
-                    <span className="mt-4 inline-block bg-slate-700 text-white font-bold py-2 px-4 rounded-lg hover:bg-slate-600 transition-colors">
+                    <p className="mt-2 text-sm text-wm-blue/50 text-center">Upload a screenshot or diagram of your current process</p>
+                    <span className="mt-4 inline-block bg-wm-accent text-white font-bold py-2 px-4 rounded-lg hover:bg-wm-accent/90 transition-colors">
                       Select Image
                     </span>
                   </div>
@@ -960,7 +976,7 @@ Return only the steps.`;
                       <img src={currentImage.dataUrl} alt="Current workflow preview" className="max-h-60 rounded-lg shadow-lg" />
                       <button
                         onClick={handleRemoveCurrentImage}
-                        className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 leading-none hover:bg-red-500 transition-colors"
+                        className="absolute -top-2 -right-2 bg-wm-pink text-white rounded-full p-1 leading-none hover:bg-wm-pink/80 transition-colors"
                         aria-label="Remove image"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -974,9 +990,9 @@ Return only the steps.`;
             </div>
           </div>
 
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
+          <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-white">Proposed Workflow</h2>
+              <h2 className="text-xl font-bold text-wm-blue">Proposed Workflow</h2>
               {isProOrAbove && (
                 <button
                   type="button"
@@ -984,10 +1000,10 @@ Return only the steps.`;
                   disabled={assistLoading}
                   title={t('operator.aiAssist')}
                   aria-label={t('operator.aiAssist')}
-                  className="p-2 rounded-md text-sky-300 hover:text-white hover:bg-sky-700/30 transition-colors disabled:opacity-60"
+                  className="p-2 rounded-md text-wm-accent hover:text-wm-accent/80 hover:bg-wm-accent/10 transition-colors disabled:opacity-60"
                 >
                   {assistLoading ? (
-                    <div className="w-4 h-4 border-2 border-sky-300 border-t-transparent rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-wm-accent border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <Icons.Sparkles />
                   )}
@@ -996,14 +1012,14 @@ Return only the steps.`;
             </div>
 
             <div className="flex flex-col mb-6">
-              <label htmlFor="workflow" className="text-lg font-semibold mb-2">1. {t('operator.explain')}</label>
-              <p className="text-sm text-slate-400 mb-3">{t('operator.explainHelper')}</p>
+              <label htmlFor="workflow" className="text-lg font-bold text-wm-blue mb-2">1. {t('operator.explain')}</label>
+              <p className="text-sm text-wm-blue/50 mb-3">{t('operator.explainHelper')}</p>
               <textarea
                 id="workflow"
                 value={workflowExplanation}
                 onChange={(e) => setWorkflowExplanation(e.target.value)}
                 placeholder={"e.g., Step 1 (AI): Ingest customer email and categorize intent. Step 2 (Human): Review high-priority tickets..."}
-                className={`flex-grow bg-slate-100 text-slate-900 placeholder:text-slate-500 border ${highlightEditor ? 'border-amber-400 ring-2 ring-amber-400/60' : 'border-slate-300'} rounded-lg p-4 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-shadow w-full`}
+                className={`flex-grow bg-wm-neutral/10 text-wm-blue placeholder:text-wm-blue/40 border ${highlightEditor ? 'border-wm-yellow ring-2 ring-wm-yellow/60' : 'border-wm-neutral/30'} rounded-lg p-4 focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow w-full`}
                 rows={10}
                 aria-live="polite"
               />
@@ -1011,7 +1027,7 @@ Return only the steps.`;
 
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-lg font-semibold">2. {t('operator.visual')}</label>
+                <label className="text-lg font-bold text-wm-blue">2. {t('operator.visual')}</label>
                 {isProOrAbove && (
                   <button
                     type="button"
@@ -1019,17 +1035,17 @@ Return only the steps.`;
                     disabled={diagramAssistLoading}
                     title={t('operator.aiDiagramAssist')}
                     aria-label={t('operator.aiDiagramAssist')}
-                    className="p-2 rounded-md text-emerald-300 hover:text-white hover:bg-emerald-700/30 transition-colors disabled:opacity-60"
+                    className="p-2 rounded-md text-wm-accent hover:text-wm-accent/80 hover:bg-wm-accent/10 transition-colors disabled:opacity-60"
                   >
                     {diagramAssistLoading ? (
-                      <div className="w-4 h-4 border-2 border-emerald-300 border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 border-2 border-wm-accent border-t-transparent rounded-full animate-spin" />
                     ) : (
                       <Icons.Sparkles />
                     )}
                   </button>
                 )}
               </div>
-              <div className="bg-slate-800 border-2 border-dashed border-slate-600 rounded-xl p-6 text-center transition-colors hover:border-sky-500">
+              <div className="bg-wm-neutral/10 border-2 border-dashed border-wm-neutral/50 rounded-xl p-6 text-center transition-colors hover:border-wm-accent">
                 <input
                   type="file"
                   ref={proposedImageInputRef}
@@ -1041,8 +1057,8 @@ Return only the steps.`;
                 {!proposedImage ? (
                   <div className="cursor-pointer" onClick={() => proposedImageInputRef.current?.click()}>
                     <Icons.Upload />
-                    <p className="mt-2 text-sm text-slate-400">{t('operator.uploadHint')}</p>
-                    <span className="mt-4 inline-block bg-slate-700 text-white font-bold py-2 px-4 rounded-lg hover:bg-slate-600 transition-colors">
+                    <p className="mt-2 text-sm text-wm-blue/50">{t('operator.uploadHint')}</p>
+                    <span className="mt-4 inline-block bg-wm-accent text-white font-bold py-2 px-4 rounded-lg hover:bg-wm-accent/90 transition-colors">
                       {t('operator.selectImage')}
                     </span>
                   </div>
@@ -1052,7 +1068,7 @@ Return only the steps.`;
                       <img src={proposedImage.dataUrl} alt="Workflow preview" className="max-h-60 rounded-lg mx-auto shadow-lg" />
                       <button
                         onClick={handleRemoveProposedImage}
-                        className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 leading-none hover:bg-red-500 transition-colors"
+                        className="absolute -top-2 -right-2 bg-wm-pink text-white rounded-full p-1 leading-none hover:bg-wm-pink/80 transition-colors"
                         aria-label="Remove image"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -1092,21 +1108,21 @@ Return only the steps.`;
           </div>
 
           {evaluation && (
-            <div className="mt-8 bg-slate-800 border border-slate-700 rounded-xl p-6 animate-fade-in-up">
-              <h2 className="text-xl font-bold mb-4 text-center">{t('operator.feedback')}</h2>
+            <div className="mt-8 bg-white border border-wm-neutral/30 rounded-xl p-6 animate-fade-in-up shadow-sm">
+              <h2 className="text-xl font-bold mb-4 text-center text-wm-blue">{t('operator.feedback')}</h2>
               <div className="text-center mb-4">
-                <p className="text-slate-400">Your Score</p>
-                <p className="text-6xl font-extrabold text-sky-400">{evaluation.score}<span className="text-3xl font-medium text-slate-500">/10</span></p>
+                <p className="text-wm-blue/60">Your Score</p>
+                <p className="text-6xl font-extrabold text-wm-accent">{evaluation.score}<span className="text-3xl font-medium text-wm-blue/40">/10</span></p>
               </div>
               <div>
-                <h3 className="font-semibold text-sky-400 mb-1">{t('operator.aiFeedback')}</h3>
-                <p className="text-slate-300 whitespace-pre-wrap">{evaluation.feedback}</p>
+                <h3 className="font-bold text-wm-accent mb-1">{t('operator.aiFeedback')}</h3>
+                <p className="text-wm-blue/70 whitespace-pre-wrap">{evaluation.feedback}</p>
               </div>
             </div>
           )}
 
           <div className="mt-8">
-            <h2 className="text-xl font-bold mb-4 text-center">{t('operator.historyTitle')}</h2>
+            <h2 className="text-xl font-bold mb-4 text-center text-wm-blue">{t('operator.historyTitle')}</h2>
             {isLoadingHistory ? (
               <div className="text-center p-4"><LoadingSpinner /></div>
             ) : pastEvaluations.length > 0 ? (
@@ -1114,7 +1130,7 @@ Return only the steps.`;
                 {pastEvaluations.map(item => (
                   <div
                     key={item.id}
-                    className="bg-slate-800 border border-slate-700 rounded-xl p-4 animate-fade-in-up cursor-pointer hover:border-emerald-500 transition-colors"
+                    className="bg-white border border-wm-neutral/30 rounded-xl p-4 animate-fade-in-up cursor-pointer hover:border-wm-accent transition-colors shadow-sm"
                     tabIndex={0}
                     role="button"
                     aria-label="Open historic evaluation"
@@ -1123,19 +1139,19 @@ Return only the steps.`;
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="text-sm text-slate-400">{new Date(item.timestamp).toLocaleString()}</p>
-                        <p className="text-slate-300 mt-2 whitespace-pre-wrap text-sm">{item.feedback.substring(0, 150)}...</p>
+                        <p className="text-sm text-wm-blue/50">{new Date(item.timestamp).toLocaleString()}</p>
+                        <p className="text-wm-blue/70 mt-2 whitespace-pre-wrap text-sm">{item.feedback.substring(0, 150)}...</p>
                       </div>
                       <div className="text-right ml-4 flex-shrink-0">
-                        <p className="text-slate-400 text-sm">{t('history.score')}</p>
-                        <p className="text-3xl font-bold text-sky-400">{item.score}<span className="text-lg text-slate-500">/10</span></p>
+                        <p className="text-wm-blue/50 text-sm">{t('history.score')}</p>
+                        <p className="text-3xl font-bold text-wm-accent">{item.score}<span className="text-lg text-wm-blue/40">/10</span></p>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-center text-slate-400 p-4">{t('operator.noHistoryScenario')}</p>
+              <p className="text-center text-wm-blue/50 p-4">{t('operator.noHistoryScenario')}</p>
             )}
           </div>
         </div>
@@ -1148,38 +1164,38 @@ Return only the steps.`;
 
       {isMermaidOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => setIsMermaidOpen(false)}>
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-3xl w-full p-4 md:p-6 max-h-[90vh] overflow-y-auto" onClick={(e)=>e.stopPropagation()}>
+          <div className="bg-white border border-wm-neutral/30 rounded-xl max-w-3xl w-full p-4 md:p-6 max-h-[90vh] overflow-y-auto shadow-xl" onClick={(e)=>e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white font-semibold">{t('operator.previewTitle')}</h3>
-              <button onClick={() => setIsMermaidOpen(false)} className="p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-700/50" aria-label="Close">
+              <h3 className="text-wm-blue font-bold">{t('operator.previewTitle')}</h3>
+              <button onClick={() => setIsMermaidOpen(false)} className="p-2 rounded-md text-wm-blue/50 hover:text-wm-blue hover:bg-wm-neutral/20" aria-label="Close">
                 <Icons.X />
               </button>
             </div>
-            <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-3 max-h-[60vh] overflow-auto">
+            <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-3 max-h-[60vh] overflow-auto">
               {mermaidError ? (
-                <p className="text-red-400 text-sm">{mermaidError}</p>
+                <p className="text-wm-pink text-sm">{mermaidError}</p>
               ) : mermaidSvg ? (
                 <div dangerouslySetInnerHTML={{ __html: mermaidSvg }} />
               ) : (
-                <div className="text-slate-400 text-sm">No preview available.</div>
+                <div className="text-wm-blue/50 text-sm">No preview available.</div>
               )}
             </div>
             <div className="mt-4 flex flex-col sm:flex-row gap-2 sm:gap-3 sm:items-center sm:justify-end">
-              <button onClick={copyMermaidToClipboard} className="px-3 py-2 rounded-md bg-slate-800 border border-slate-600 text-slate-200 hover:bg-slate-700">
+              <button onClick={copyMermaidToClipboard} className="px-3 py-2 rounded-md bg-wm-neutral/20 border border-wm-neutral/30 text-wm-blue hover:bg-wm-neutral/30 font-bold">
                 {t('operator.copyMermaid')}
               </button>
-              <button onClick={copySvgToClipboard} disabled={!mermaidSvg} className="px-3 py-2 rounded-md bg-slate-800 border border-slate-600 text-slate-200 disabled:opacity-60 hover:bg-slate-700">
+              <button onClick={copySvgToClipboard} disabled={!mermaidSvg} className="px-3 py-2 rounded-md bg-wm-neutral/20 border border-wm-neutral/30 text-wm-blue disabled:opacity-60 hover:bg-wm-neutral/30 font-bold">
                 Copy SVG
               </button>
-              <button onClick={handleDiagramAsImage} className="px-3 py-2 rounded-md bg-sky-600 text-white hover:bg-sky-500">
+              <button onClick={handleDiagramAsImage} className="px-3 py-2 rounded-md bg-wm-accent text-white hover:bg-wm-accent/90 font-bold">
                 {t('operator.useAsImage')}
               </button>
             </div>
             <div className="mt-3">
-              <label className="block text-slate-300 text-sm mb-1">Mermaid</label>
-              <textarea className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-slate-200 text-sm" rows={6} value={mermaidCode} onChange={(e)=>setMermaidCode(e.target.value)} />
+              <label className="block text-wm-blue/70 text-sm mb-1">Mermaid</label>
+              <textarea className="w-full bg-wm-neutral/10 border border-wm-neutral/30 rounded p-2 text-wm-blue text-sm" rows={6} value={mermaidCode} onChange={(e)=>setMermaidCode(e.target.value)} />
               <div className="mt-2 flex justify-end">
-                <button onClick={async ()=>{ await renderMermaid(mermaidCode); }} className="text-sm px-3 py-1.5 rounded-md bg-slate-800 border border-slate-600 text-slate-200 hover:bg-slate-700">{t('operator.refreshPreview')}</button>
+                <button onClick={async ()=>{ await renderMermaid(mermaidCode); }} className="text-sm px-3 py-1.5 rounded-md bg-wm-neutral/20 border border-wm-neutral/30 text-wm-blue hover:bg-wm-neutral/30 font-bold">{t('operator.refreshPreview')}</button>
               </div>
             </div>
           </div>
@@ -1188,30 +1204,30 @@ Return only the steps.`;
 
       {isPrdOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => setIsPrdOpen(false)}>
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-3xl w-full p-4 md:p-6 max-h-[85vh] overflow-y-auto" onClick={(e)=>e.stopPropagation()}>
+          <div className="bg-white border border-wm-neutral/30 rounded-xl max-w-3xl w-full p-4 md:p-6 max-h-[85vh] overflow-y-auto shadow-xl" onClick={(e)=>e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white font-semibold">PRD Preview</h3>
-              <button onClick={() => setIsPrdOpen(false)} className="p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-700/50" aria-label={t('modalActions.close')}>
+              <h3 className="text-wm-blue font-bold">PRD Preview</h3>
+              <button onClick={() => setIsPrdOpen(false)} className="p-2 rounded-md text-wm-blue/50 hover:text-wm-blue hover:bg-wm-neutral/20" aria-label={t('modalActions.close')}>
                 <Icons.X />
               </button>
             </div>
-            <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-3 max-h-[60vh] overflow-auto">
-              <pre className="whitespace-pre-wrap text-slate-200 text-sm">{prdMarkdown}</pre>
+            <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-3 max-h-[60vh] overflow-auto">
+              <pre className="whitespace-pre-wrap text-wm-blue/80 text-sm">{prdMarkdown}</pre>
             </div>
             <div className="mt-4 flex flex-col sm:flex-row gap-2 sm:gap-3 sm:items-center sm:justify-end">
-              <button onClick={copyPrdToClipboard} className="px-3 py-2 rounded-md bg-slate-800 border border-slate-600 text-slate-200 hover:bg-slate-700">
+              <button onClick={copyPrdToClipboard} className="px-3 py-2 rounded-md bg-wm-neutral/20 border border-wm-neutral/30 text-wm-blue hover:bg-wm-neutral/30 font-bold">
                 <span className="flex items-center gap-2">
                   <Icons.Copy />
                   {t('modalActions.copy')}
                 </span>
               </button>
-              <button onClick={downloadPrd} className="px-3 py-2 rounded-md bg-violet-600 text-white hover:bg-violet-500">
+              <button onClick={downloadPrd} className="px-3 py-2 rounded-md bg-wm-pink text-white hover:bg-wm-pink/90 font-bold">
                 <span className="flex items-center gap-2">
                   <Icons.Download />
                   {t('modalActions.download')}
                 </span>
               </button>
-              <button onClick={handleSavePrd} disabled={savingPrd || !prdMarkdown} className="px-3 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-60">
+              <button onClick={handleSavePrd} disabled={savingPrd || !prdMarkdown} className="px-3 py-2 rounded-md bg-wm-accent text-white hover:bg-wm-accent/90 disabled:opacity-60 font-bold">
                 <span className="flex items-center gap-2">
                   {savingPrd ? <div className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin"/> : <Icons.Save />}
                   {t('modalActions.save')}
@@ -1224,18 +1240,18 @@ Return only the steps.`;
 
       {isPitchOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => setIsPitchOpen(false)}>
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-3xl w-full p-4 md:p-6 max-h-[85vh] overflow-y-auto" onClick={(e)=>e.stopPropagation()}>
+          <div className="bg-white border border-wm-neutral/30 rounded-xl max-w-3xl w-full p-4 md:p-6 max-h-[85vh] overflow-y-auto shadow-xl" onClick={(e)=>e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white font-semibold">Elevator Pitch</h3>
-              <button onClick={() => setIsPitchOpen(false)} className="p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-700/50" aria-label={t('modalActions.close')}>
+              <h3 className="text-wm-blue font-bold">Elevator Pitch</h3>
+              <button onClick={() => setIsPitchOpen(false)} className="p-2 rounded-md text-wm-blue/50 hover:text-wm-blue hover:bg-wm-neutral/20" aria-label={t('modalActions.close')}>
                 <Icons.X />
               </button>
             </div>
-            <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-3 max-h-[60vh] overflow-auto">
+            <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-3 max-h-[60vh] overflow-auto">
               <textarea
                 value={pitchMarkdown}
                 onChange={(e) => setPitchMarkdown(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-slate-200 text-sm"
+                className="w-full bg-white border border-wm-neutral/30 rounded p-2 text-wm-blue text-sm"
                 rows={16}
                 aria-label="Elevator Pitch Markdown"
               />
@@ -1243,9 +1259,9 @@ Return only the steps.`;
             
             {/* Gamma AI Section */}
             {pitchMarkdown.includes('# Slide Presentation Outline') && (
-              <div className="mt-4 p-3 bg-slate-800/40 border border-slate-600 rounded-lg">
+              <div className="mt-4 p-3 bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm font-medium text-slate-300">Create PowerPoint Presentation</h4>
+                  <h4 className="text-sm font-bold text-wm-blue">Create PowerPoint Presentation</h4>
                   {getGammaApiKey() && (
                     <button
                       onClick={() => {
@@ -1254,26 +1270,26 @@ Return only the steps.`;
                           alert('API key cleared. You will be prompted for a new key on next generation.');
                         }
                       }}
-                      className="text-xs text-slate-400 hover:text-slate-300 underline"
+                      className="text-xs text-wm-blue/50 hover:text-wm-blue underline"
                     >
                       Reset API Key
                     </button>
                   )}
                 </div>
-                <p className="text-xs text-slate-400 mb-2">
+                <p className="text-xs text-wm-blue/50 mb-2">
                   Generate a professional PowerPoint presentation from your slide outline using Gamma AI
                 </p>
-                <div className="mb-3 p-2 bg-amber-900/20 border border-amber-700/50 rounded text-xs text-amber-200">
+                <div className="mb-3 p-2 bg-wm-yellow/20 border border-wm-yellow/50 rounded text-xs text-wm-blue/80">
                   <strong>⚠️ Requires Gamma Pro/Ultra/Teams/Business plan</strong><br/>
                   API access requires a paid Gamma subscription. Get your API key at{' '}
-                  <a href="https://gamma.app/settings" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-100">
+                  <a href="https://gamma.app/settings" target="_blank" rel="noopener noreferrer" className="underline hover:text-wm-accent">
                     gamma.app/settings
                   </a>
                 </div>
                 <button
                   onClick={handleGenerateGammaPresentation}
                   disabled={generatingGamma}
-                  className="w-full px-4 py-2 rounded-md bg-purple-600 text-white hover:bg-purple-500 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full px-4 py-2 rounded-md bg-wm-pink text-white hover:bg-wm-pink/90 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-bold"
                 >
                   {generatingGamma ? (
                     <>
@@ -1291,13 +1307,13 @@ Return only the steps.`;
                 </button>
                 
                 {gammaDownloadUrl && (
-                  <div className="mt-3 p-2 bg-emerald-900/30 border border-emerald-600 rounded flex items-center justify-between">
-                    <span className="text-xs text-emerald-300">✓ Presentation ready!</span>
+                  <div className="mt-3 p-2 bg-wm-accent/10 border border-wm-accent rounded flex items-center justify-between">
+                    <span className="text-xs text-wm-accent font-bold">✓ Presentation ready!</span>
                     <a
                       href={gammaDownloadUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-500"
+                      className="px-3 py-1 text-xs bg-wm-accent text-white rounded hover:bg-wm-accent/90 font-bold"
                     >
                       Download PPTX
                     </a>
@@ -1305,27 +1321,27 @@ Return only the steps.`;
                 )}
                 
                 {gammaError && (
-                  <div className="mt-3 p-2 bg-red-900/30 border border-red-600 rounded">
-                    <span className="text-xs text-red-300">⚠ {gammaError}</span>
+                  <div className="mt-3 p-2 bg-wm-pink/10 border border-wm-pink rounded">
+                    <span className="text-xs text-wm-pink">⚠ {gammaError}</span>
                   </div>
                 )}
               </div>
             )}
             
             <div className="mt-4 flex flex-col sm:flex-row gap-2 sm:gap-3 sm:items-center sm:justify-end">
-              <button onClick={copyPitchToClipboard} className="px-3 py-2 rounded-md bg-slate-800 border border-slate-600 text-slate-200 hover:bg-slate-700">
+              <button onClick={copyPitchToClipboard} className="px-3 py-2 rounded-md bg-wm-neutral/20 border border-wm-neutral/30 text-wm-blue hover:bg-wm-neutral/30 font-bold">
                 <span className="flex items-center gap-2">
                   <Icons.Copy />
                   {t('modalActions.copy')}
                 </span>
               </button>
-              <button onClick={downloadPitch} className="px-3 py-2 rounded-md bg-violet-600 text-white hover:bg-violet-500">
+              <button onClick={downloadPitch} className="px-3 py-2 rounded-md bg-wm-pink text-white hover:bg-wm-pink/90 font-bold">
                 <span className="flex items-center gap-2">
                   <Icons.Download />
                   {t('modalActions.download')}
                 </span>
               </button>
-              <button onClick={handleSavePitch} disabled={savingPitch || !pitchMarkdown} className="px-3 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-60">
+              <button onClick={handleSavePitch} disabled={savingPitch || !pitchMarkdown} className="px-3 py-2 rounded-md bg-wm-accent text-white hover:bg-wm-accent/90 disabled:opacity-60 font-bold">
                 <span className="flex items-center gap-2">
                   {savingPitch ? <div className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin"/> : <Icons.Save />}
                   {t('modalActions.save')}
@@ -1338,14 +1354,14 @@ Return only the steps.`;
 
       {isVersionNameOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => !savingVersion && setIsVersionNameOpen(false)}>
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full p-5" onClick={(e)=>e.stopPropagation()}>
-            <h3 className="text-white font-semibold mb-2">Name this version</h3>
-            <p className="text-slate-400 text-sm mb-4">Provide a short label to identify this saved workflow snapshot.</p>
+          <div className="bg-white border border-wm-neutral/30 rounded-xl max-w-md w-full p-5 shadow-xl" onClick={(e)=>e.stopPropagation()}>
+            <h3 className="text-wm-blue font-bold mb-2">Name this version</h3>
+            <p className="text-wm-blue/60 text-sm mb-4">Provide a short label to identify this saved workflow snapshot.</p>
             <input
               type="text"
               value={versionTitleInput}
               onChange={(e)=> setVersionTitleInput(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className="w-full bg-wm-neutral/10 border border-wm-neutral/30 rounded-md px-3 py-2 text-wm-blue text-sm focus:outline-none focus:ring-2 focus:ring-wm-accent"
               placeholder="Version title"
               autoFocus
             />
@@ -1353,14 +1369,14 @@ Return only the steps.`;
               <button
                 type="button"
                 onClick={() => !savingVersion && setIsVersionNameOpen(false)}
-                className="px-3 py-2 text-sm rounded-md text-slate-300 hover:text-white hover:bg-slate-700"
+                className="px-3 py-2 text-sm rounded-md text-wm-blue/70 hover:text-wm-blue hover:bg-wm-neutral/20 font-bold"
                 disabled={savingVersion}
               >Cancel</button>
               <button
                 type="button"
                 onClick={confirmSaveVersion}
                 disabled={savingVersion}
-                className="px-4 py-2 text-sm rounded-md bg-sky-600 hover:bg-sky-500 text-white inline-flex items-center gap-2 disabled:opacity-50"
+                className="px-4 py-2 text-sm rounded-md bg-wm-accent hover:bg-wm-accent/90 text-white inline-flex items-center gap-2 disabled:opacity-50 font-bold"
               >
                 {savingVersion && <div className="w-4 h-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />}
                 Save Version

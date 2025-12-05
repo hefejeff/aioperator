@@ -6,6 +6,18 @@ export default {
   ],
   theme: {
     extend: {
+      // West Monroe Brand Colors
+      colors: {
+        'wm-blue': '#000033',      // Grounded Blue - primary text, logos
+        'wm-white': '#FFFFFF',     // White - backgrounds
+        'wm-yellow': '#F2E800',    // Highlight Yellow - spotlights
+        'wm-accent': '#0045FF',    // Accent Blue - subheads, links
+        'wm-pink': '#F500A0',      // Accent Pink - stats, emphasis
+        'wm-neutral': '#CBD2DA',   // Support Neutral - backgrounds
+      },
+      fontFamily: {
+        'sans': ['Arial', 'sans-serif'],
+      },
       keyframes: {
         'fade-in': {
             '0%': { opacity: '0' },

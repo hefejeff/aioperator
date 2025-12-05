@@ -83,20 +83,20 @@ const RightSidebar: React.FC<RightSidebarProps> = ({ user, onSelectWorkflow, isO
 
       {/* Side Drawer */}
       <aside
-        className={`fixed top-0 left-0 h-full w-80 bg-slate-900/95 backdrop-blur-md border-r border-slate-700/60 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 left-0 h-full w-80 bg-wm-white border-r border-wm-neutral shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="p-4 h-full flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-700/50">
+          <div className="flex items-center justify-between mb-4 pb-4 border-b border-wm-neutral">
             <div className="flex items-center gap-2">
               <Icons.Document />
-              <h2 className="text-lg font-semibold text-white">My Workflows</h2>
+              <h2 className="text-lg font-bold text-wm-blue">My Workflows</h2>
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-slate-800/60 rounded-lg transition-colors"
+              className="p-2 hover:bg-wm-neutral/40 rounded-lg transition-colors text-wm-blue"
               title="Close drawer"
             >
               <Icons.X />
@@ -108,13 +108,13 @@ const RightSidebar: React.FC<RightSidebarProps> = ({ user, onSelectWorkflow, isO
             <div className="flex-1 overflow-hidden">
               {isLoadingWorkflows ? (
                 <div className="flex items-center justify-center py-8">
-                  <div className="text-sm text-slate-400">Loading workflows...</div>
+                  <div className="text-sm text-wm-blue/60">Loading workflows...</div>
                 </div>
               ) : workflows.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
                   <Icons.Document />
-                  <div className="text-sm text-slate-400 mb-2">No workflows yet</div>
-                  <div className="text-xs text-slate-500">Create your first workflow to get started</div>
+                  <div className="text-sm text-wm-blue/60 mb-2">No workflows yet</div>
+                  <div className="text-xs text-wm-blue/40">Create your first workflow to get started</div>
                 </div>
               ) : (
                 <div className="space-y-3 overflow-y-auto h-full pr-2">
@@ -128,18 +128,18 @@ const RightSidebar: React.FC<RightSidebarProps> = ({ user, onSelectWorkflow, isO
                           onSelectWorkflow?.(workflow.id);
                           onClose?.();
                         }}
-                        className="p-4 rounded-lg bg-slate-800/60 hover:bg-slate-700/60 cursor-pointer transition-colors border border-slate-700/30 hover:border-slate-600/50"
+                        className="p-4 rounded-lg bg-wm-neutral/20 hover:bg-wm-neutral/40 cursor-pointer transition-colors border border-wm-neutral hover:border-wm-accent/30"
                       >
-                        <div className="text-xs text-slate-400 mb-2">
+                        <div className="text-xs text-wm-blue/60 mb-2">
                           {new Date(workflow.timestamp).toLocaleDateString()}
                         </div>
                         
-                        <div className="text-sm font-medium text-white mb-2">
+                        <div className="text-sm font-bold text-wm-blue mb-2">
                           {workflow.versionTitle || 'Untitled Workflow'}
                         </div>
                         
                         {scenario && (
-                          <div className="text-xs text-slate-300 leading-relaxed">
+                          <div className="text-xs text-wm-blue/70 leading-relaxed">
                             {truncateDescription(`${scenario.title}: ${scenario.description}`, 120)}
                           </div>
                         )}

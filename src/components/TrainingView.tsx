@@ -163,11 +163,11 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
   return (
     <div className="animate-fade-in">
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold mb-2">{t('training.title')}</h1>
-        <p className="text-lg text-slate-400">{t('training.subtitle')}</p>
+        <h1 className="text-3xl font-bold mb-2 text-wm-blue">{t('training.title')}</h1>
+        <p className="text-lg text-wm-blue/60">{t('training.subtitle')}</p>
         <button
           onClick={() => setIsCreating(true)}
-          className="mt-4 inline-flex items-center justify-center px-5 py-2 border border-transparent text-base font-medium rounded-md text-white bg-sky-600 hover:bg-sky-700 transition-colors"
+          className="mt-4 inline-flex items-center justify-center px-5 py-2 border border-transparent text-base font-bold rounded-md text-white bg-wm-accent hover:bg-wm-accent/90 transition-colors"
         >
           {t('training.createButton')}
         </button>
@@ -185,25 +185,25 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
         <div className="flex items-center space-x-4">
           {/* Star Filter Toggle */}
           <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-slate-300">Filters</span>
+            <span className="text-sm font-bold text-wm-blue/70">Filters</span>
             <button
               onClick={() => setShowStarredOnly(!showStarredOnly)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 font-bold ${
                 showStarredOnly
-                  ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                  : 'bg-slate-700/50 text-slate-400 border border-slate-600/50 hover:bg-slate-600/50 hover:text-slate-300'
+                  ? 'bg-wm-yellow/20 text-wm-blue border border-wm-yellow/50'
+                  : 'bg-wm-neutral/20 text-wm-blue/60 border border-wm-neutral/30 hover:bg-wm-neutral/30 hover:text-wm-blue'
               }`}
             >
               <svg
                 className={`w-4 h-4 transition-all duration-200 ${
-                  showStarredOnly ? 'fill-current' : 'fill-none stroke-current'
+                  showStarredOnly ? 'fill-current text-wm-yellow' : 'fill-none stroke-current'
                 }`}
                 viewBox="0 0 24 24"
                 strokeWidth="2"
               >
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
               </svg>
-              <span className="text-sm font-medium">
+              <span className="text-sm font-bold">
                 {showStarredOnly ? 'Starred' : 'All'}
               </span>
             </button>
@@ -211,8 +211,8 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
           
           {/* Domain Filter */}
           <div className="flex items-center space-x-2">
-            <label className="text-sm text-slate-300">{t('training.filter')}</label>
-            <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-md p-2 text-slate-200">
+            <label className="text-sm text-wm-blue/70 font-bold">{t('training.filter')}</label>
+            <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} className="bg-white border border-wm-neutral/30 rounded-md p-2 text-wm-blue">
               <option value="All">{t('filter.all')}</option>
               {['Sales','HR','Finance','Operations','Logistics','Healthcare','Manufacturing','Legal','Procurement','Marketing','IT','Customer Support','General'].map(d => (
                 <option key={d} value={d}>{d}</option>
@@ -242,12 +242,12 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
         <div className="text-center py-20">
           <div className="relative max-w-md mx-auto">
             {/* Background glow effect */}
-            <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/10 via-amber-500/10 to-orange-500/10 rounded-3xl blur-2xl animate-pulse"></div>
+            <div className="absolute inset-0 bg-gradient-to-r from-wm-yellow/10 via-wm-accent/10 to-wm-pink/10 rounded-3xl blur-2xl animate-pulse"></div>
             
             {/* Icon container */}
-            <div className="relative w-32 h-32 bg-gradient-to-br from-slate-800/60 to-slate-900/60 backdrop-blur-xl rounded-3xl flex items-center justify-center mx-auto mb-8 border border-slate-700/50">
+            <div className="relative w-32 h-32 bg-gradient-to-br from-white to-wm-neutral/20 backdrop-blur-xl rounded-3xl flex items-center justify-center mx-auto mb-8 border border-wm-neutral/30 shadow-sm">
               <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent rounded-3xl"></div>
-              <div className="relative text-slate-400">
+              <div className="relative text-wm-blue/40">
                 <svg className="w-16 h-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                 </svg>
@@ -256,10 +256,10 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
             
             {/* Content */}
             <div className="relative">
-              <h3 className="text-3xl font-bold text-white mb-4 bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+              <h3 className="text-3xl font-bold text-wm-blue mb-4">
                 {showStarredOnly ? 'No Starred Scenarios Yet' : 'No Scenarios Found'}
               </h3>
-              <p className="text-lg text-slate-400 mb-10 max-w-sm mx-auto leading-relaxed">
+              <p className="text-lg text-wm-blue/60 mb-10 max-w-sm mx-auto leading-relaxed">
                 {showStarredOnly 
                   ? 'Star your favorite scenarios to keep them organized and easily accessible.'
                   : domainFilter !== 'All' 
@@ -270,7 +270,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
               {!showStarredOnly && (
                 <button
                   onClick={() => setIsCreating(true)}
-                  className="group relative px-10 py-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-semibold rounded-2xl hover:shadow-2xl hover:shadow-sky-500/25 transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm border border-sky-400/20 hover:border-sky-300/40"
+                  className="group relative px-10 py-4 bg-wm-accent text-white font-bold rounded-2xl hover:shadow-2xl hover:shadow-wm-accent/25 transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm border border-wm-accent/20 hover:border-wm-accent/40"
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <span className="relative flex items-center gap-3">

@@ -32,7 +32,7 @@ const ResearchListView: React.FC<Props> = ({ userId, onSelectCompany, handleNavi
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-[200px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-wm-accent"></div>
       </div>
     );
   }
@@ -40,8 +40,8 @@ const ResearchListView: React.FC<Props> = ({ userId, onSelectCompany, handleNavi
   if (companyList.length === 0) {
     return (
       <div className="text-center py-8">
-        <h2 className="text-xl text-gray-300 mb-4">No Company Research Yet</h2>
-        <p className="text-gray-400">
+        <h2 className="text-xl text-wm-blue/70 mb-4">No Company Research Yet</h2>
+        <p className="text-wm-blue/50">
           Start by researching a company to see their details and AI opportunities.
         </p>
       </div>
@@ -53,7 +53,7 @@ const ResearchListView: React.FC<Props> = ({ userId, onSelectCompany, handleNavi
       {companyList.map((company) => (
         <div
           key={company.id}
-          className="bg-slate-800 rounded-lg shadow-lg overflow-hidden hover:bg-slate-700 transition-colors cursor-pointer"
+          className="bg-white rounded-lg shadow-sm border border-wm-neutral/30 overflow-hidden hover:shadow-md hover:border-wm-accent/30 transition-all cursor-pointer"
           onClick={() => {
             if (handleNavigate) {
               handleNavigate('RESEARCH', company.id);
@@ -63,18 +63,18 @@ const ResearchListView: React.FC<Props> = ({ userId, onSelectCompany, handleNavi
           }}
         >
           <div className="p-6">
-            <h3 className="text-xl font-semibold text-white mb-2">{company.name}</h3>
-            <p className="text-gray-400 text-sm mb-3">
+            <h3 className="text-xl font-bold text-wm-blue mb-2">{company.name}</h3>
+            <p className="text-wm-blue/50 text-sm mb-3">
               {company.research?.currentResearch?.industry || 'Industry not specified'}
             </p>
-            <p className="text-gray-300 line-clamp-3">
+            <p className="text-wm-blue/70 line-clamp-3">
               {company.research?.currentResearch?.description || 'No description available'}
             </p>
             <div className="mt-4 flex justify-between items-center">
-              <span className="text-gray-400 text-sm">
+              <span className="text-wm-blue/50 text-sm">
                 Updated {new Date(company.lastUpdated).toLocaleDateString()}
               </span>
-              <span className="text-blue-400 text-sm">
+              <span className="text-wm-accent text-sm font-bold">
                 {company.research?.history?.length || 0} updates
               </span>
             </div>

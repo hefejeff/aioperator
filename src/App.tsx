@@ -155,10 +155,12 @@ const App: React.FC = () => {
 
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [activeCompanyName, setActiveCompanyName] = useState<string | null>(null);
 
   const handleNavigate = useCallback((newView: 'DASHBOARD' | 'TRAINING' | 'ADMIN' | 'RESEARCH', companyId?: string) => {
     setPreviousView(view);
     setActiveScenario(null);
+    setActiveCompanyName(null);
     if (newView === 'RESEARCH' && companyId) {
       setSelectedCompanyId(companyId);
     } else {
@@ -186,9 +188,10 @@ const App: React.FC = () => {
     }
   }, [scenarios, view]);
   
-  const handleSelectScenario = useCallback((scenario: Scenario) => {
+  const handleSelectScenario = useCallback((scenario: Scenario, companyName?: string) => {
     setPreviousView(view);
     setActiveScenario(scenario);
+    setActiveCompanyName(companyName || null);
     setView('SCENARIO');
   }, [view]);
 
@@ -223,6 +226,7 @@ const App: React.FC = () => {
   const handleBack = useCallback(() => {
     setActiveScenario(null);
     setActiveWorkflowId(null);
+    setActiveCompanyName(null);
     
     // If we're in a workflow detail view, return to the previous view
     if (view === 'WORKFLOW_DETAIL') {
@@ -371,6 +375,7 @@ const App: React.FC = () => {
                     user={user} 
                     onEvaluationCompleted={handleEvaluationCompleted}
                     onViewWorkflow={handleSelectWorkflow}
+                    companyName={activeCompanyName || undefined}
                  />;
         }
         return null;
@@ -423,7 +428,7 @@ const App: React.FC = () => {
 
   return (
     <I18nProvider initial={initialLang}>
-    <div className="min-h-screen bg-slate-900 font-sans">
+    <div className="min-h-screen bg-wm-white font-sans text-wm-blue">
             <Header 
         onNavigate={setView}
         user={user} 
@@ -431,14 +436,14 @@ const App: React.FC = () => {
         onOpenWorkflowDrawer={() => setIsWorkflowDrawerOpen(true)}
       />
       {error && (
-        <div className="bg-yellow-900/30 border-l-4 border-yellow-500 text-yellow-300 p-4 mx-4 my-6 sm:mx-6 md:mx-8 rounded-r-lg shadow-lg animate-fade-in" role="alert">
+        <div className="bg-wm-yellow/20 border-l-4 border-wm-yellow text-wm-blue p-4 mx-4 my-6 sm:mx-6 md:mx-8 rounded-r-lg shadow-lg animate-fade-in" role="alert">
           <div className="flex">
             <div className="py-1">
-              <svg className="fill-current h-6 w-6 text-yellow-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zM9 5v6h2V5H9zm0 8v2h2v-2H9z"/></svg>
+              <svg className="fill-current h-6 w-6 text-wm-yellow mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zM9 5v6h2V5H9zm0 8v2h2v-2H9z"/></svg>
             </div>
             <div>
               <p className="font-bold">Offline Mode Activated</p>
-              <p className="text-sm">{error}</p>
+              <p className="text-sm text-wm-blue/80">{error}</p>
             </div>
           </div>
         </div>

@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* West Monroe Brand Variables */
+:root {
+  --wm-blue: #000033;
+  --wm-white: #FFFFFF;
+  --wm-yellow: #F2E800;
+  --wm-accent: #0045FF;
+  --wm-pink: #F500A0;
+  --wm-neutral: #CBD2DA;
+}
+
 /* Global scrollbar styling */
 * {
   scrollbar-width: thin;

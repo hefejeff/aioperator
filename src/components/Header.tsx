@@ -24,7 +24,7 @@ interface HeaderProps {
     return <img onClick={onClick} src={user.photoURL} alt={user.displayName || 'User'} className="h-8 w-8 rounded-full cursor-pointer" />;
   }
   return (
-    <div onClick={onClick} className="h-8 w-8 rounded-full bg-sky-700 flex items-center justify-center text-sm font-bold text-white select-none cursor-pointer" title={String(user.displayName || '')}>
+    <div onClick={onClick} className="h-8 w-8 rounded-full bg-wm-accent flex items-center justify-center text-sm font-bold text-wm-white select-none cursor-pointer" title={String(user.displayName || '')}>
       {initials}
     </div>
   );
@@ -102,7 +102,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
 
   return (
     <>
-      <header className="bg-slate-900/70 backdrop-blur-md sticky top-0 z-40 border-b border-slate-700">
+      <header className="bg-wm-blue sticky top-0 z-40 border-b border-wm-neutral/20">
         <nav className="container mx-auto px-4 sm:px-6 md:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
@@ -111,14 +111,14 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                 onClick={() => onNavigate('DASHBOARD')}
               >
                 <img src={brainIcon} alt="Logo" className="h-8 w-8 object-contain drop-shadow" />
-                <span className="text-xl font-bold text-sky-400">{t('app.title')}</span>
+                <span className="text-xl font-bold text-wm-white">{t('app.title')}</span>
               </div>
               
               {/* Workflow Drawer Button */}
               {user && onOpenWorkflowDrawer && (
                 <button
                   onClick={onOpenWorkflowDrawer}
-                  className="p-2 rounded-lg bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 text-slate-300 hover:text-white transition-colors"
+                  className="p-2 rounded-lg bg-wm-white/10 hover:bg-wm-white/20 border border-wm-white/20 text-wm-white hover:text-wm-yellow transition-colors"
                   title="Open My Workflows"
                 >
                   <Icons.Document />
@@ -131,7 +131,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                 <div className="hidden md:flex items-center space-x-4">
                   <button 
                     onClick={() => onNavigate('DASHBOARD')}
-                    className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                    className="px-3 py-2 rounded-md text-sm font-bold text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white transition-colors"
                   >
                     {t('nav.dashboard')}
                   </button>
@@ -139,7 +139,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                   {/* Library/Resources with icon */}
                   <button 
                     onClick={() => onNavigate('TRAINING')}
-                    className="p-2 rounded-md text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                    className="p-2 rounded-md text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white transition-colors"
                     title={t('nav.resources')}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -151,7 +151,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                   <select
                     value={lang}
                     onChange={(e) => setLang(e.target.value as any)}
-                    className="bg-slate-900 border border-slate-700 text-slate-200 rounded-md px-2 py-1 text-sm"
+                    className="bg-wm-blue border border-wm-white/30 text-wm-white rounded-md px-2 py-1 text-sm"
                     aria-label="Language selector"
                   >
                     <option value="English">English</option>
@@ -171,9 +171,9 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                     </button>
 
                     {isProfileMenuOpen && (
-                      <div className="absolute right-0 mt-2 w-44 bg-slate-800 border border-slate-700 rounded-md shadow-lg z-50">
-                        <button onClick={() => { setIsProfileOpen(true); setIsProfileMenuOpen(false); }} className="w-full text-left px-4 py-2 text-slate-200 hover:bg-slate-700">{t('header.editProfile')}</button>
-                        <button onClick={() => { setIsProfileMenuOpen(false); handleLogout(); }} className="w-full text-left px-4 py-2 text-slate-200 hover:bg-red-700/20">{t('header.logout')}</button>
+                      <div className="absolute right-0 mt-2 w-44 bg-wm-white border border-wm-neutral rounded-md shadow-lg z-50">
+                        <button onClick={() => { setIsProfileOpen(true); setIsProfileMenuOpen(false); }} className="w-full text-left px-4 py-2 text-wm-blue hover:bg-wm-neutral/30">{t('header.editProfile')}</button>
+                        <button onClick={() => { setIsProfileMenuOpen(false); handleLogout(); }} className="w-full text-left px-4 py-2 text-wm-pink hover:bg-wm-pink/10">{t('header.logout')}</button>
                       </div>
                     )}
                   </div>
@@ -182,7 +182,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                   {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
                     <button 
                       onClick={() => onNavigate('ADMIN')}
-                      className="p-2 rounded-md text-amber-300 hover:bg-amber-800/20 hover:text-amber-200 transition-colors border border-amber-700/40"
+                      className="p-2 rounded-md text-wm-yellow hover:bg-wm-yellow/20 hover:text-wm-yellow transition-colors border border-wm-yellow/40"
                       title={t('nav.admin')}
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -196,7 +196,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                 <div className="md:hidden">
                     <button 
                         onClick={() => setIsMenuOpen(true)}
-                        className="p-2 rounded-md text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                        className="p-2 rounded-md text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white transition-colors"
                         aria-label="Open menu"
                     >
                         <Icons.Menu />
@@ -208,7 +208,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                 <select
                   value={lang}
                   onChange={(e) => setLang(e.target.value as any)}
-                  className="hidden sm:block bg-slate-900 border border-slate-700 text-slate-200 rounded-md px-2 py-1 text-sm"
+                  className="hidden sm:block bg-wm-blue border border-wm-white/30 text-wm-white rounded-md px-2 py-1 text-sm"
                   aria-label="Language selector"
                 >
                   <option value="English">English</option>
@@ -216,13 +216,13 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                 </select>
                 <button
                   onClick={() => { setAuthMode('signup'); setIsAuthOpen(true); }}
-                  className="px-3 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500"
+                  className="px-3 py-2 rounded-md bg-wm-accent text-wm-white text-sm font-bold hover:bg-wm-accent/90 transition-colors"
                 >
                   {t('auth.signUp')}
                 </button>
                 <button
                   onClick={() => { setAuthMode('login'); setIsAuthOpen(true); }}
-                  className="px-3 py-2 rounded-md bg-slate-800 text-white text-sm font-medium border border-slate-700 hover:bg-slate-700"
+                  className="px-3 py-2 rounded-md bg-wm-white/10 text-wm-white text-sm font-bold border border-wm-white/30 hover:bg-wm-white/20 transition-colors"
                 >
                   {t('auth.signIn')}
                 </button>
@@ -236,7 +236,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
       {isMenuOpen && user && (
           <div
             ref={menuRef}
-            className="fixed inset-0 bg-slate-900 z-50 animate-fade-in p-4"
+            className="fixed inset-0 bg-wm-blue z-50 animate-fade-in p-4"
             role="dialog"
             aria-modal="true"
             aria-label="Mobile menu"
@@ -246,11 +246,11 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
           className="flex items-center space-x-2"
         >
           <img src={brainIcon} alt="Logo" className="h-8 w-8 object-contain drop-shadow" />
-          <span className="text-xl font-bold text-sky-400">{t('app.title')}</span>
+          <span className="text-xl font-bold text-wm-white">{t('app.title')}</span>
         </div>
                 <button 
                     onClick={() => setIsMenuOpen(false)}
-                    className="p-2 rounded-md text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                    className="p-2 rounded-md text-wm-white/80 hover:bg-wm-white/10 hover:text-wm-white transition-colors"
                     aria-label="Close menu"
                 >
                     <Icons.X />
@@ -261,38 +261,38 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
         <div className="flex items-center space-x-4 mb-8">
           <Avatar user={user} />
                     <div>
-                        <p className="font-semibold text-white">{user.displayName}</p>
-                        <p className="text-sm text-slate-400">{user.email}</p>
+                        <p className="font-bold text-wm-white">{user.displayName}</p>
+                        <p className="text-sm text-wm-white/60">{user.email}</p>
                     </div>
                 </div>
 
           <div className="mb-6">
             {/* Mobile Edit profile remains inside mobile menu but is a menu item, not triggered by avatar click */}
-            <button onClick={() => { setIsProfileOpen(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 rounded-md text-slate-300 hover:bg-slate-800">{t('header.editProfile')}</button>
+            <button onClick={() => { setIsProfileOpen(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 rounded-md text-wm-white/80 hover:bg-wm-white/10">{t('header.editProfile')}</button>
           </div>
 
         <button 
           onClick={() => handleMobileNav('DASHBOARD')}
-          className="w-full text-xl py-4 rounded-md font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+          className="w-full text-xl py-4 rounded-md font-bold text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white transition-colors"
         >
           {t('nav.dashboard')}
         </button>
         <button 
           onClick={() => handleMobileNav('TRAINING')}
-          className="w-full text-xl py-4 rounded-md font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+          className="w-full text-xl py-4 rounded-md font-bold text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white transition-colors"
         >
           {t('nav.library')}
         </button>
         <button 
           onClick={() => handleMobileNav('RESEARCH')}
-          className="w-full text-xl py-4 rounded-md font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+          className="w-full text-xl py-4 rounded-md font-bold text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white transition-colors"
         >
           {t('nav.research')}
         </button>
         {(userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && (
           <button 
             onClick={() => handleMobileNav('ADMIN')}
-            className="w-full text-xl py-4 rounded-md font-medium text-amber-300 hover:bg-amber-800/20 hover:text-amber-200 transition-colors border border-amber-700/40"
+            className="w-full text-xl py-4 rounded-md font-bold text-wm-yellow hover:bg-wm-yellow/20 transition-colors border border-wm-yellow/40"
           >
             {t('nav.admin')}
           </button>
@@ -300,14 +300,14 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                 
                 <div className="absolute bottom-8 left-0 right-0 px-4 space-y-3">
                     <div className="flex justify-center">
-                      <select value={lang} onChange={(e) => setLang(e.target.value as any)} className="bg-slate-800 border border-slate-700 text-slate-200 rounded-md px-3 py-2 text-sm">
+                      <select value={lang} onChange={(e) => setLang(e.target.value as any)} className="bg-wm-blue border border-wm-white/30 text-wm-white rounded-md px-3 py-2 text-sm">
                         <option value="English">English</option>
                         <option value="Spanish">Spanish</option>
                       </select>
                     </div>
                     <button 
                         onClick={handleLogout}
-                        className="w-full max-w-sm mx-auto text-lg py-3 rounded-md font-medium text-red-400 border border-red-500/50 hover:bg-red-500/20 transition-colors"
+                        className="w-full max-w-sm mx-auto text-lg py-3 rounded-md font-bold text-wm-pink border border-wm-pink/50 hover:bg-wm-pink/20 transition-colors"
                     >
                         Logout
                     </button>
@@ -319,11 +319,11 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
         <ProfileModal user={user} onClose={() => setIsProfileOpen(false)} onSaved={() => {/* App listens to profile-updated event to refresh UI */}} />
       )}
       {isAuthOpen && !user && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => setIsAuthOpen(false)}>
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-lg w-full p-4 md:p-6" onClick={(e)=>e.stopPropagation()}>
+        <div className="fixed inset-0 bg-wm-blue/80 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => setIsAuthOpen(false)}>
+          <div className="bg-wm-white border border-wm-neutral rounded-xl max-w-lg w-full p-4 md:p-6 shadow-xl" onClick={(e)=>e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white font-semibold">{authMode === 'signup' ? t('auth.createAccount') : t('auth.welcomeBack')}</h3>
-              <button onClick={() => setIsAuthOpen(false)} className="p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-700/50" aria-label="Close">
+              <h3 className="text-wm-blue font-bold text-lg">{authMode === 'signup' ? t('auth.createAccount') : t('auth.welcomeBack')}</h3>
+              <button onClick={() => setIsAuthOpen(false)} className="p-2 rounded-md text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/30" aria-label="Close">
                 <Icons.X />
               </button>
             </div>

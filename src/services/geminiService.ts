@@ -942,7 +942,12 @@ Be professional, friendly, and insightful in your responses.`;
   }
 }
 
-export async function generatePresentationWebsite(prompt: string): Promise<string> {
+export interface FileData {
+  mimeType: string;
+  data: string; // base64
+}
+
+export async function generatePresentationWebsite(prompt: string, files?: FileData[], brandingContext?: string): Promise<string> {
   const systemInstruction = `You are an expert web developer and designer specializing in creating high-impact sales presentations.
 Your task is to generate a single-file HTML website that serves as a professional sales presentation.
 The website should:
@@ -955,12 +960,31 @@ The website should:
 - NOT require any external assets other than standard CDNs (like Tailwind or FontAwesome).
 - Be ready to be opened in a browser directly.
 
-The content should be based strictly on the provided prompt.`;
+The content should be based strictly on the provided prompt.
+If branding guidelines are provided, strictly adhere to the color palette, typography, and design principles described.`;
 
   try {
+    const parts: any[] = [{ text: prompt }];
+    
+    if (brandingContext) {
+      parts.push({ text: `\n\nBRANDING GUIDELINES:\n${brandingContext}` });
+    }
+
+    if (files && files.length > 0) {
+      files.forEach(file => {
+        parts.push({
+          inlineData: {
+            mimeType: file.mimeType,
+            data: file.data
+          }
+        });
+      });
+      parts.push({ text: "\n\nPlease use the attached branding documents to guide the visual style of the presentation." });
+    }
+
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-pro',
-      contents: { parts: [{ text: prompt }] },
+      contents: { parts },
       config: {
         systemInstruction,
         responseMimeType: 'text/plain', // We want HTML code
