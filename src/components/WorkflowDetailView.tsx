@@ -3,15 +3,18 @@ import { Icons } from '../constants';
 import { useTranslation } from '../i18n';
 import type { WorkflowVersion, Scenario, TeamRole, UserProfile, SavedPrd, SavedPitch, StoredEvaluationResult } from '../types';
 import { getWorkflowVersion, getScenarioById, updateWorkflowVersion, addTeamMember, removeTeamMember, updateTeamMemberRole, getAllUsers, getLatestPrdForScenario, getLatestPitchForScenario, getEvaluations } from '../services/firebaseService';
+import Breadcrumbs from './Breadcrumbs';
 
 interface WorkflowDetailViewProps {
   workflowId: string;
   userId: string;
   onBack: () => void;
   companyName?: string;
+  onNavigateToDashboard?: () => void;
+  onNavigateToResearch?: () => void;
 }
 
-const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, userId, onBack, companyName }) => {
+const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, userId, onBack, companyName, onNavigateToDashboard, onNavigateToResearch }) => {
   const [workflow, setWorkflow] = useState<WorkflowVersion | null>(null);
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -764,6 +767,15 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumbs */}
+      <Breadcrumbs
+        items={[
+          { label: t('nav.dashboard'), onClick: onNavigateToDashboard },
+          ...(companyName ? [{ label: companyName, onClick: onNavigateToResearch }] : []),
+          { label: (workflow?.versionTitle && workflow.versionTitle.trim()) || scenario?.title || t('workflowDetail.untitled'), isCurrent: true }
+        ]}
+      />
+
       {/* Company Name Heading */}
       {companyName && (
         <h1 className="text-3xl font-bold text-wm-blue">{companyName}</h1>

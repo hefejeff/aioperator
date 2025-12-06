@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import type { User } from 'firebase/auth';
 import type { Scenario, EvaluationResult, StoredEvaluationResult, Platform } from '../types';
-import type { AIActionsPlatform, AIActionsApproach } from './AIActionsPanel';
+import type { AIActionsPlatform } from './AIActionsPanel';
 import { generateText, generatePRD, prdToMarkdown, generateElevatorPitch, elevatorPitchToMarkdown } from '../services/geminiService';
 import { getEvaluations, saveEvaluation, savePrd, savePitch, saveWorkflowVersion } from '../services/firebaseService';
 import { evaluateOperatorPerformance } from '../services/geminiService';
@@ -10,14 +10,16 @@ import { Icons } from '../constants';
 import AIActionsPanel from './AIActionsPanel';
 import { useTranslation } from '../i18n';
 import { useDiagramAsImage } from './useDiagramAsImage';
+import Breadcrumbs from './Breadcrumbs';
 
 interface OperatorConsoleProps {
   scenario: Scenario;
-  onBack: () => void;
   user: User;
   onEvaluationCompleted: (scenarioId: string, newScore: number) => void;
   onViewWorkflow?: (workflowId: string) => void;
   companyName?: string;
+  onNavigateToDashboard?: () => void;
+  onNavigateToResearch?: () => void;
 }
 
 export const LoadingSpinner: React.FC = () => (
@@ -28,7 +30,7 @@ export const LoadingSpinner: React.FC = () => (
     </div>
 );
 
-const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, onBack, user, onEvaluationCompleted: _onEvaluationCompleted, onViewWorkflow, companyName }) => {
+const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEvaluationCompleted: _onEvaluationCompleted, onViewWorkflow, companyName, onNavigateToDashboard, onNavigateToResearch }) => {
   const [workflowExplanation, setWorkflowExplanation] = useState('');
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -922,6 +924,15 @@ Return only the steps.`;
       <div className="flex flex-col lg:flex-row gap-8 max-w-7xl mx-auto animate-fade-in">
         {/* Main Console */}
         <div className="w-full lg:flex-1 min-w-0">
+          {/* Breadcrumbs */}
+          <Breadcrumbs
+            items={[
+              { label: t('nav.dashboard'), onClick: onNavigateToDashboard },
+              ...(companyName ? [{ label: companyName, onClick: onNavigateToResearch }] : []),
+              { label: localizedTitle, isCurrent: true }
+            ]}
+          />
+
           {/* Company Context Banner */}
           {companyName && (
             <div className="mb-4 px-4 py-3 bg-wm-accent/10 border border-wm-accent/30 rounded-lg flex items-center gap-3">
@@ -936,11 +947,6 @@ Return only the steps.`;
               </div>
             </div>
           )}
-
-          <button onClick={onBack} className="flex items-center space-x-2 text-sm text-wm-accent hover:text-wm-accent/80 mb-6 transition-colors font-bold">
-            <Icons.ChevronLeft />
-            <span>{t('operator.back')}</span>
-          </button>
 
           <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 mb-6 shadow-sm">
             <h1 className="text-2xl font-bold text-wm-blue mb-2">{localizedTitle}</h1>
@@ -986,6 +992,35 @@ Return only the steps.`;
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Platform Selector */}
+            <div className="mt-6">
+              <label className="text-sm font-bold text-wm-blue mb-2 block">Platform</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['MS365', 'GOOGLE', 'CUSTOM'] as const).map((platform) => {
+                  const getPlatformLabel = (p: string) => {
+                    switch (p) {
+                      case 'MS365': return 'Microsoft 365';
+                      case 'GOOGLE': return 'Google Workspace';
+                      case 'CUSTOM': return 'Custom Integration';
+                      default: return p;
+                    }
+                  };
+                  return (
+                    <label key={platform} className="flex items-center space-x-2 text-sm text-wm-blue cursor-pointer bg-wm-neutral/10 p-3 rounded-lg hover:bg-wm-neutral/20 transition-colors">
+                      <input
+                        type="radio"
+                        name="platform"
+                        checked={prdPlatforms[0] === platform}
+                        onChange={() => setPrdPlatforms([platform])}
+                        className="border-wm-neutral/50 bg-white text-wm-accent focus:ring-wm-accent focus:ring-offset-white"
+                      />
+                      <span>{getPlatformLabel(platform)}</span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1085,9 +1120,9 @@ Return only the steps.`;
             <div className="mt-10">
               <AIActionsPanel
                 platforms={[prdPlatforms[0] as AIActionsPlatform || 'MS365']}
-                approaches={prdPlatforms.filter(p => !['MS365', 'GOOGLE', 'CUSTOM'].includes(p)) as AIActionsApproach[]}
+                approaches={[]}
                 onPlatformChange={(platform) => setPrdPlatforms([platform])}
-                onApproachesChange={(approaches) => setPrdPlatforms([prdPlatforms[0], ...approaches])}
+                onApproachesChange={() => {}}
                 workflowExplanation={workflowExplanation}
                 onGeneratePrd={handleGeneratePrd}
                 onGeneratePitch={handleGeneratePitch}
@@ -1098,6 +1133,7 @@ Return only the steps.`;
                 onSaveVersion={handleSaveWorkflowVersion}
                 savingVersion={savingVersion}
                 canSaveVersion={!!workflowExplanation.trim()}
+                hasEvaluationSaved={!!evaluation}
                 t={t}
                 lastSavedPrdTs={lastSavedPrdTs}
                 lastSavedPitchTs={lastSavedPitchTs}

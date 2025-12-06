@@ -5,7 +5,9 @@ import type {
   CompanyResearch, 
   Scenario, 
   RelatedScenario,
-  RfpAnalysis
+  RfpAnalysis,
+  DocumentAnalysis,
+  DocumentCategory
 } from '../types';
 
 const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.API_KEY;
@@ -24,6 +26,87 @@ interface ImagePart {
 interface ResearchCompanyParams {
   companyName: string;
   rfpContent?: string;
+}
+
+// Analyze a document to categorize it and extract key information
+export async function analyzeDocumentCategory(content: string, fileName: string): Promise<DocumentAnalysis> {
+  const systemInstruction = `You are an expert document analyst. Your task is to analyze the provided document and:
+1. Categorize it into one of the following types: RFP, SOW, CONTRACT, PROPOSAL, REQUIREMENTS, TECHNICAL, FINANCIAL, OTHER
+2. Extract a concise, meaningful title (max 50 characters) - NOT the filename
+3. Provide a brief summary (2-3 sentences)
+4. Identify 3-5 key points from the document
+
+Category definitions:
+- RFP: Request for Proposal documents seeking vendor bids
+- SOW: Statement of Work defining project scope and deliverables
+- CONTRACT: Legal agreements, terms and conditions
+- PROPOSAL: Submitted proposals or bids
+- REQUIREMENTS: Requirements documents, specifications
+- TECHNICAL: Technical documentation, architecture docs, API specs
+- FINANCIAL: Budget documents, financial reports, pricing
+- OTHER: Any document that doesn't fit the above categories`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: `Analyze this document and categorize it.
+
+Filename: ${fileName}
+
+Document Content:
+${content.substring(0, 15000)}`, // Limit content for faster analysis
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            category: {
+              type: Type.STRING,
+              enum: ['RFP', 'SOW', 'CONTRACT', 'PROPOSAL', 'REQUIREMENTS', 'TECHNICAL', 'FINANCIAL', 'OTHER'],
+              description: "The document category"
+            },
+            title: {
+              type: Type.STRING,
+              description: "A concise, meaningful title for the document (max 50 chars)"
+            },
+            summary: {
+              type: Type.STRING,
+              description: "A brief 2-3 sentence summary of the document"
+            },
+            keyPoints: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "3-5 key points from the document"
+            }
+          },
+          required: ['category', 'title', 'summary', 'keyPoints']
+        }
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error('No response from AI');
+
+    const parsed = JSON.parse(text);
+    return {
+      category: parsed.category as DocumentCategory,
+      title: parsed.title.substring(0, 50),
+      summary: parsed.summary,
+      keyPoints: parsed.keyPoints || [],
+      analyzedAt: Date.now()
+    };
+  } catch (error) {
+    console.error('Error analyzing document:', error);
+    // Return a default analysis if AI fails
+    return {
+      category: 'OTHER',
+      title: fileName.replace(/\.[^/.]+$/, '').substring(0, 50),
+      summary: 'Document analysis pending.',
+      keyPoints: [],
+      analyzedAt: Date.now()
+    };
+  }
 }
 
 export async function analyzeRfpDocument(content: string): Promise<RfpAnalysis> {

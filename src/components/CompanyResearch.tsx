@@ -18,9 +18,9 @@ interface CompanyResearchProps {
   userId: string;
   initialCompany?: string;  // This is now expected to be a company ID
   startWithNewForm?: boolean; // Start directly in research form view
-  onSelectScenario?: (scenario: Scenario, companyName?: string) => void;
+  onSelectScenario?: (scenario: Scenario, companyName?: string, companyId?: string) => void;
   onCreateScenario?: (context?: { companyId?: string; companyName?: string }) => void;
-  onViewWorkflow?: (workflowId: string, companyName?: string) => void;
+  onViewWorkflow?: (workflowId: string, companyName?: string, companyId?: string) => void;
 }
 
 type View = 'LIST' | 'RESEARCH';
@@ -54,13 +54,12 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
   const [scenarioRuns, setScenarioRuns] = useState<Record<string, StoredEvaluationResult[]>>({});
   const [isLoadingScenarioRuns, setIsLoadingScenarioRuns] = useState(false);
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
-  const [showPromptModal, setShowPromptModal] = useState(false);
-  const [generatedPrompt, setGeneratedPrompt] = useState('');
   const [isGeneratingPresentation, setIsGeneratingPresentation] = useState(false);
   const [presentationUrl, setPresentationUrl] = useState<string | null>(null);
   const [showCopiedMessage, setShowCopiedMessage] = useState(false);
   const [isCreatingWordPressPage, setIsCreatingWordPressPage] = useState(false);
   const [wordPressPageUrl, setWordPressPageUrl] = useState<string | null>(null);
+  const [scenarioRunsRefreshKey, setScenarioRunsRefreshKey] = useState(0);
 
   const { t } = useTranslation();
 
@@ -195,12 +194,26 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
       window.addEventListener('company-scenario-created', handleScenarioCreated as EventListener);
     }
 
+    // Listen for evaluation-saved events to refresh scenario runs
+    const handleEvaluationSaved = (event: Event) => {
+      const detail = (event as CustomEvent<{ scenarioId: string; userId: string }>).detail;
+      // Refresh if this evaluation is for one of our selected scenarios
+      if (detail && selectedScenarios.includes(detail.scenarioId)) {
+        setScenarioRunsRefreshKey(prev => prev + 1);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('evaluation-saved', handleEvaluationSaved as EventListener);
+    }
+
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('company-scenario-created', handleScenarioCreated as EventListener);
+        window.removeEventListener('evaluation-saved', handleEvaluationSaved as EventListener);
       }
     };
-  }, [currentCompanyId, t]);
+  }, [currentCompanyId, t, selectedScenarios]);
 
   useEffect(() => {
     let isActive = true;
@@ -227,9 +240,32 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
               evaluations.map(e => e.workflowVersionId).filter(Boolean)
             );
             
+            // Also track evaluation timestamps to filter out workflow versions created at same time
+            // (within 5 second window) - this handles cases where workflowVersionId wasn't set
+            const evaluationTimestamps = new Set(
+              evaluations.map(e => Math.floor(e.timestamp / 5000)) // 5 second buckets
+            );
+            
             // Convert workflow versions that don't have evaluations to a compatible format
             const unlinkedWorkflows: StoredEvaluationResult[] = workflowVersions
-              .filter(wv => !linkedWorkflowIds.has(wv.id))
+              .filter(wv => {
+                // Skip if this workflow is linked to an evaluation
+                if (linkedWorkflowIds.has(wv.id)) return false;
+                
+                // Also skip if there's an evaluation with same timestamp (within 5 seconds)
+                // AND same score - this catches duplicate saves
+                const wvTimeBucket = Math.floor(wv.timestamp / 5000);
+                if (evaluationTimestamps.has(wvTimeBucket)) {
+                  // Check if there's an evaluation with matching score
+                  const hasMatchingEval = evaluations.some(e => 
+                    Math.floor(e.timestamp / 5000) === wvTimeBucket &&
+                    e.score === wv.evaluationScore
+                  );
+                  if (hasMatchingEval) return false;
+                }
+                
+                return true;
+              })
               .map(wv => ({
                 id: wv.id,
                 userId: wv.userId,
@@ -273,7 +309,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
     return () => {
       isActive = false;
     };
-  }, [selectedScenarios, userId]);
+  }, [selectedScenarios, userId, scenarioRunsRefreshKey]);
 
   const handleResearch = async () => {
     if (!companyName.trim()) return;
@@ -455,7 +491,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
   }, [view, selectedCompanyName, initialCompany, currentCompanyId]);
 
   const handleScenarioSelect = (scenario: Scenario) => {
-    onSelectScenario?.(scenario, companyName || selectedCompanyName || undefined);
+    onSelectScenario?.(scenario, companyName || selectedCompanyName || undefined, currentCompanyId || undefined);
   };
 
   const handleToggleRunId = (runId: string) => {
@@ -566,13 +602,6 @@ Please structure the website presentation to include:
 5. Expected ROI & Impact
 
 The tone should be professional, consultative, and focused on digital transformation. Use West Monroe's signature style: bold, clean, and data-driven.`;
-  };
-
-  const handleGeneratePrompt = () => {
-    const prompt = getPresentationPrompt();
-    if (!prompt) return;
-    setGeneratedPrompt(prompt);
-    setShowPromptModal(true);
   };
 
   const handleGenerateDiviPrompt = async () => {
@@ -979,9 +1008,9 @@ The tone should be professional, consultative, and focused on digital transforma
               scenariosById={scenarioCatalog}
               isScenarioRunsLoading={isLoadingScenarioRuns}
               onViewWorkflow={onViewWorkflow}
+              companyId={currentCompanyId || undefined}
               selectedRunIds={selectedRunIds}
               onToggleRunId={handleToggleRunId}
-              onGeneratePrompt={handleGeneratePrompt}
               onGenerateDiviPrompt={handleGenerateDiviPrompt}
               isCreatingWordPressPage={isCreatingWordPressPage}
               wordPressPageUrl={wordPressPageUrl}
@@ -1010,48 +1039,6 @@ The tone should be professional, consultative, and focused on digital transforma
           </div>
         )}
       </div>
-
-      {/* Prompt Generation Modal */}
-      {showPromptModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] flex flex-col shadow-xl">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-wm-blue">Generated Presentation Prompt</h2>
-              <button 
-                onClick={() => setShowPromptModal(false)}
-                className="text-wm-blue/50 hover:text-wm-blue"
-              >
-                <Icons.X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto bg-wm-neutral/10 p-4 rounded-lg mb-4 border border-wm-neutral/30">
-              <pre className="whitespace-pre-wrap text-wm-blue/80 font-mono text-sm">
-                {generatedPrompt}
-              </pre>
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowPromptModal(false)}
-                className="px-4 py-2 text-wm-blue/70 hover:text-wm-blue font-bold"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(generatedPrompt);
-                  // Optional: Show copied toast
-                }}
-                className="px-4 py-2 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 flex items-center gap-2 font-bold"
-              >
-                <Icons.Copy className="w-4 h-4" />
-                Copy to Clipboard
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Presentation Created Modal */}
       {presentationUrl && (

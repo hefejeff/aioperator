@@ -12,9 +12,9 @@ export interface AIActionsPanelProps {
   onPlatformChange: (platform: AIActionsPlatform) => void;
   onApproachesChange: (approaches: AIActionsApproach[]) => void;
   workflowExplanation: string;
-  onGeneratePrd: () => void;
-  onGeneratePitch: () => void;
-  onEvaluate: () => void;
+  onGeneratePrd: () => Promise<void> | void;
+  onGeneratePitch: () => Promise<void> | void;
+  onEvaluate: () => Promise<void> | void;
   prdLoading?: boolean;
   pitchLoading?: boolean;
   evalLoading?: boolean;
@@ -22,6 +22,7 @@ export interface AIActionsPanelProps {
   onSaveVersion?: () => void;
   savingVersion?: boolean;
   canSaveVersion?: boolean;
+  hasEvaluationSaved?: boolean; // Hide save version after evaluation auto-saves
   t: (k: string) => string;
   lastSavedPrdTs?: number | null;
   lastSavedPitchTs?: number | null;
@@ -31,9 +32,9 @@ export interface AIActionsPanelProps {
 
 const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
   platforms,
-  approaches,
-  onPlatformChange,
-  onApproachesChange,
+  approaches: _approaches,
+  onPlatformChange: _onPlatformChange,
+  onApproachesChange: _onApproachesChange,
   workflowExplanation,
   onGeneratePrd,
   onGeneratePitch,
@@ -45,6 +46,7 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
   onSaveVersion,
   savingVersion,
   canSaveVersion,
+  hasEvaluationSaved,
   t,
   lastSavedPrdTs,
   lastSavedPitchTs,
@@ -56,9 +58,37 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
   const [isPushingToN8N, setIsPushingToN8N] = useState(false);
   const [pushResult, setPushResult] = useState<{ success: boolean; url?: string; error?: string } | null>(null);
   const [n8nAvailable, setN8nAvailable] = useState(false);
+  const [isRunningAll, setIsRunningAll] = useState(false);
+  const [runAllStep, setRunAllStep] = useState<'idle' | 'prd' | 'pitch' | 'eval'>('idle');
 
   const hasWorkflow = workflowExplanation.trim().length > 0;
   const baseDisabled = disabled || !hasWorkflow;
+
+  // Run All function - sequentially runs PRD, Pitch, and Evaluation
+  const handleRunAll = async () => {
+    if (baseDisabled || isRunningAll) return;
+    
+    setIsRunningAll(true);
+    try {
+      // Step 1: Generate PRD
+      setRunAllStep('prd');
+      await onGeneratePrd();
+      
+      // Step 2: Generate Pitch
+      setRunAllStep('pitch');
+      await onGeneratePitch();
+      
+      // Step 3: Run Evaluation
+      setRunAllStep('eval');
+      await onEvaluate();
+      
+    } catch (error) {
+      console.error('Run All failed:', error);
+    } finally {
+      setRunAllStep('idle');
+      setIsRunningAll(false);
+    }
+  };
 
   // Check if n8n is available on component mount
   React.useEffect(() => {
@@ -77,17 +107,6 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
   const now = Date.now();
   const isNew = (ts?: number | null) => !!ts && (now - ts) < 2 * 60 * 1000; // < 2 minutes
 
-  const handlePlatformSelect = (platform: AIActionsPlatform) => {
-    onPlatformChange(platform);
-  };
-
-  const handleApproachSelect = (approach: AIActionsApproach) => {
-    const updatedApproaches = approaches.includes(approach)
-      ? approaches.filter(a => a !== approach)
-      : [...approaches, approach];
-    onApproachesChange(updatedApproaches);
-  };
-
   const getPlatformDisplayNames = () => {
     if (platforms.length === 0) return t('aiActions.platformFallback') || 'your platform';
     const platform = platforms[0];
@@ -100,148 +119,80 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
   return (
     <>
     <section className="rounded-xl border border-wm-neutral/30 bg-white p-5 space-y-5 shadow-sm" aria-labelledby="tools-docs-heading">
-      <header className="space-y-1">
-        <h3 id="tools-docs-heading" className="text-sm font-bold tracking-wide text-wm-blue uppercase">
-          {t('toolsDocs.title') || 'Tools & Docs'}
-        </h3>
-        <p className="text-xs text-wm-blue/60">
-          {t('aiActions.subtitle').replace('{platform}', getPlatformDisplayNames())}
-        </p>
+      <header className="flex items-start justify-between">
+        <div className="space-y-1">
+          <h3 id="tools-docs-heading" className="text-sm font-bold tracking-wide text-wm-blue uppercase">
+            {t('toolsDocs.title') || 'Tools & Docs'}
+          </h3>
+          <p className="text-xs text-wm-blue/60">
+            {t('aiActions.subtitle').replace('{platform}', getPlatformDisplayNames())}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleRunAll}
+          disabled={baseDisabled || isRunningAll}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg bg-gradient-to-r from-wm-accent via-wm-pink to-wm-yellow text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md"
+        >
+          {isRunningAll ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              {runAllStep === 'prd' ? 'Creating PRD...' : runAllStep === 'pitch' ? 'Creating Pitch...' : runAllStep === 'eval' ? 'Evaluating...' : 'Running...'}
+            </>
+          ) : (
+            <>
+              <Icons.Sparkles />
+              Run All
+            </>
+          )}
+        </button>
       </header>
-
-      <div className="space-y-5">
-        {/* Core Platforms Section */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-wm-blue/70">
-              {'Platform'}
-            </label>
-            {!hasWorkflow && (
-              <span className="text-[11px] text-wm-blue/50 ml-auto">
-                {t('aiActions.needWorkflow')}
-              </span>
-            )}
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {['MS365', 'GOOGLE', 'CUSTOM'].map((platform) => {
-              const getPlatformLabel = (p: AIActionsPlatform) => {
-                switch (p) {
-                  case 'MS365': return 'Microsoft 365';
-                  case 'GOOGLE': return 'Google Workspace';
-                  case 'CUSTOM': return 'Custom Integration';
-                  default: return null;
-                }
-              };
-                
-              return (
-                <label key={platform} className="flex items-center space-x-2 text-sm text-wm-blue cursor-pointer">
-                  <input
-                    type="radio"
-                    name="platform"
-                    checked={platforms[0] === platform}
-                    onChange={() => handlePlatformSelect(platform as AIActionsPlatform)}
-                    className="border-wm-neutral/50 bg-white text-wm-accent focus:ring-wm-accent focus:ring-offset-white"
-                  />
-                  <span>{getPlatformLabel(platform as AIActionsPlatform) || platform}</span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Advanced Integration Section */}
-        <div className="space-y-3 pt-2 border-t border-wm-neutral/30">
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-wm-blue/70">
-              {'Approach'}
-            </label>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {(() => {
-              // Define available approaches for each platform
-              const platformApproaches: Record<AIActionsPlatform, AIActionsApproach[]> = {
-                'MS365': ['POWER_APPS', 'POWER_AUTOMATE', 'POWER_BI', 'POWER_VIRTUAL_AGENTS', 'CUSTOM_PROMPT', 'ASSISTANT'],
-                'GOOGLE': ['APP_SHEETS', 'CUSTOM_PROMPT', 'ASSISTANT', 'COMBINATION'],
-                'CUSTOM': ['CUSTOM_PROMPT']
-              };
-
-              // Get all available approaches for selected platforms
-              const availableApproaches = platforms.length > 0
-                ? [...new Set(platforms.flatMap(p => platformApproaches[p]))]
-                : [];
-
-              if (availableApproaches.length === 0) {
-                return (
-                  <div className="col-span-2 text-center text-sm text-wm-blue/50 py-2">
-                    Select a platform to see available approaches
-                  </div>
-                );
-              }
-
-              const getApproachLabel = (p: AIActionsApproach) => {
-                switch (p) {
-                  // Power Platform
-                  case 'POWER_APPS': return 'Power Apps';
-                  case 'POWER_AUTOMATE': return 'Power Automate';
-                  case 'POWER_BI': return 'Power BI';
-                  case 'POWER_VIRTUAL_AGENTS': return 'Power Virtual Agents';
-                  // Google Workspace
-                  case 'APP_SHEETS': return 'App Sheets';
-                  // Standard approaches
-                  case 'CUSTOM_PROMPT': return 'Custom Prompt';
-                  case 'ASSISTANT': return 'AI Assistant';
-                  case 'COMBINATION': return 'Combined Approach';
-                  default: return null;
-                }
-              };
-
-              return (
-                <>
-                  {availableApproaches.map((approach) => (
-                    <label key={approach} className="flex items-center space-x-2 text-sm text-wm-blue cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={approaches.includes(approach)}
-                        onChange={() => handleApproachSelect(approach)}
-                        className="rounded border-wm-neutral/50 bg-white text-wm-accent focus:ring-wm-accent focus:ring-offset-white"
-                      />
-                      <span>{getApproachLabel(approach) || approach}</span>
-                    </label>
-                  ))}
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      </div>
 
       <div className="grid gap-3 sm:grid-cols-3" role="group" aria-label="AI generation actions">
         <button
           type="button"
           onClick={onGeneratePrd}
-          disabled={baseDisabled || !!prdLoading}
-          aria-disabled={baseDisabled || !!prdLoading}
-          className={clsIndigo}
+          disabled={baseDisabled || !!prdLoading || isRunningAll}
+          aria-disabled={baseDisabled || !!prdLoading || isRunningAll}
+          className={`${clsIndigo} relative ${runAllStep === 'prd' ? 'ring-2 ring-wm-accent ring-offset-2' : ''}`}
         >
-          {prdLoading ? t('loading') : t('prd.generateShort')}
+          {(prdLoading || runAllStep === 'prd') && (
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-accent opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-wm-accent"></span>
+            </span>
+          )}
+          {prdLoading || runAllStep === 'prd' ? t('loading') : (runAllStep === 'pitch' || runAllStep === 'eval') ? '✓ PRD' : t('prd.generateShort')}
         </button>
         <button
           type="button"
           onClick={onGeneratePitch}
-          disabled={baseDisabled || !!pitchLoading}
-          aria-disabled={baseDisabled || !!pitchLoading}
-          className={clsTeal}
+          disabled={baseDisabled || !!pitchLoading || isRunningAll}
+          aria-disabled={baseDisabled || !!pitchLoading || isRunningAll}
+          className={`${clsTeal} relative ${runAllStep === 'pitch' ? 'ring-2 ring-wm-pink ring-offset-2' : ''}`}
         >
-          {pitchLoading ? t('loading') : t('pitch.generateShort')}
+          {(pitchLoading || runAllStep === 'pitch') && (
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-pink opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-wm-pink"></span>
+            </span>
+          )}
+          {pitchLoading || runAllStep === 'pitch' ? t('loading') : runAllStep === 'eval' ? '✓ Pitch' : t('pitch.generateShort')}
         </button>
         <button
           type="button"
           onClick={onEvaluate}
-          disabled={baseDisabled || !!evalLoading}
-          aria-disabled={baseDisabled || !!evalLoading}
-          className={clsAmber}
+          disabled={baseDisabled || !!evalLoading || isRunningAll}
+          aria-disabled={baseDisabled || !!evalLoading || isRunningAll}
+          className={`${clsAmber} relative ${runAllStep === 'eval' ? 'ring-2 ring-wm-yellow ring-offset-2' : ''}`}
         >
-          {evalLoading ? t('loading') : t('evaluation.run')}
+          {(evalLoading || runAllStep === 'eval') && (
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-wm-yellow opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-wm-yellow"></span>
+            </span>
+          )}
+          {evalLoading || runAllStep === 'eval' ? t('loading') : t('evaluation.run')}
         </button>
       </div>
 
@@ -283,7 +234,7 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
         </div>
       )}
 
-      {onSaveVersion && (
+      {onSaveVersion && !hasEvaluationSaved && (
         <div className="pt-2 flex justify-end">
           <button
             type="button"

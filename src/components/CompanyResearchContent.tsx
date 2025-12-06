@@ -7,10 +7,10 @@ interface CompanyResearchContentProps {
   scenarioRuns?: Record<string, StoredEvaluationResult[]>;
   scenariosById?: Record<string, Scenario>;
   isScenarioRunsLoading?: boolean;
-  onViewWorkflow?: (workflowId: string, companyName?: string) => void;
+  onViewWorkflow?: (workflowId: string, companyName?: string, companyId?: string) => void;
+  companyId?: string;
   selectedRunIds?: string[];
   onToggleRunId?: (runId: string) => void;
-  onGeneratePrompt?: () => void;
   onGenerateDiviPrompt?: () => void;
   isCreatingWordPressPage?: boolean;
   wordPressPageUrl?: string | null;
@@ -24,9 +24,9 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
   scenariosById = {},
   isScenarioRunsLoading = false,
   onViewWorkflow,
+  companyId,
   selectedRunIds = [],
   onToggleRunId,
-  onGeneratePrompt,
   onGenerateDiviPrompt,
   isCreatingWordPressPage = false,
   wordPressPageUrl = null,
@@ -135,14 +135,8 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
         <div className="border-t border-wm-neutral pt-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-wm-blue font-bold">{t('research.scenarioRuns')}</h3>
-            {onGeneratePrompt && selectedRunIds.length > 0 && (
+            {selectedRunIds.length > 0 && (
               <div className="flex gap-2">
-                <button
-                  onClick={onGeneratePrompt}
-                  className="px-3 py-1.5 bg-wm-pink text-wm-white text-sm font-bold rounded-lg hover:bg-wm-pink/90 transition-colors flex items-center gap-2"
-                >
-                  Generate Presentation Prompt
-                </button>
                 {onGenerateDiviPrompt && (
                   <button
                     onClick={onGenerateDiviPrompt}
@@ -167,7 +161,7 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
                     onClick={onCreatePresentation}
                     className="px-3 py-1.5 bg-wm-accent text-wm-white text-sm font-bold rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2"
                   >
-                    Create Presentation
+                    Gen AI Prompt
                   </button>
                 )}
               </div>
@@ -221,7 +215,7 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
                             )}
                             <button
                               type="button"
-                              onClick={() => hasWorkflowVersion && onViewWorkflow?.(run.workflowVersionId!, companyInfo.name)}
+                              onClick={() => hasWorkflowVersion && onViewWorkflow?.(run.workflowVersionId!, companyInfo.name, companyId)}
                               className={`flex-1 text-left text-wm-blue/70 text-sm flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md px-3 py-2 ${hasWorkflowVersion ? 'hover:bg-wm-neutral/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-wm-accent' : 'cursor-default opacity-70'}`}
                               disabled={!hasWorkflowVersion}
                             >

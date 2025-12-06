@@ -199,6 +199,7 @@ const App: React.FC = () => {
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [activeCompanyName, setActiveCompanyName] = useState<string | null>(null);
+  const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
 
   // Sync view state with URL changes and redirect root to dashboard for logged-in users
   useEffect(() => {
@@ -248,15 +249,16 @@ const App: React.FC = () => {
     }
   }, [scenarios, view, navigate]);
   
-  const handleSelectScenario = useCallback((scenario: Scenario, companyName?: string) => {
+  const handleSelectScenario = useCallback((scenario: Scenario, companyName?: string, companyId?: string) => {
     setPreviousView(view);
     setActiveScenario(scenario);
     setActiveCompanyName(companyName || null);
+    setActiveCompanyId(companyId || null);
     navigate(`/scenario/${scenario.id}${companyName ? `?company=${encodeURIComponent(companyName)}` : ''}`);
     setView('SCENARIO');
   }, [view, navigate]);
 
-  const handleSelectWorkflow = useCallback(async (workflowId: string, companyName?: string) => {
+  const handleSelectWorkflow = useCallback(async (workflowId: string, companyName?: string, companyId?: string) => {
     if (!user?.uid) {
       console.error('No user logged in');
       return;
@@ -280,6 +282,9 @@ const App: React.FC = () => {
       if (companyName) {
         setActiveCompanyName(companyName);
       }
+      if (companyId) {
+        setActiveCompanyId(companyId);
+      }
       navigate(`/workflow/${workflowId}`);
       setView('WORKFLOW_DETAIL');
       
@@ -292,6 +297,7 @@ const App: React.FC = () => {
     setActiveScenario(null);
     setActiveWorkflowId(null);
     setActiveCompanyName(null);
+    setActiveCompanyId(null);
     
     // If we're in a workflow detail view, return to the previous view
     if (view === 'WORKFLOW_DETAIL') {
@@ -442,11 +448,12 @@ const App: React.FC = () => {
         if (activeScenario && user) {
           return <OperatorConsole 
                     scenario={activeScenario} 
-                    onBack={handleBack} 
                     user={user} 
                     onEvaluationCompleted={handleEvaluationCompleted}
                     onViewWorkflow={handleSelectWorkflow}
                     companyName={activeCompanyName || undefined}
+                    onNavigateToDashboard={() => handleNavigate('DASHBOARD')}
+                    onNavigateToResearch={() => activeCompanyId ? handleNavigate('RESEARCH', activeCompanyId) : handleNavigate('RESEARCH')}
                  />;
         }
         return null;
@@ -457,6 +464,8 @@ const App: React.FC = () => {
                     userId={user.uid}
                     onBack={handleBack}
                     companyName={activeCompanyName || undefined}
+                    onNavigateToDashboard={() => handleNavigate('DASHBOARD')}
+                    onNavigateToResearch={() => activeCompanyId ? handleNavigate('RESEARCH', activeCompanyId) : handleNavigate('RESEARCH')}
                  />;
         }
         return null;

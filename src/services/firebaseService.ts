@@ -19,9 +19,9 @@ import type {
   Role,
   CompanyResearch,
   CompanyResearchEntry,
-  RelatedScenario
+  RelatedScenario,
+  RfpAnalysis
 } from '../types';
-import { analyzeRfpDocument } from './geminiService';
 import { ALL_SCENARIOS } from '../constants';
 
 // Get evaluations for a specific user and scenario
@@ -115,6 +115,17 @@ export const saveEvaluation = async (
           console.debug('Could not dispatch leaderboard-updated event', e);
         }
       }
+    }
+
+    // Notify UI that an evaluation was saved so components can refresh their data
+    try {
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('evaluation-saved', { 
+          detail: { scenarioId, userId, workflowVersionId } 
+        }));
+      }
+    } catch (e) {
+      console.debug('Could not dispatch evaluation-saved event', e);
     }
 
     return workflowVersionId; // Return the workflow version ID for reference
@@ -769,11 +780,10 @@ export const uploadDocument = async (
     await uploadBytes(fileRef, file);
     const downloadURL = await getDownloadURL(fileRef);
     
-    // Read the file content and analyze it
+    // Read the file content
     const fileContent = await file.text();
-    const analysis = await analyzeRfpDocument(fileContent);
     
-    // Add new document to documents array
+    // Add new document with isAnalyzing flag
     const newDocument = {
       id: documentId,
       content: fileContent,
@@ -781,7 +791,7 @@ export const uploadDocument = async (
       fileName: file.name,
       uploadedAt: timestamp,
       path: `company_documents/${fileName}`,
-      analysis
+      isAnalyzing: true
     };
     
     const updatedDocuments = [...existingDocuments, newDocument];
@@ -792,12 +802,89 @@ export const uploadDocument = async (
       documents: updatedDocuments
     });
     
+    // Run document category analysis in background (don't await)
+    analyzeAndUpdateDocument(companyId, documentId, fileContent, file.name).catch(err => {
+      console.error('Background document analysis failed:', err);
+    });
+    
     return downloadURL;
   } catch (error) {
     console.error('Failed to upload document:', error);
     throw error;
   }
 };
+
+// Analyze document and update it in the database
+async function analyzeAndUpdateDocument(
+  companyId: string,
+  documentId: string,
+  content: string,
+  fileName: string
+): Promise<void> {
+  try {
+    // Import dynamically to avoid circular dependency
+    const { analyzeDocumentCategory } = await import('./geminiService');
+    const documentAnalysis = await analyzeDocumentCategory(content, fileName);
+    
+    // Also run RFP analysis for RFP/SOW documents
+    let analysis: RfpAnalysis | undefined;
+    if (documentAnalysis.category === 'RFP' || documentAnalysis.category === 'SOW') {
+      const { analyzeRfpDocument } = await import('./geminiService');
+      analysis = await analyzeRfpDocument(content);
+    }
+    
+    // Update the document in the database
+    const companyRef = ref(db, `companies/${companyId}`);
+    const snapshot = await get(companyRef);
+    
+    if (!snapshot.exists()) return;
+    
+    const company = snapshot.val();
+    const documents = company.research?.currentResearch?.documents || [];
+    
+    const updatedDocuments = documents.map((doc: any) => {
+      if (doc.id === documentId) {
+        return {
+          ...doc,
+          documentAnalysis,
+          analysis: analysis || doc.analysis,
+          isAnalyzing: false
+        };
+      }
+      return doc;
+    });
+    
+    const currentResearchRef = ref(db, `companies/${companyId}/research/currentResearch`);
+    await set(currentResearchRef, {
+      ...company.research?.currentResearch,
+      documents: updatedDocuments
+    });
+  } catch (error) {
+    console.error('Failed to analyze document:', error);
+    // Mark analysis as complete even if it failed
+    try {
+      const companyRef = ref(db, `companies/${companyId}`);
+      const snapshot = await get(companyRef);
+      if (snapshot.exists()) {
+        const company = snapshot.val();
+        const documents = company.research?.currentResearch?.documents || [];
+        const updatedDocuments = documents.map((doc: any) => {
+          if (doc.id === documentId) {
+            return { ...doc, isAnalyzing: false };
+          }
+          return doc;
+        });
+        const currentResearchRef = ref(db, `companies/${companyId}/research/currentResearch`);
+        await set(currentResearchRef, {
+          ...company.research?.currentResearch,
+          documents: updatedDocuments
+        });
+      }
+    } catch (e) {
+      console.error('Failed to update document status:', e);
+    }
+  }
+}
 
 // Delete a specific document from the documents array
 export const deleteDocument = async (companyId: string, documentId: string): Promise<void> => {

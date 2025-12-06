@@ -79,6 +79,17 @@ export interface RfpAnalysis {
   clarificationNeeded: string;
 }
 
+// Document category types
+export type DocumentCategory = 'RFP' | 'SOW' | 'CONTRACT' | 'PROPOSAL' | 'REQUIREMENTS' | 'TECHNICAL' | 'FINANCIAL' | 'OTHER';
+
+export interface DocumentAnalysis {
+  category: DocumentCategory;
+  title: string;
+  summary: string;
+  keyPoints: string[];
+  analyzedAt: number;
+}
+
 // Company Research types
 export interface UploadedDocument {
   id: string;
@@ -88,6 +99,8 @@ export interface UploadedDocument {
   url?: string;
   path?: string;
   analysis?: RfpAnalysis;
+  documentAnalysis?: DocumentAnalysis;
+  isAnalyzing?: boolean;
 }
 
 export interface CompanyResearchEntry {

@@ -2,23 +2,37 @@ import React, { useCallback, useState, useRef } from 'react';
 import { useTranslation } from '../i18n';
 import { uploadDocument, deleteDocument, getCompanyDocuments } from '../services/firebaseService';
 import { Icons } from '../constants';
-import type { UploadedDocument } from '../types';
+import type { UploadedDocument, DocumentCategory } from '../types';
 
 interface RfpUploadFieldProps {
   companyId: string | null;
   onUploadSuccess?: () => void;
   onUploadError?: (error: Error) => void;
   onDelete?: () => void;
+  onSelectDocument?: (doc: UploadedDocument) => void;
 }
 
 const MAX_DOCUMENTS = 5;
 const VALID_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
 
+// Category colors and icons
+const categoryConfig: Record<DocumentCategory, { color: string; bgColor: string; label: string }> = {
+  'RFP': { color: 'text-wm-accent', bgColor: 'bg-wm-accent/10', label: 'RFP' },
+  'SOW': { color: 'text-wm-pink', bgColor: 'bg-wm-pink/10', label: 'SOW' },
+  'CONTRACT': { color: 'text-emerald-600', bgColor: 'bg-emerald-50', label: 'Contract' },
+  'PROPOSAL': { color: 'text-violet-600', bgColor: 'bg-violet-50', label: 'Proposal' },
+  'REQUIREMENTS': { color: 'text-orange-600', bgColor: 'bg-orange-50', label: 'Requirements' },
+  'TECHNICAL': { color: 'text-cyan-600', bgColor: 'bg-cyan-50', label: 'Technical' },
+  'FINANCIAL': { color: 'text-wm-yellow', bgColor: 'bg-wm-yellow/10', label: 'Financial' },
+  'OTHER': { color: 'text-wm-blue/70', bgColor: 'bg-wm-neutral/20', label: 'Document' },
+};
+
 const RfpUploadField: React.FC<RfpUploadFieldProps> = ({
   companyId,
   onUploadSuccess,
   onUploadError,
-  onDelete
+  onDelete,
+  onSelectDocument
 }) => {
   const { t } = useTranslation();
   const [isUploading, setIsUploading] = useState(false);
@@ -26,6 +40,7 @@ const RfpUploadField: React.FC<RfpUploadFieldProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
   // Load existing documents on mount or when companyId changes
   React.useEffect(() => {
@@ -38,13 +53,70 @@ const RfpUploadField: React.FC<RfpUploadFieldProps> = ({
       try {
         const docs = await getCompanyDocuments(companyId);
         setDocuments(docs);
+        
+        // Check if any documents are still analyzing
+        const hasAnalyzing = docs.some(doc => doc.isAnalyzing);
+        if (hasAnalyzing && !pollingInterval) {
+          // Start polling for updates
+          const interval = setInterval(async () => {
+            try {
+              const updatedDocs = await getCompanyDocuments(companyId);
+              setDocuments(updatedDocs);
+              
+              // Stop polling if no more analyzing
+              if (!updatedDocs.some(doc => doc.isAnalyzing)) {
+                clearInterval(interval);
+                setPollingInterval(null);
+              }
+            } catch (e) {
+              console.error('Polling error:', e);
+            }
+          }, 3000);
+          setPollingInterval(interval);
+        }
       } catch (err) {
         console.error('Error loading documents:', err);
       }
     };
 
     loadExistingDocuments();
+    
+    // Cleanup polling on unmount
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
   }, [companyId]);
+
+  // Poll for document analysis completion
+  React.useEffect(() => {
+    const hasAnalyzing = documents.some(doc => doc.isAnalyzing);
+    
+    if (hasAnalyzing && !pollingInterval && companyId) {
+      const interval = setInterval(async () => {
+        try {
+          const updatedDocs = await getCompanyDocuments(companyId);
+          setDocuments(updatedDocs);
+          
+          if (!updatedDocs.some(doc => doc.isAnalyzing)) {
+            clearInterval(interval);
+            setPollingInterval(null);
+          }
+        } catch (e) {
+          console.error('Polling error:', e);
+        }
+      }, 3000);
+      setPollingInterval(interval);
+    }
+    
+    return () => {
+      if (pollingInterval && !hasAnalyzing) {
+        clearInterval(pollingInterval);
+        setPollingInterval(null);
+      }
+    };
+  }, [documents, companyId]);
 
   const uploadFile = useCallback(async (file: File) => {
     if (!companyId) return;
@@ -170,29 +242,63 @@ const RfpUploadField: React.FC<RfpUploadFieldProps> = ({
         </div>
       </div>
 
-      {/* List of uploaded documents */}
+      {/* List of uploaded documents as category buttons */}
       {documents.length > 0 && (
-        <div className="space-y-2">
-          {documents.map((doc) => (
-            <div key={doc.id} className="flex items-center space-x-4 p-3 bg-wm-neutral/10 rounded-lg border border-wm-neutral/30">
-              <a
-                href={doc.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center space-x-2 text-wm-accent hover:text-wm-accent/80 flex-1 min-w-0"
-              >
-                <Icons.Document className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">{doc.fileName}</span>
-              </a>
-              <button
-                onClick={() => handleDelete(doc.id)}
-                className="p-1.5 text-wm-pink hover:text-wm-pink/80 hover:bg-wm-pink/10 rounded flex-shrink-0"
-                title={t('research.documentDelete')}
-              >
-                <Icons.Trash className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
+        <div className="flex flex-wrap gap-2">
+          {documents.map((doc) => {
+            const category = doc.documentAnalysis?.category || 'OTHER';
+            const config = categoryConfig[category];
+            const displayTitle = doc.documentAnalysis?.title || doc.fileName.replace(/\.[^/.]+$/, '');
+            const isAnalyzing = doc.isAnalyzing;
+            
+            return (
+              <div key={doc.id} className="group relative">
+                <button
+                  type="button"
+                  onClick={() => onSelectDocument?.(doc)}
+                  disabled={isAnalyzing}
+                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
+                    isAnalyzing 
+                      ? 'bg-wm-neutral/10 border-wm-neutral/30 text-wm-blue/50 cursor-wait'
+                      : `${config.bgColor} border-transparent hover:border-current ${config.color} hover:shadow-md cursor-pointer`
+                  }`}
+                  title={doc.documentAnalysis?.summary || doc.fileName}
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-wm-accent border-t-transparent rounded-full animate-spin" />
+                      <span className="text-sm">Analyzing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${config.bgColor} ${config.color}`}>
+                        {config.label}
+                      </span>
+                      <span className="text-sm font-medium truncate max-w-[150px]">
+                        {displayTitle}
+                      </span>
+                    </>
+                  )}
+                </button>
+                
+                {/* Delete button on hover */}
+                {!isAnalyzing && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(doc.id);
+                    }}
+                    className="absolute -top-1.5 -right-1.5 p-1 bg-wm-pink text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-wm-pink/80 shadow-sm"
+                    title={t('research.documentDelete')}
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
