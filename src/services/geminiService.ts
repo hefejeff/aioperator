@@ -18,6 +18,31 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey });
 
+// AI Model types available for research
+export type AIModelId = 
+  | 'gemini-2.5-pro' 
+  | 'gemini-2.5-flash' 
+  | 'gemini-2.0-flash'
+  | 'gpt-4o'
+  | 'gpt-4-turbo'
+  | 'gpt-5.2';
+
+export interface AIModelOption {
+  id: AIModelId;
+  name: string;
+  provider: 'google' | 'openai';
+  description: string;
+}
+
+export const AI_MODELS: AIModelOption[] = [
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google', description: 'Most capable Gemini model for complex research' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google', description: 'Fast and efficient for quick research' },
+  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'google', description: 'Previous generation, reliable' },
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', description: 'OpenAI\'s latest multimodal model' },
+  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai', description: 'Fast GPT-4 variant' },
+  { id: 'gpt-5.2', name: 'GPT-5.2', provider: 'openai', description: 'Next-gen OpenAI model (Preview)' },
+];
+
 interface ImagePart {
   base64: string;
   mimeType: string;
@@ -26,6 +51,7 @@ interface ImagePart {
 interface ResearchCompanyParams {
   companyName: string;
   rfpContent?: string;
+  model?: AIModelId;
 }
 
 // Analyze a document to categorize it and extract key information
@@ -263,7 +289,7 @@ Remember: Project structure and relationships are the TOP priority.`,
   }
 }
 
-export async function researchCompany({ companyName, rfpContent }: ResearchCompanyParams): Promise<CompanyResearch> {
+export async function researchCompany({ companyName, rfpContent, model = 'gemini-2.5-pro' }: ResearchCompanyParams): Promise<CompanyResearch> {
   const systemInstruction = `You are an expert business analyst and AI consultant. Research the given company and provide a comprehensive analysis including:
 - Company overview and core business
 - Industry analysis
@@ -275,12 +301,21 @@ export async function researchCompany({ companyName, rfpContent }: ResearchCompa
 - Potential AI opportunities
 Format the response as structured JSON matching the specified schema.`;
 
+  const prompt = `Research and analyze ${companyName}, focusing on their business operations and AI/automation opportunities.${rfpContent ? `\n\nAdditionally, analyze this RFP document from the company:\n${rfpContent}` : ''}`;
+
   try {
-    const rfpContext = rfpContent ? `\n\nAdditionally, analyze this RFP document from the company:\n${rfpContent}` : '';
+    const modelConfig = AI_MODELS.find(m => m.id === model);
     
+    if (modelConfig?.provider === 'openai') {
+      // Use OpenAI for GPT models
+      const { researchCompanyWithOpenAI } = await import('./openaiService');
+      return researchCompanyWithOpenAI(companyName, rfpContent, model);
+    }
+    
+    // Use Gemini for Google models
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-pro",
-      contents: `Research and analyze ${companyName}, focusing on their business operations and AI/automation opportunities.${rfpContext}`,
+      model: model,
+      contents: prompt,
       config: {
         systemInstruction,
         responseMimeType: "application/json",
@@ -352,13 +387,17 @@ export async function findRelevantScenarios(
 - Company's current AI maturity
 - Identified opportunities
 - Skill gaps and development needs
-Generate scenarios that are specific to their context and aligned with their goals.`
+- Value drivers that align with business goals
+- Pain points that need to be addressed
+Generate scenarios that are specific to their context and aligned with their goals. Include specific value drivers and pain points for each scenario.`
     : `You are an AI training consultant. Based on the company research provided, analyze the list of training scenarios and identify which ones are most relevant. Consider:
 - Industry alignment
 - Similar challenges/opportunities
 - AI implementation needs
 - Skill development opportunities
-Return a ranked list of relevant scenarios with explanations.`;
+- How scenario value drivers align with company goals
+- How scenario pain points match company challenges
+Return a ranked list of relevant scenarios with explanations. Prioritize scenarios whose value drivers and pain points closely match the company's needs.`;
 
   try {
     const prompt = generateSuggestions
@@ -382,10 +421,12 @@ Return a ranked list of relevant scenarios with explanations.`;
               goal: { type: Type.STRING },
               domain: { type: Type.STRING },
               type: { type: Type.STRING, enum: ["TRAINING", "EVALUATION"] },
+              valueDrivers: { type: Type.STRING },
+              painPoints: { type: Type.STRING },
               relevanceScore: { type: Type.NUMBER },
               relevanceReason: { type: Type.STRING }
             },
-            required: ["title", "description", "goal", "type", "relevanceScore", "relevanceReason"]
+            required: ["title", "description", "goal", "type", "valueDrivers", "painPoints", "relevanceScore", "relevanceReason"]
           }
         } : {
           type: Type.ARRAY,
@@ -1082,4 +1123,60 @@ If branding guidelines are provided, strictly adhere to the color palette, typog
     console.error('Error generating presentation website:', error);
     throw new Error('Failed to generate presentation website');
   }
-}
+};
+
+export const analyzeDocumentWithGemini = async (documentText: string, fileName: string): Promise<{ title: string; type: string; context: string }> => {
+  try {
+    console.log('=== analyzeDocumentWithGemini START ===');
+    console.log('Document text length:', documentText.length);
+
+    const prompt = `Analyze the following document and extract:
+1. A clear, concise title for the document
+2. The document type (e.g., Contract, Policy, Report, Procedure, Manual, etc.)
+3. A brief summary/context of what this document is about (100-200 words)
+
+Document file name: ${fileName}
+
+Document content:
+${documentText}
+
+Respond ONLY with a valid JSON object (no markdown, no code blocks):
+{
+  "title": "extracted title",
+  "type": "document type",
+  "context": "summary of the document"
+}`;
+
+    console.log('Calling generateContent with prompt length:', prompt.length);
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: prompt,
+    });
+
+    console.log('Got response:', response);
+    const responseText = response.text;
+    console.log('Response text:', responseText);
+    
+    if (!responseText) {
+      throw new Error('No response text from Gemini API');
+    }
+    
+    // Extract JSON from response
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Could not parse JSON response from Gemini: ' + responseText);
+    }
+
+    const analysis = JSON.parse(jsonMatch[0]);
+    console.log('Parsed analysis:', analysis);
+    
+    return {
+      title: analysis.title || fileName,
+      type: analysis.type || 'Document',
+      context: analysis.context || ''
+    };
+  } catch (error) {
+    console.error('=== Error analyzing document with Gemini ===', error);
+    throw error;
+  }
+};

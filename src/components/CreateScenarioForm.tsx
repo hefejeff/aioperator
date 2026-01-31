@@ -12,6 +12,9 @@ interface CreateScenarioFormProps {
     goal: string; 
     goal_es?: string; 
     domain?: string;
+    process?: string;
+    valueDrivers?: string;
+    painPoints?: string;
     currentWorkflowImage: File | undefined;
   }) => Promise<void>;
   onClose: () => void;
@@ -24,6 +27,11 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
   const [description, setDescription] = useState('');
   const [goal, setGoal] = useState('');
   const [domain, setDomain] = useState('');
+  const [process, setProcess] = useState('');
+  const [isCustomProcess, setIsCustomProcess] = useState(false);
+  const [customProcess, setCustomProcess] = useState('');
+  const [valueDrivers, setValueDrivers] = useState('');
+  const [painPoints, setPainPoints] = useState('');
   const [currentWorkflowImage, setCurrentWorkflowImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generatingExample, setGeneratingExample] = useState(false);
@@ -66,6 +74,9 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
         description: description.trim(),
         goal: goal.trim(),
         domain: finalDomain,
+        process: (isCustomProcess ? customProcess : process) || undefined,
+        valueDrivers: valueDrivers || undefined,
+        painPoints: painPoints || undefined,
         currentWorkflowImage: currentWorkflowImage || undefined
       };
 
@@ -195,48 +206,100 @@ const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose
       const prompt = `${selectedPrompt}. You must respond with EXACTLY this format:
 
 TITLE: "A specific, actionable title for this workflow"
-PROBLEM: "A detailed, real-world problem description with specific pain points and current inefficiencies"
-TARGET: "Concrete, measurable outcomes and success criteria that would be achieved"
+CURRENT_PROCESS: "A detailed description of the current manual process with specific pain points and inefficiencies"
+DESIRED_OUTCOME: "Concrete, measurable outcomes and success criteria that would be achieved"
+VALUE_DRIVERS: "3-5 key business value drivers (e.g., cost savings, time reduction, quality improvement)"
+PAIN_POINTS: "3-5 specific pain points and problems this workflow will solve"
 
 Make this example specific to ${domain} with realistic details, metrics, and business impact. Avoid generic responses.`;
       
       const response = await mod.generateText(prompt, null, { temperature: 0.4 });
       
-      // Parse the structured response
-      const lines = response.split('\n').filter(line => line.trim());
+      // Parse the structured response - handle multi-line content
+      const markers = ['TITLE:', 'CURRENT_PROCESS:', 'DESIRED_OUTCOME:', 'VALUE_DRIVERS:', 'PAIN_POINTS:'];
       let parsedTitle = '';
-      let parsedProblem = '';
-      let parsedTarget = '';
+      let parsedCurrentProcess = '';
+      let parsedDesiredOutcome = '';
+      let parsedValueDrivers = '';
+      let parsedPainPoints = '';
       
+      let currentSection = '';
+      let currentContent: string[] = [];
+      
+      const lines = response.split('\n');
       for (const line of lines) {
-        if (line.startsWith('TITLE:')) {
-          parsedTitle = line.replace('TITLE:', '').replace(/['"]/g, '').trim();
-        } else if (line.startsWith('PROBLEM:')) {
-          parsedProblem = line.replace('PROBLEM:', '').replace(/['"]/g, '').trim();
-        } else if (line.startsWith('TARGET:')) {
-          parsedTarget = line.replace('TARGET:', '').replace(/['"]/g, '').trim();
+        const trimmedLine = line.trim();
+        if (!trimmedLine) continue;
+        
+        // Check if this line starts a new section
+        let foundMarker = false;
+        for (const marker of markers) {
+          if (trimmedLine.startsWith(marker)) {
+            // Save previous section if it exists
+            if (currentSection) {
+              const content = currentContent.join(' ').replace(/['"]/g, '').trim();
+              if (currentSection === 'TITLE:') parsedTitle = content;
+              else if (currentSection === 'CURRENT_PROCESS:') parsedCurrentProcess = content;
+              else if (currentSection === 'DESIRED_OUTCOME:') parsedDesiredOutcome = content;
+              else if (currentSection === 'VALUE_DRIVERS:') parsedValueDrivers = content;
+              else if (currentSection === 'PAIN_POINTS:') parsedPainPoints = content;
+            }
+            
+            // Start new section
+            currentSection = marker;
+            currentContent = [trimmedLine.replace(marker, '').trim()];
+            foundMarker = true;
+            break;
+          }
         }
+        
+        // If no marker found and we're in a section, add to current content
+        if (!foundMarker && currentSection) {
+          currentContent.push(trimmedLine);
+        }
+      }
+      
+      // Don't forget to save the last section
+      if (currentSection) {
+        const content = currentContent.join(' ').replace(/['"]/g, '').trim();
+        if (currentSection === 'TITLE:') parsedTitle = content;
+        else if (currentSection === 'CURRENT_PROCESS:') parsedCurrentProcess = content;
+        else if (currentSection === 'DESIRED_OUTCOME:') parsedDesiredOutcome = content;
+        else if (currentSection === 'VALUE_DRIVERS:') parsedValueDrivers = content;
+        else if (currentSection === 'PAIN_POINTS:') parsedPainPoints = content;
       }
       
       // Directly populate form fields
       if (parsedTitle) setTitle(parsedTitle);
-      if (parsedProblem) setDescription(parsedProblem);
-      if (parsedTarget) setGoal(parsedTarget);
+      if (parsedCurrentProcess) setDescription(parsedCurrentProcess);
+      if (parsedDesiredOutcome) setGoal(parsedDesiredOutcome);
+      if (parsedValueDrivers) setValueDrivers(parsedValueDrivers);
+      if (parsedPainPoints) setPainPoints(parsedPainPoints);
       
-      console.log('AI Example generated and populated:', { parsedTitle, parsedProblem, parsedTarget });
+      console.log('AI Example generated and populated:', { 
+        parsedTitle, 
+        parsedCurrentProcess, 
+        parsedDesiredOutcome,
+        parsedValueDrivers,
+        parsedPainPoints
+      });
       
     } catch (err) {
       console.error('Failed to generate example', err);
       // Fallback with domain-specific content that directly populates fields
       const fallbackData = {
         title: `${domain} Process Optimization`,
-        problem: `Current ${domain.toLowerCase()} processes are inefficient and time-consuming, requiring significant manual effort that could be automated.`,
-        target: `Streamline ${domain.toLowerCase()} operations through AI automation to reduce processing time and improve accuracy.`
+        currentProcess: `Current ${domain.toLowerCase()} processes are inefficient and time-consuming, requiring significant manual effort that could be automated.`,
+        desiredOutcome: `Streamline ${domain.toLowerCase()} operations through AI automation to reduce processing time and improve accuracy.`,
+        valueDrivers: `Reduce manual effort by 60%, improve processing speed by 80%, enhance accuracy and consistency`,
+        painPoints: `High manual workload, slow turnaround times, prone to human error, lack of visibility`
       };
       
       setTitle(fallbackData.title);
-      setDescription(fallbackData.problem);
-      setGoal(fallbackData.target);
+      setDescription(fallbackData.currentProcess);
+      setGoal(fallbackData.desiredOutcome);
+      setValueDrivers(fallbackData.valueDrivers);
+      setPainPoints(fallbackData.painPoints);
     } finally {
       setGeneratingExample(false);
     }
@@ -252,6 +315,24 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
     value: domain,
     label: t(`domain.${domain.toLowerCase().replace(/\s+/g, '_')}`) || domain
   }));
+
+  // Domain to process mapping (matches BusinessDomainManagement)
+  const domainProcessMap: Record<string, string[]> = {
+    'Sales': ['Lead Qualification', 'Proposal Generation', 'Contract Review'],
+    'HR': ['Resume Screening', 'Onboarding Automation', 'Performance Review'],
+    'Finance': ['Invoice Processing', 'Expense Approval', 'Financial Reporting'],
+    'Operations': ['Workflow Optimization', 'Resource Allocation'],
+    'Logistics': ['Shipment Tracking', 'Inventory Management'],
+    'Healthcare': ['Patient Intake', 'Appointment Scheduling'],
+    'Manufacturing': ['Quality Control', 'Production Planning'],
+    'Legal': ['Document Review', 'Contract Analysis'],
+    'Procurement': ['Purchase Order Processing', 'Vendor Management'],
+    'Marketing': ['Campaign Analytics', 'Content Generation'],
+    'IT': ['Ticket Routing', 'System Monitoring'],
+    'Customer Support': ['Email Triage', 'Knowledge Base Search']
+  };
+
+  const availableProcesses = domain ? domainProcessMap[domain] || [] : [];
 
   return (
     <div 
@@ -279,7 +360,12 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
             </div>
             <select
               value={domain}
-              onChange={(e) => { setDomain(e.target.value); }}
+              onChange={(e) => { 
+                setDomain(e.target.value); 
+                setProcess(''); // Reset process when domain changes
+                setIsCustomProcess(false);
+                setCustomProcess('');
+              }}
               className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow"
             >
               <option value="">{t('form.selectDomain')}</option>
@@ -288,6 +374,58 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
               ))}
             </select>
           </div>
+
+          {/* Process */}
+          {domain && availableProcesses.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-bold text-wm-blue">Process</label>
+                {!isCustomProcess && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomProcess(true)}
+                    className="text-xs text-wm-accent hover:text-wm-accent/80 font-bold"
+                  >
+                    + Add custom process
+                  </button>
+                )}
+              </div>
+              
+              {isCustomProcess ? (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customProcess}
+                    onChange={(e) => setCustomProcess(e.target.value)}
+                    placeholder="Enter custom process name"
+                    className="flex-1 bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow placeholder:text-wm-blue/40"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomProcess(false);
+                      setCustomProcess('');
+                    }}
+                    className="px-3 py-2 text-sm text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/20 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <select
+                  value={process}
+                  onChange={(e) => setProcess(e.target.value)}
+                  className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow"
+                >
+                  <option value="">Select a process (optional)</option>
+                  {availableProcesses.map(proc => (
+                    <option key={proc} value={proc}>{proc}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
           {/* Workflow Title */}
           <div>
             <label htmlFor="title" className="block text-sm font-bold text-wm-blue mb-1">{t('form.title')}</label>
@@ -300,27 +438,57 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
               className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow placeholder:text-wm-blue/40"
             />
           </div>
-          {/* Your Problem (Description) */}
+          {/* Current Process */}
           <div>
-            <label htmlFor="description" className="block text-sm font-bold text-wm-blue mb-1">{t('form.description')}</label>
+            <label htmlFor="description" className="block text-sm font-bold text-wm-blue mb-1">Current Process</label>
             <textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
-              placeholder={t('form.descriptionPlaceholder')}
+              placeholder="Describe the current process"
               className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow placeholder:text-wm-blue/40"
             />
           </div>
-          {/* Target (Goal) */}
+          {/* Desired Outcome */}
           <div>
-            <label htmlFor="goal" className="block text-sm font-bold text-wm-blue mb-1">{t('form.goal')}</label>
+            <label htmlFor="goal" className="block text-sm font-bold text-wm-blue mb-1">Desired Outcome</label>
             <textarea
               id="goal"
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               rows={4}
-              placeholder={t('form.goalPlaceholder')}
+              placeholder="What is the desired outcome?"
+              className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow placeholder:text-wm-blue/40"
+            />
+          </div>
+
+          {/* Value Drivers */}
+          <div>
+            <label htmlFor="valueDrivers" className="block text-sm font-bold text-wm-blue mb-1">
+              Value Drivers <span className="ml-1 text-wm-blue/50 font-normal">(Optional)</span>
+            </label>
+            <textarea
+              id="valueDrivers"
+              value={valueDrivers}
+              onChange={(e) => setValueDrivers(e.target.value)}
+              rows={3}
+              placeholder="What business value will this deliver?"
+              className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow placeholder:text-wm-blue/40"
+            />
+          </div>
+
+          {/* Pain Points */}
+          <div>
+            <label htmlFor="painPoints" className="block text-sm font-bold text-wm-blue mb-1">
+              Pain Points <span className="ml-1 text-wm-blue/50 font-normal">(Optional)</span>
+            </label>
+            <textarea
+              id="painPoints"
+              value={painPoints}
+              onChange={(e) => setPainPoints(e.target.value)}
+              rows={3}
+              placeholder="What problems does this solve?"
               className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow placeholder:text-wm-blue/40"
             />
           </div>

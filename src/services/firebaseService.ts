@@ -67,7 +67,8 @@ export const saveEvaluation = async (
   evaluation: EvaluationResult,
   workflowExplanation: string,
   imageUrl: string | null,
-  displayName: string | null
+  displayName: string | null,
+  companyId?: string
 ): Promise<string> => {
   try {
     // First save the workflow version to get its ID
@@ -121,7 +122,7 @@ export const saveEvaluation = async (
     try {
       if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
         window.dispatchEvent(new CustomEvent('evaluation-saved', { 
-          detail: { scenarioId, userId, workflowVersionId } 
+          detail: { scenarioId, userId, workflowVersionId, companyId: companyId || null } 
         }));
       }
     } catch (e) {
@@ -353,6 +354,9 @@ export const saveWorkflowVersion = async (
     mermaidSvg?: string | null;
     imageBase64?: string | null;
     imageMimeType?: string | null;
+    demoProjectUrl?: string | null;
+    demoPublishedUrl?: string | null;
+    demoPrompt?: string | null;
   }
 ): Promise<string> => {
   try {
@@ -373,6 +377,9 @@ export const saveWorkflowVersion = async (
       mermaidSvg: options?.mermaidSvg ?? null,
       imageBase64: options?.imageBase64 ?? null,
       imageMimeType: options?.imageMimeType ?? null,
+      demoProjectUrl: options?.demoProjectUrl ?? null,
+      demoPublishedUrl: options?.demoPublishedUrl ?? null,
+      demoPrompt: options?.demoPrompt ?? null,
       timestamp: Date.now(),
     };
     console.log('Workflow Version payload:', payload);
@@ -598,14 +605,26 @@ export const getScenarios = async (userId: string): Promise<Scenario[]> => {
     const scenarios: Scenario[] = [];
     const data = snapshot.val();
     
+    // Load user-specific overrides
+    const overridesRef = ref(db, `userScenarioOverrides/${userId}`);
+    const overridesSnapshot = await get(overridesRef);
+    const userOverrides = overridesSnapshot.exists() ? overridesSnapshot.val() : {};
+    
     // Convert object to array and include all scenarios user has access to
     for (const [id, scenario] of Object.entries<any>(data)) {
       // Include scenario if it's public or created by the user
       if (!scenario.userId || scenario.userId === userId) {
-        scenarios.push({
+        const baseScenario = {
           id,
           ...(scenario as Omit<Scenario, 'id'>)
-        });
+        };
+        
+        // Apply user-specific overrides if they exist
+        if (userOverrides[id]) {
+          Object.assign(baseScenario, userOverrides[id]);
+        }
+        
+        scenarios.push(baseScenario);
       }
     }
 
@@ -613,10 +632,19 @@ export const getScenarios = async (userId: string): Promise<Scenario[]> => {
     const existingIds = new Set(scenarios.map((scenario) => scenario.id));
     const defaultScenarios = ALL_SCENARIOS
       .filter((scenario) => !existingIds.has(scenario.id))
-      .map((scenario) => ({
-        ...scenario,
-        favoritedBy: scenario.favoritedBy ?? {}
-      }));
+      .map((scenario) => {
+        const baseScenario = {
+          ...scenario,
+          favoritedBy: scenario.favoritedBy ?? {}
+        };
+        
+        // Apply user-specific overrides if they exist for default scenarios too
+        if (userOverrides[scenario.id]) {
+          Object.assign(baseScenario, userOverrides[scenario.id]);
+        }
+        
+        return baseScenario;
+      });
     
     return [...scenarios, ...defaultScenarios];
   } catch (error) {
@@ -1126,8 +1154,46 @@ export const listCompanyResearch = async (userId: string): Promise<CompanyResear
   }
 };
 
+// Search for companies by name from other users
+export const searchOtherUsersCompanies = async (
+  currentUserId: string, 
+  searchQuery: string
+): Promise<Company[]> => {
+  try {
+    if (!searchQuery.trim()) {
+      return [];
+    }
+    
+    const companiesRef = ref(db, 'companies');
+    const snapshot = await get(companiesRef);
+    
+    if (!snapshot.exists()) {
+      return [];
+    }
+    
+    const searchLower = searchQuery.toLowerCase();
+    return Object.entries<any>(snapshot.val())
+      .filter(([id, company]) => 
+        company.createdBy !== currentUserId && // Exclude current user's companies
+        company.name?.toLowerCase().includes(searchLower) // Match search query
+      )
+      .map(([id, company]) => ({
+        id,
+        name: company.name,
+        createdBy: company.createdBy,
+        createdAt: company.createdAt,
+        lastUpdated: company.lastUpdated,
+        selectedScenarios: company.selectedScenarios || [],
+        research: company.research || {}
+      }));
+  } catch (error) {
+    console.error('Failed to search other users companies:', error);
+    return [];
+  }
+};
+
 export const getCompanyResearchHistory = async (
-  userId: string, 
+  userId: string,
   companyName: string
 ): Promise<CompanyResearchEntry[]> => {
   try {

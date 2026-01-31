@@ -22,10 +22,11 @@ import AdminDashboard from './components/AdminDashboard';
 import WorkflowDetailView from './components/WorkflowDetailView';
 import CompanyResearch from './components/CompanyResearch';
 import ChatInterface from './components/ChatInterface';
+import Dashboard2 from './components/Dashboard2';
 import { ALL_SCENARIOS } from './constants';
 import { I18nProvider } from './i18n';
 
-type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'ADMIN' | 'WORKFLOW_DETAIL' | 'RESEARCH';
+type View = 'DASHBOARD' | 'DASHBOARD2' | 'TRAINING' | 'SCENARIO' | 'ADMIN' | 'WORKFLOW_DETAIL' | 'RESEARCH';
 
 type ScenarioCreationContext = {
   source: 'RESEARCH' | 'DEFAULT';
@@ -38,6 +39,7 @@ const pathToView: Record<string, View> = {
   '/': 'DASHBOARD',
   '': 'DASHBOARD',
   '/dashboard': 'DASHBOARD',
+  '/dashboard2': 'DASHBOARD2',
   '/training': 'TRAINING',
   '/scenario': 'SCENARIO',
   '/admin': 'ADMIN',
@@ -47,6 +49,7 @@ const pathToView: Record<string, View> = {
 
 const viewToPath: Record<View, string> = {
   'DASHBOARD': '/dashboard',
+  'DASHBOARD2': '/dashboard2',
   'TRAINING': '/training',
   'SCENARIO': '/scenario',
   'ADMIN': '/admin',
@@ -203,15 +206,18 @@ const App: React.FC = () => {
 
   // Sync view state with URL changes and redirect root to dashboard for logged-in users
   useEffect(() => {
+    // Redirect logged-in users from root to dashboard first
+    if (user && (location.pathname === '/' || location.pathname === '')) {
+      setView('DASHBOARD');
+      navigate('/dashboard', { replace: true });
+      return;
+    }
+    
     const newView = getViewFromPath(location.pathname);
     if (newView !== view) {
       setView(newView);
     }
-    // Redirect logged-in users from root to dashboard
-    if (user && (location.pathname === '/' || location.pathname === '')) {
-      navigate('/dashboard', { replace: true });
-    }
-  }, [location.pathname, user, navigate]);
+  }, [location.pathname, user, navigate, view]);
 
   const handleNavigate = useCallback((newView: 'DASHBOARD' | 'TRAINING' | 'ADMIN' | 'RESEARCH', companyId?: string) => {
     setPreviousView(view);
@@ -441,8 +447,6 @@ const App: React.FC = () => {
                   onSelectScenario={handleSelectScenario}
                   user={user!}
                   onScenarioCreated={handleScenarioCreated}
-                  highScores={highScores}
-                  averageScores={averageScores}
                 />;
       case 'SCENARIO':
         if (activeScenario && user) {
@@ -452,6 +456,7 @@ const App: React.FC = () => {
                     onEvaluationCompleted={handleEvaluationCompleted}
                     onViewWorkflow={handleSelectWorkflow}
                     companyName={activeCompanyName || undefined}
+                    companyId={activeCompanyId || undefined}
                     onNavigateToDashboard={() => handleNavigate('DASHBOARD')}
                     onNavigateToResearch={() => activeCompanyId ? handleNavigate('RESEARCH', activeCompanyId) : handleNavigate('RESEARCH')}
                  />;
@@ -471,6 +476,18 @@ const App: React.FC = () => {
         return null;
       case 'DASHBOARD':
       default:
+        if (user) {
+          return <Dashboard2 
+                    user={user}
+                    onStartTraining={handleStartTraining}
+                    onViewWorkflow={handleSelectWorkflow}
+                    onScenarioCreated={handleScenarioCreated}
+                    handleNavigate={handleNavigate}
+                    onNavigateToScenario={handleNavigateToScenario}
+                 />;
+        }
+        return null;
+      case 'DASHBOARD2':
         return <DashboardView 
                     user={user!}
                     onStartTraining={handleStartTraining}

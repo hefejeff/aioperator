@@ -2,22 +2,20 @@
 
 import React from 'react';
 import { useTranslation } from '../i18n';
-import type { Scenario } from '../types';
+import type { Scenario, StoredEvaluationResult } from '../types';
 import { Icons, DOMAIN_COLORS } from '../constants';
 
 interface ScenarioCardProps {
   scenario: Scenario;
   onSelect: (scenario: Scenario) => void;
-  highScore?: number;
-  averageScore?: number;
   onDelete?: (scenarioId: string) => void;
-  onTranslate?: (scenario: Scenario) => void;
   isFavorited?: boolean;
   onToggleFavorite?: (scenario: Scenario) => void;
   favoriteBusy?: boolean;
+  evaluations?: StoredEvaluationResult[];
 }
 
-const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, highScore, averageScore, onTranslate, isFavorited, onToggleFavorite, favoriteBusy }) => {
+const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, isFavorited, onToggleFavorite, favoriteBusy, evaluations }) => {
   const isCustom = !!scenario.userId;
   const { t, lang } = useTranslation();
   const localizedTitle = lang === 'Spanish' && scenario.title_es ? scenario.title_es : scenario.title;
@@ -78,41 +76,51 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, highSco
         </div>
   <p className="text-wm-blue/60 text-sm mb-4">{localizedDescription}</p>
         
-        {(highScore !== undefined || averageScore !== undefined) && (
-          <div className="space-y-2">
-            {highScore !== undefined && (
-                <div className="flex items-center space-x-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-wm-yellow" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+        {/* Demo URLs from evaluations */}
+        {evaluations && evaluations.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-wm-neutral/20 space-y-2">
+            <p className="text-xs font-bold text-wm-blue/70 uppercase tracking-wide mb-2">
+              {evaluations.length} Run{evaluations.length !== 1 ? 's' : ''}
+            </p>
+            {evaluations.slice(0, 3).map((evaluation, idx) => (
+              <div key={evaluation.id} className="flex items-center gap-2 text-xs">
+                {evaluation.demoProjectUrl && (
+                  <a
+                    href={evaluation.demoProjectUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-wm-accent hover:text-wm-accent/80 font-bold flex items-center gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
-                    <p className="text-sm font-bold text-wm-blue">
-                        {t('scenario.highScore')}: <span className="font-bold text-wm-yellow">{highScore}/10</span>
-                    </p>
-                </div>
-            )}
-            {averageScore !== undefined && (
-                <div className="flex items-center space-x-2">
-                    <Icons.ChartBar />
-                    <p className="text-sm font-bold text-wm-blue">
-                        {t('scenario.avgScore')}: <span className="font-bold text-wm-accent">{averageScore.toFixed(1)}/10</span>
-                    </p>
-                </div>
-            )}
+                    Demo {idx + 1}
+                  </a>
+                )}
+                {evaluation.demoPublishedUrl && (
+                  <a
+                    href={evaluation.demoPublishedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-wm-pink hover:text-wm-pink/80 font-bold flex items-center gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    Published {idx + 1}
+                  </a>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
       <button className="mt-4 text-sm font-bold text-white bg-wm-accent/80 hover:bg-wm-accent py-2 rounded-md transition-colors w-full">
         {t('scenario.start')}
       </button>
-      {/* Translate button for scenarios missing translations */}
-      {(!scenario.title_es || !scenario.description_es || !scenario.goal_es) && (
-        <button
-          onClick={(e) => { e.stopPropagation(); if (typeof onTranslate === 'function') onTranslate(scenario); }}
-          className="mt-2 text-xs font-bold text-wm-blue bg-wm-yellow hover:bg-wm-yellow/80 py-1 rounded-md transition-colors w-full"
-        >
-          {t('scenario.translate')}
-        </button>
-      )}
     </div>
   );
 };

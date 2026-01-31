@@ -1,6 +1,6 @@
 
 
-export interface Scenario {
+export interface UseCase {
   id: string;
   title: string;
   // Optional Spanish translations
@@ -10,11 +10,21 @@ export interface Scenario {
   goal: string;
   goal_es?: string;
   domain?: string;
+  process?: string; // Specific process within the domain (e.g., 'Lead Qualification' within 'Sales')
+  process_es?: string;
+  valueDrivers?: string; // Business value this use case will deliver
+  valueDrivers_es?: string;
+  painPoints?: string; // Problems this use case solves
+  painPoints_es?: string;
+  platform?: string; // Target platform (AI_CHOICE, MS365, GOOGLE, CUSTOM)
   type: 'TRAINING' | 'EVALUATION';
-  userId?: string; // ID of the user who created this scenario
+  userId?: string; // ID of the user who created this use case
   favoritedBy?: Record<string, true>; // map of userId -> true for quick lookup
   currentWorkflowImage?: string | null; // Base64 data URL for the current workflow image
 }
+
+// Keep Scenario as alias for backward compatibility
+export type Scenario = UseCase;
 
 export interface UserProfile {
   uid: string;
@@ -38,6 +48,9 @@ export interface StoredEvaluationResult extends EvaluationResult {
   workflowExplanation: string;
   imageUrl: string | null;
   workflowVersionId?: string; // ID of the corresponding workflow version if one exists
+  demoProjectUrl?: string | null; // Google AI Studio project URL
+  demoPublishedUrl?: string | null; // Published demo URL
+  demoPrompt?: string | null; // Generated demo prompt text
 }
 
 export interface AggregatedEvaluationResult extends StoredEvaluationResult {
@@ -52,6 +65,20 @@ export interface LeaderboardEntry {
 
 export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER';
 
+// Meeting types
+export interface Meeting {
+  id: string;
+  companyId: string;
+  title: string;
+  date: string; // ISO date string
+  time: string; // HH:mm format
+  participants: string[]; // Array of participant names/emails
+  transcript: string; // Meeting transcript/notes
+  summary?: string; // AI-generated or manual summary
+  createdAt: number;
+  updatedAt: number;
+}
+
 // Company types
 export interface Company {
   id: string;
@@ -60,6 +87,8 @@ export interface Company {
   createdAt: number;
   lastUpdated: number;
   selectedScenarios: string[]; // Array of scenario IDs selected for this company
+  selectedDomains?: string[]; // Array of domain names user has selected/toggled on
+  meetings?: Meeting[]; // Array of meetings for this company
   research: CompanyResearch;
 }
 
@@ -169,7 +198,7 @@ export interface PendingInvitation {
 }
 
 // Core platforms (base options)
-export type CorePlatform = 'MS365' | 'GOOGLE' | 'CUSTOM';
+export type CorePlatform = 'AI_CHOICE' | 'MS365' | 'GOOGLE' | 'CUSTOM';
 
 // Individual approaches within platforms
 export type PlatformApproach = 
@@ -225,6 +254,9 @@ export interface WorkflowVersion {
   mermaidSvg: string | null;
   imageBase64: string | null;
   imageMimeType: string | null;
+  demoProjectUrl?: string | null; // Google AI Studio project URL
+  demoPublishedUrl?: string | null; // Published demo URL
+  demoPrompt?: string | null; // Generated demo prompt text
   leanCanvas?: any; // Optional saved Lean Canvas data
   lastModified?: number; // Timestamp of last modification
   team?: WorkflowTeam; // Optional team collaboration data

@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import type { User } from 'firebase/auth';
-import type { Scenario } from '../types';
-import { saveUserScenario, deleteUserScenario, updateScenario, toggleFavoriteScenario, getUserFavoriteScenarioIds } from '../services/firebaseService';
+import type { Scenario, StoredEvaluationResult } from '../types';
+import { saveUserScenario, deleteUserScenario, updateScenario, toggleFavoriteScenario, getUserFavoriteScenarioIds, getEvaluations } from '../services/firebaseService';
 import ScenarioCard from './ScenarioCard';
 import CreateScenarioForm from './CreateScenarioForm';
 import { useTranslation } from '../i18n';
@@ -13,17 +13,16 @@ interface TrainingViewProps {
   onSelectScenario: (scenario: Scenario) => void;
   user: User;
   onScenarioCreated: (newScenario: Scenario) => void;
-  highScores: Record<string, number>;
-  averageScores: Record<string, number>;
 }
 
-const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario, user, onScenarioCreated, highScores, averageScores }) => {
+const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario, user, onScenarioCreated }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [localScenarios, setLocalScenarios] = useState<Scenario[]>(scenarios);
   const [domainFilter, setDomainFilter] = useState<string>('All');
   const [showStarredOnly, setShowStarredOnly] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [favoriteBusyId, setFavoriteBusyId] = useState<string | null>(null);
+  const [scenarioEvaluations, setScenarioEvaluations] = useState<Record<string, StoredEvaluationResult[]>>({});
 
   useEffect(() => {
   setLocalScenarios(scenarios);
@@ -39,6 +38,23 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
       }
     })();
   }, [user]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const evalsMap: Record<string, StoredEvaluationResult[]> = {};
+        for (const scenario of scenarios) {
+          const evals = await getEvaluations(user.uid, scenario.id);
+          if (evals.length > 0) {
+            evalsMap[scenario.id] = evals;
+          }
+        }
+        setScenarioEvaluations(evalsMap);
+      } catch (e) {
+        console.error('Failed to load evaluations:', e);
+      }
+    })();
+  }, [user, scenarios]);
 
   useEffect(() => {
     const onDelete = async (e: Event) => {
@@ -65,11 +81,17 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
   const [translatingId, setTranslatingId] = useState<string | null>(null);
 
   const handleTranslate = async (scenario: Scenario) => {
-    if (translatingId) return; // single translation at a time
+    console.log('handleTranslate called for scenario:', scenario.id);
+    if (translatingId) {
+      console.log('Already translating, skipping');
+      return; // single translation at a time
+    }
     setTranslatingId(scenario.id);
+    console.log('Starting translation for:', scenario.id);
     try {
       // Attempt to use geminiService to translate to Spanish if missing
       const mod = await import('../services/geminiService');
+      console.log('geminiService module loaded');
 
       const translateText = async (text: string, target: 'Spanish' | 'English') => {
         try {
@@ -83,35 +105,67 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
       };
 
       const updated: Scenario = { ...scenario };
-      // If Spanish missing, create title_es/description_es/goal_es from English
+      console.log('Current scenario translations:', {
+        title_es: updated.title_es,
+        description_es: updated.description_es,
+        goal_es: updated.goal_es,
+        process_es: updated.process_es,
+        valueDrivers_es: updated.valueDrivers_es,
+        painPoints_es: updated.painPoints_es
+      });
+      // If Spanish missing, create translations from English
       if (!updated.title_es && updated.title) {
+        console.log('Translating title:', updated.title);
         updated.title_es = await translateText(updated.title, 'Spanish');
+        console.log('Title translated to:', updated.title_es);
       }
       if (!updated.description_es && updated.description) {
+        console.log('Translating description');
         updated.description_es = await translateText(updated.description, 'Spanish');
       }
       if (!updated.goal_es && updated.goal) {
+        console.log('Translating goal');
         updated.goal_es = await translateText(updated.goal, 'Spanish');
       }
+      if (!updated.process_es && updated.process) {
+        console.log('Translating process');
+        updated.process_es = await translateText(updated.process, 'Spanish');
+      }
+      if (!updated.valueDrivers_es && updated.valueDrivers) {
+        console.log('Translating valueDrivers');
+        updated.valueDrivers_es = await translateText(updated.valueDrivers, 'Spanish');
+      }
+      if (!updated.painPoints_es && updated.painPoints) {
+        console.log('Translating painPoints');
+        updated.painPoints_es = await translateText(updated.painPoints, 'Spanish');
+      }
 
+      console.log('Translations complete, updating scenario...');
       if (updated.userId) {
         // user-owned scenario — update in-place
+        console.log('Updating user-owned scenario');
         await updateScenario(updated);
       } else {
         // seeded scenario — create a per-user override so we don't write to protected global path
+        console.log('Creating user override for seeded scenario');
         const { createUserScenarioOverride } = await import('../services/firebaseService');
         await createUserScenarioOverride(user.uid, updated.id, {
           title_es: updated.title_es,
           description_es: updated.description_es,
           goal_es: updated.goal_es,
+          process_es: updated.process_es,
+          valueDrivers_es: updated.valueDrivers_es,
+          painPoints_es: updated.painPoints_es,
           domain: updated.domain,
         });
       }
+      console.log('Scenario updated successfully');
       setLocalScenarios(prev => prev.map(s => s.id === updated.id ? updated : s));
     } catch (err) {
       console.error('Translation failed:', err);
       alert('Translation failed. See console for details.');
     } finally {
+      console.log('Translation complete, clearing translatingId');
       setTranslatingId(null);
     }
   };
@@ -229,12 +283,10 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
               key={scenario.id} 
               scenario={scenario} 
               onSelect={onSelectScenario}
-              highScore={highScores[scenario.id]}
-              averageScore={averageScores[scenario.id]}
-              onTranslate={handleTranslate}
               isFavorited={favoriteIds.has(scenario.id)}
               onToggleFavorite={handleToggleFavorite}
               favoriteBusy={favoriteBusyId === scenario.id}
+              evaluations={scenarioEvaluations[scenario.id]}
             />
           ))}
         </div>

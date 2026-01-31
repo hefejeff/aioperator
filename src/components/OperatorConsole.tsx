@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { User } from 'firebase/auth';
 import type { Scenario, EvaluationResult, StoredEvaluationResult, Platform } from '../types';
 import type { AIActionsPlatform } from './AIActionsPanel';
@@ -18,6 +18,7 @@ interface OperatorConsoleProps {
   onEvaluationCompleted: (scenarioId: string, newScore: number) => void;
   onViewWorkflow?: (workflowId: string) => void;
   companyName?: string;
+  companyId?: string;
   onNavigateToDashboard?: () => void;
   onNavigateToResearch?: () => void;
 }
@@ -30,9 +31,9 @@ export const LoadingSpinner: React.FC = () => (
     </div>
 );
 
-const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEvaluationCompleted: _onEvaluationCompleted, onViewWorkflow, companyName, onNavigateToDashboard, onNavigateToResearch }) => {
+const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEvaluationCompleted: _onEvaluationCompleted, onViewWorkflow, companyName, companyId, onNavigateToDashboard, onNavigateToResearch }) => {
   const [workflowExplanation, setWorkflowExplanation] = useState('');
-  const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
+  const [evaluation, setEvaluation] = useState<(EvaluationResult & { demoProjectUrl?: string; demoPublishedUrl?: string; demoPrompt?: string }) | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [currentImage, setCurrentImage] = useState<{ base64: string; mimeType: string; dataUrl: string } | null>(null);
   const [proposedImage, setProposedImage] = useState<{ base64: string; mimeType: string; dataUrl: string } | null>(null);
@@ -63,6 +64,23 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEva
   const localizedTitle = getLocalized(scenario?.title);
   const localizedDescription = getLocalized(scenario?.description);
   const localizedGoal = getLocalized(scenario?.goal);
+  
+  // Editable versions of title, description, and goal
+  const [editableTitle, setEditableTitle] = useState(localizedTitle);
+  const [editableDescription, setEditableDescription] = useState(localizedDescription);
+  const [editableGoal, setEditableGoal] = useState(localizedGoal);
+  const [valueDrivers, setValueDrivers] = useState(scenario?.valueDrivers || '');
+  const [painPoints, setPainPoints] = useState(scenario?.painPoints || '');
+  
+  // Update editable fields when scenario changes
+  useEffect(() => {
+    setEditableTitle(localizedTitle);
+    setEditableDescription(localizedDescription);
+    setEditableGoal(localizedGoal);
+    setValueDrivers(scenario?.valueDrivers || '');
+    setPainPoints(scenario?.painPoints || '');
+  }, [localizedTitle, localizedDescription, localizedGoal, scenario?.valueDrivers, scenario?.painPoints]);
+  
   // Feature flag for pro users (placeholder: always true)
   const isProOrAbove = true;
 
@@ -83,6 +101,7 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEva
         mimeType: file.type,
         dataUrl: reader.result as string,
       });
+      setIsCurrentWorkflowModalOpen(false);
     };
     reader.onerror = (error) => {
       console.error('Error reading file:', error);
@@ -175,6 +194,201 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEva
     URL.revokeObjectURL(url);
   };
 
+  // Generate Google AI Studio demo prompt
+  const handleGenerateDemoPrompt = async () => {
+    // Trigger evaluation in background if not already done and workflow explanation exists
+    if (!evaluation && workflowExplanation.trim() && !isLoading) {
+      // Start evaluation in background without waiting for it
+      handleSubmitForEvaluation().catch(err => {
+        console.error('Background evaluation failed:', err);
+        // Don't block prompt generation if evaluation fails
+      });
+    }
+
+    let prompt = `Create a working demo for the following AI-enhanced workflow:
+
+## Use Case
+**Title:** ${localizedTitle}
+**Description:** ${localizedDescription}
+**Goal:** ${localizedGoal}
+
+`;
+
+    // Include PRD if available
+    if (prdMarkdown && prdMarkdown.trim()) {
+      prompt += `## Product Requirements Document (PRD)
+
+${prdMarkdown}
+
+`;
+    }
+
+    // Include Pitch if available
+    if (pitchMarkdown && pitchMarkdown.trim()) {
+      prompt += `## Business Pitch
+
+${pitchMarkdown}
+
+`;
+    }
+
+    // Include workflow explanation if available
+    if (workflowExplanation && workflowExplanation.trim()) {
+      prompt += `## Proposed Workflow
+
+${workflowExplanation}
+
+`;
+    }
+
+    prompt += `## Requirements for the Demo
+1. Create a functional prototype that demonstrates the key steps of this workflow
+2. Show how AI is integrated at each stage where specified
+3. Include realistic sample data and interactions
+4. Demonstrate the before/after improvement clearly
+5. Make it interactive where possible
+6. Include brief annotations explaining what's happening at each step
+
+## Technical Considerations
+- Use appropriate APIs and integrations for the workflow described
+- Implement AI features using appropriate models (e.g., Gemini, GPT, Claude)
+- Focus on core functionality rather than production-ready code
+- Include comments explaining the AI integration points
+- Provide setup instructions and dependencies
+- Choose the most suitable tech stack for demonstrating the workflow
+
+## West Monroe Branding Requirements
+This demo is for **West Monroe**, a consulting firm that helps organizations modernize their operations through AI and technology.
+
+### Brand Identity
+- **Philosophy**: Clear and Human - communicate complex ideas in a direct, accessible, and impactful way
+- **Voice**: Professional yet approachable, confident, and helpful
+- **Core Colors**: 
+  - Primary: Grounded Blue (#000033) and White (#FFFFFF)
+  - Accents: Accent Blue (#0045FF), Accent Pink (#F500A0)
+  - Highlight: Yellow (#F2E800) - use sparingly for emphasis
+- **Typography**: Arial (Bold for headers, Regular for body)
+
+### Visual Design for Demo
+- Use West Monroe colors in the UI (primary blue #000033 for headers/text, white backgrounds)
+- Apply accent colors (#0045FF, #F500A0) for buttons, highlights, and key UI elements
+- Keep layouts clean with generous white space
+- Use Arial font family throughout
+- Be visually professional yet approachable
+
+### Messaging & Content
+- Headers should be bold, clear, and direct
+- Use simple, jargon-free language
+- Emphasize the business value and ROI of the AI solution
+- Show how West Monroe helps clients "do better work" through AI
+- Include phrases like "AI-enhanced workflow", "operational efficiency", "intelligent automation"
+
+## Deliverables
+Please provide:
+1. Working code for the demo with West Monroe branding applied
+2. Setup/installation instructions
+3. Sample data or test cases
+4. Brief documentation of the AI components used
+5. Screenshots showing the branded UI (optional but recommended)
+
+Make this demo impressive, clearly branded for West Monroe, and demonstrate the value proposition of the AI-enhanced workflow in a clear and human way.`;
+    
+    setDemoPrompt(prompt);
+    setIsDemoPromptOpen(true);
+  };
+
+  const copyDemoPromptToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(demoPrompt);
+      alert('Demo prompt copied! Paste it into Google AI Studio.');
+    } catch {
+      alert('Could not copy prompt. Please select and copy manually.');
+    }
+  };
+
+  const copyAndOpenGoogleAIStudio = async () => {
+    try {
+      await navigator.clipboard.writeText(demoPrompt);
+      // Open Google AI Studio in a new tab
+      window.open('https://aistudio.google.com', '_blank');
+      alert('Prompt copied to clipboard! Paste it into Google AI Studio.');
+    } catch {
+      alert('Could not copy prompt. Please copy manually before using Google AI Studio.');
+    }
+  };
+
+  const handleSaveDemoUrls = async () => {
+    if (!evaluation) {
+      alert('No evaluation found to save to. Generating evaluation in background...');
+      // Trigger evaluation if not done yet
+      if (workflowExplanation.trim() && !isLoading) {
+        await handleSubmitForEvaluation();
+      } else {
+        alert('Please add a workflow explanation first.');
+        return;
+      }
+    }
+    
+    setSavingDemoUrls(true);
+    try {
+      // Find the most recent evaluation for this scenario
+      const evaluationsRef = await import('firebase/database').then(mod => mod.ref);
+      const db = (await import('../services/firebaseInit')).db;
+      const get = await import('firebase/database').then(mod => mod.get);
+      const update = await import('firebase/database').then(mod => mod.update);
+      
+      const userEvaluationsRef = evaluationsRef(db, `evaluations/${user.uid}`);
+      const snapshot = await get(userEvaluationsRef);
+      
+      if (snapshot.exists()) {
+        const evaluations = snapshot.val();
+        // Find the most recent evaluation for this scenario
+        let latestEvalId = null;
+        let latestTimestamp = 0;
+        let latestWorkflowVersionId = null;
+        
+        Object.entries(evaluations).forEach(([id, evalData]: [string, any]) => {
+          if (evalData.scenarioId === scenario.id && evalData.timestamp > latestTimestamp) {
+            latestEvalId = id;
+            latestTimestamp = evalData.timestamp;
+            latestWorkflowVersionId = evalData.workflowVersionId;
+          }
+        });
+        
+        if (latestEvalId) {
+          const updatedData = {
+            demoProjectUrl: demoProjectUrl.trim() || null,
+            demoPublishedUrl: demoPublishedUrl.trim() || null,
+            demoPrompt: demoPrompt.trim() || null
+          };
+          
+          // Update the evaluation with demo URLs
+          await update(evaluationsRef(db, `evaluations/${user.uid}/${latestEvalId}`), updatedData);
+          
+          // Also update the corresponding workflow version with demo URLs
+          if (latestWorkflowVersionId) {
+            await update(
+              evaluationsRef(db, `workflowVersions/${user.uid}/${scenario.id}/${latestWorkflowVersionId}`),
+              updatedData
+            );
+          }
+          
+          // Update local evaluation state to show saved prompt immediately
+          setEvaluation(prev => prev ? { ...prev, ...updatedData } as any : prev);
+          
+          // Close modal and show success
+          setIsDemoPromptOpen(false);
+          alert('Demo saved successfully!');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to save demo:', error);
+      alert('Failed to save demo. Please try again.');
+    } finally {
+      setSavingDemoUrls(false);
+    }
+  };
+
   // Evaluation submit handler
   const handleSubmitForEvaluation = useCallback(async () => {
     if (isLoading || !workflowExplanation.trim()) return;
@@ -193,7 +407,8 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEva
         result,
         workflowExplanation,
         imageUrl,
-        user.displayName
+        user.displayName,
+        companyId
       );
       
       // Update local history state with new entry
@@ -220,7 +435,7 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEva
   }, [isLoading, workflowExplanation, proposedImage, localizedGoal]);
   // Historic evaluation selection (modal removed; direct load)
   const [highlightEditor, setHighlightEditor] = useState(false);
-  const [prdPlatforms, setPrdPlatforms] = useState<Platform[]>(['MS365']);
+  const [prdPlatforms, setPrdPlatforms] = useState<Platform[]>(['AI_CHOICE']);
   const [prdLoading, setPrdLoading] = useState(false);
   const [prdMarkdown, setPrdMarkdown] = useState('');
   const [isPrdOpen, setIsPrdOpen] = useState(false);
@@ -231,12 +446,21 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEva
   const [pitchMarkdown, setPitchMarkdown] = useState('');
   const [pitchLoading, setPitchLoading] = useState(false);
   const [savingPitch, setSavingPitch] = useState(false);
+  const [isCurrentWorkflowModalOpen, setIsCurrentWorkflowModalOpen] = useState(false);
   const [lastSavedPitchTs, setLastSavedPitchTs] = useState<number | null>(null);
   
   // Gamma AI presentation state
   const [generatingGamma, setGeneratingGamma] = useState(false);
   const [gammaDownloadUrl, setGammaDownloadUrl] = useState<string | null>(null);
   const [gammaError, setGammaError] = useState<string | null>(null);
+  
+  // Demo prompt state
+  const [isDemoPromptOpen, setIsDemoPromptOpen] = useState(false);
+  const [demoPrompt, setDemoPrompt] = useState('');
+  const [demoProjectUrl, setDemoProjectUrl] = useState('');
+  const [demoPublishedUrl, setDemoPublishedUrl] = useState('');
+  const [savingDemoUrls, setSavingDemoUrls] = useState(false);
+  const [showSavedPrompt, setShowSavedPrompt] = useState(false);
   
   const [savingVersion, setSavingVersion] = useState(false);
   const [isVersionNameOpen, setIsVersionNameOpen] = useState(false);
@@ -882,6 +1106,9 @@ Return only the steps.`;
     mermaidSvg: mermaidSvg || null,
     imageBase64: proposedImage?.base64 || null,
     imageMimeType: proposedImage?.mimeType || null,
+          demoProjectUrl: demoProjectUrl || null,
+          demoPublishedUrl: demoPublishedUrl || null,
+          demoPrompt: demoPrompt || null,
         }
       );
       setIsVersionNameOpen(false);
@@ -892,7 +1119,7 @@ Return only the steps.`;
     } finally {
       setSavingVersion(false);
     }
-  }, [savingVersion, user?.uid, scenario?.id, workflowExplanation, prdMarkdown, pitchMarkdown, evaluation, versionTitleInput, mermaidCode, mermaidSvg, proposedImage]);
+  }, [savingVersion, user?.uid, scenario?.id, workflowExplanation, prdMarkdown, pitchMarkdown, evaluation, versionTitleInput, mermaidCode, mermaidSvg, proposedImage, demoProjectUrl, demoPublishedUrl, demoPrompt]);
 
   // Load scenario history (evaluations) and latest workflow/doc artifacts for this scenario
   React.useEffect(() => {
@@ -949,59 +1176,93 @@ Return only the steps.`;
           )}
 
           <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 mb-6 shadow-sm">
-            <h1 className="text-2xl font-bold text-wm-blue mb-2">{localizedTitle}</h1>
-            <p className="text-wm-blue/60 mb-4">{localizedDescription}</p>
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-wm-blue/70 mb-1">Title</label>
+              <input
+                type="text"
+                value={editableTitle}
+                onChange={(e) => setEditableTitle(e.target.value)}
+                className="w-full text-2xl font-bold text-wm-blue bg-transparent border-b-2 border-transparent hover:border-wm-neutral/30 focus:border-wm-accent focus:outline-none transition-colors"
+                placeholder="Enter use case title"
+              />
+            </div>
+            <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-4 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="font-bold text-wm-accent">{lang === 'es' ? 'Proceso Actual:' : 'Current Process:'}</h2>
+                <button
+                  onClick={() => setIsCurrentWorkflowModalOpen(true)}
+                  className="px-3 py-1 text-xs font-bold rounded-md bg-wm-accent text-white hover:bg-wm-accent/90 transition-colors flex items-center gap-1"
+                >
+                  <Icons.Upload />
+                  Current Workflow
+                </button>
+              </div>
+              <textarea
+                value={editableDescription}
+                onChange={(e) => setEditableDescription(e.target.value)}
+                rows={5}
+                className="w-full text-wm-blue/70 bg-white border border-wm-neutral/30 rounded-lg p-3 hover:border-wm-neutral/50 focus:border-wm-accent focus:outline-none transition-colors resize-y"
+                placeholder="Describe the current process"
+              />
+              {currentImage && (
+                <div className="mt-3 relative">
+                  <img src={currentImage.dataUrl} alt="Current workflow" className="max-h-48 rounded-lg shadow-lg" />
+                  <button
+                    onClick={handleRemoveCurrentImage}
+                    className="absolute -top-2 -right-2 bg-wm-pink text-white rounded-full p-1 leading-none hover:bg-wm-pink/80 transition-colors"
+                    aria-label="Remove image"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-4 mb-4">
+              <h2 className="font-bold text-wm-accent mb-2">{lang === 'es' ? 'Resultado Deseado:' : 'Desired Outcome:'}</h2>
+              <textarea
+                value={editableGoal}
+                onChange={(e) => setEditableGoal(e.target.value)}
+                rows={5}
+                className="w-full text-wm-blue/70 bg-white border border-wm-neutral/30 rounded-lg p-3 hover:border-wm-neutral/50 focus:border-wm-accent focus:outline-none transition-colors resize-y"
+                placeholder="Enter desired outcome"
+              />
+            </div>
+            
+            {/* Value Drivers */}
+            <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-4 mb-4">
+              <h2 className="font-bold text-wm-accent mb-2">{lang === 'es' ? 'Generadores de Valor:' : 'Value Drivers:'}</h2>
+              <textarea
+                value={valueDrivers}
+                onChange={(e) => setValueDrivers(e.target.value)}
+                rows={5}
+                className="w-full text-wm-blue/70 bg-white border border-wm-neutral/30 rounded-lg p-3 hover:border-wm-neutral/50 focus:border-wm-accent focus:outline-none transition-colors resize-y"
+                placeholder="What business value will this deliver?"
+              />
+            </div>
+            
+            {/* Pain Points */}
             <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-4">
-              <h2 className="font-bold text-wm-accent mb-1">{lang === 'es' ? 'Tu Objetivo:' : 'Your Goal:'}</h2>
-              <p className="text-wm-blue/70">{localizedGoal}</p>
+              <h2 className="font-bold text-wm-accent mb-2">{lang === 'es' ? 'Puntos de Dolor:' : 'Pain Points:'}</h2>
+              <textarea
+                value={painPoints}
+                onChange={(e) => setPainPoints(e.target.value)}
+                rows={5}
+                className="w-full text-wm-blue/70 bg-white border border-wm-neutral/30 rounded-lg p-3 hover:border-wm-neutral/50 focus:border-wm-accent focus:outline-none transition-colors resize-y"
+                placeholder="What problems does this solve?"
+              />
             </div>
 
-            {/* Current Workflow Image Section */}
-            <div className="mt-4">
-              <h2 className="font-bold text-wm-accent mb-1">Current Workflow</h2>
-              <div className="mt-3 bg-wm-neutral/10 border-2 border-dashed border-wm-neutral/50 rounded-lg p-4 hover:border-wm-accent transition-colors">
-                <input
-                  type="file"
-                  ref={currentImageInputRef}
-                  onChange={handleCurrentImageChange}
-                  accept="image/*"
-                  className="hidden"
-                  aria-hidden="true"
-                />
-                {!currentImage ? (
-                  <div className="cursor-pointer flex flex-col items-center justify-center" onClick={() => currentImageInputRef.current?.click()}>
-                    <Icons.Upload />
-                    <p className="mt-2 text-sm text-wm-blue/50 text-center">Upload a screenshot or diagram of your current process</p>
-                    <span className="mt-4 inline-block bg-wm-accent text-white font-bold py-2 px-4 rounded-lg hover:bg-wm-accent/90 transition-colors">
-                      Select Image
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex justify-center">
-                    <div className="relative">
-                      <img src={currentImage.dataUrl} alt="Current workflow preview" className="max-h-60 rounded-lg shadow-lg" />
-                      <button
-                        onClick={handleRemoveCurrentImage}
-                        className="absolute -top-2 -right-2 bg-wm-pink text-white rounded-full p-1 leading-none hover:bg-wm-pink/80 transition-colors"
-                        aria-label="Remove image"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
 
             {/* Platform Selector */}
             <div className="mt-6">
               <label className="text-sm font-bold text-wm-blue mb-2 block">Platform</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['MS365', 'GOOGLE', 'CUSTOM'] as const).map((platform) => {
+              <div className="grid grid-cols-4 gap-2">
+                {(['AI_CHOICE', 'MS365', 'GOOGLE', 'CUSTOM'] as const).map((platform) => {
                   const getPlatformLabel = (p: string) => {
                     switch (p) {
+                      case 'AI_CHOICE': return 'AI Choice';
                       case 'MS365': return 'Microsoft 365';
                       case 'GOOGLE': return 'Google Workspace';
                       case 'CUSTOM': return 'Custom Integration';
@@ -1113,6 +1374,113 @@ Return only the steps.`;
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Demo Prompt Button - Available anytime */}
+            <div className="mb-6 p-4 bg-gradient-to-r from-wm-accent/10 to-wm-pink/10 border border-wm-accent/30 rounded-lg">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-1">
+                  <svg className="w-5 h-5 text-wm-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-wm-blue mb-1">Create a Working Demo</h3>
+                  <p className="text-sm text-wm-blue/70 mb-3">
+                    Generate a comprehensive prompt for Google AI Studio to build a prototype with West Monroe branding.
+                    {(prdMarkdown?.trim() || pitchMarkdown?.trim()) && ' (Includes your PRD and pitch content)'}
+                  </p>
+                  
+                  {/* Show saved prompt if it exists */}
+                  {evaluation?.demoPrompt && (
+                    <div className="mb-3">
+                      <button
+                        onClick={() => setShowSavedPrompt(!showSavedPrompt)}
+                        className="flex items-center gap-2 text-sm text-wm-blue/70 hover:text-wm-blue transition-colors"
+                      >
+                        <svg className={`w-4 h-4 transition-transform ${showSavedPrompt ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                        {showSavedPrompt ? 'Hide' : 'View'} saved prompt
+                      </button>
+                      {showSavedPrompt && (
+                        <div className="mt-2 bg-white border border-wm-neutral/30 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-wm-blue/70">Your Saved Prompt</span>
+                            <span className="text-xs text-wm-blue/50">{evaluation.demoPrompt.length} characters</span>
+                          </div>
+                          <div className="max-h-60 overflow-y-auto bg-wm-neutral/5 rounded p-2">
+                            <pre className="text-xs text-wm-blue/80 whitespace-pre-wrap font-mono">{evaluation.demoPrompt}</pre>
+                          </div>
+                          
+                          {/* Show saved URLs if they exist */}
+                          {(evaluation.demoProjectUrl || evaluation.demoPublishedUrl) && (
+                            <div className="mt-3 pt-3 border-t border-wm-neutral/20">
+                              <span className="text-xs font-bold text-wm-blue/70 block mb-2">Demo Links</span>
+                              <div className="space-y-2">
+                                {evaluation.demoProjectUrl && (
+                                  <div>
+                                    <label className="text-xs text-wm-blue/50 block mb-0.5">Project URL:</label>
+                                    <a
+                                      href={evaluation.demoProjectUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-wm-accent hover:text-wm-accent/80 underline break-all flex items-center gap-1"
+                                    >
+                                      {evaluation.demoProjectUrl}
+                                      <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                      </svg>
+                                    </a>
+                                  </div>
+                                )}
+                                {evaluation.demoPublishedUrl && (
+                                  <div>
+                                    <label className="text-xs text-wm-blue/50 block mb-0.5">Published URL:</label>
+                                    <a
+                                      href={evaluation.demoPublishedUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-wm-accent hover:text-wm-accent/80 underline break-all flex items-center gap-1"
+                                    >
+                                      {evaluation.demoPublishedUrl}
+                                      <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                      </svg>
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          
+                          <button
+                            onClick={() => {
+                              setDemoPrompt(evaluation.demoPrompt || '');
+                              setIsDemoPromptOpen(true);
+                            }}
+                            className="mt-2 text-xs text-wm-accent hover:text-wm-accent/80 font-bold"
+                          >
+                            Edit this prompt →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  <button
+                    onClick={handleGenerateDemoPrompt}
+                    className="px-4 py-2 rounded-lg bg-gradient-to-r from-wm-accent to-wm-pink text-white hover:from-wm-accent/90 hover:to-wm-pink/90 font-bold transition-all shadow-sm hover:shadow-md"
+                  >
+                    <span className="flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                      </svg>
+                      {evaluation?.demoPrompt ? 'Generate New Prompt' : 'Generate Demo Prompt'}
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1417,6 +1785,131 @@ Return only the steps.`;
                 {savingVersion && <div className="w-4 h-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />}
                 Save Version
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDemoPromptOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => setIsDemoPromptOpen(false)}>
+          <div className="bg-white border border-wm-neutral/30 rounded-xl max-w-4xl w-full p-4 md:p-6 max-h-[90vh] overflow-y-auto shadow-xl" onClick={(e)=>e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-wm-blue font-bold text-lg">Google AI Studio Demo Prompt</h3>
+                <p className="text-sm text-wm-blue/60 mt-1">Copy this prompt and paste it into <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" className="text-wm-accent hover:underline">Google AI Studio</a></p>
+              </div>
+              <button onClick={() => setIsDemoPromptOpen(false)} className="p-2 rounded-md text-wm-blue/50 hover:text-wm-blue hover:bg-wm-neutral/20" aria-label="Close">
+                <Icons.X />
+              </button>
+            </div>
+            <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-bold text-wm-blue/70">Edit Your Prompt</label>
+                <span className="text-xs text-wm-blue/50">{demoPrompt.length} characters</span>
+              </div>
+              <textarea
+                value={demoPrompt}
+                onChange={(e) => setDemoPrompt(e.target.value)}
+                className="w-full bg-white border border-wm-neutral/30 rounded-md p-3 text-sm text-wm-blue font-mono focus:outline-none focus:ring-2 focus:ring-wm-accent resize-y"
+                rows={20}
+                placeholder="Your demo prompt will appear here..."
+              />
+            </div>
+            
+            {/* Demo URLs Section */}
+            <div className="mt-4 p-4 bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg">
+              <h4 className="text-sm font-bold text-wm-blue mb-3">Save Your Demo</h4>
+              <p className="text-xs text-wm-blue/60 mb-3">Save your edited prompt and demo URLs for future reference.</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-wm-blue/70 mb-1">Google AI Studio Project URL</label>
+                  <input
+                    type="url"
+                    value={demoProjectUrl}
+                    onChange={(e) => setDemoProjectUrl(e.target.value)}
+                    placeholder="https://aistudio.google.com/app/prompts/..."
+                    className="w-full bg-white border border-wm-neutral/30 rounded-md px-3 py-2 text-sm text-wm-blue focus:outline-none focus:ring-2 focus:ring-wm-accent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-wm-blue/70 mb-1">Published Demo URL</label>
+                  <input
+                    type="url"
+                    value={demoPublishedUrl}
+                    onChange={(e) => setDemoPublishedUrl(e.target.value)}
+                    placeholder="https://your-demo-url.com"
+                    className="w-full bg-white border border-wm-neutral/30 rounded-md px-3 py-2 text-sm text-wm-blue focus:outline-none focus:ring-2 focus:ring-wm-accent"
+                  />
+                </div>
+                <button
+                  onClick={handleSaveDemoUrls}
+                  disabled={savingDemoUrls}
+                  className="w-full px-4 py-2 rounded-md bg-wm-blue text-white hover:bg-wm-blue/90 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-sm flex items-center justify-center gap-2"
+                >
+                  {savingDemoUrls ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Icons.Save />
+                      Save Prompt & URLs
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+            
+            <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end">
+              <button onClick={copyDemoPromptToClipboard} className="px-4 py-2 rounded-md bg-wm-neutral/20 border border-wm-neutral/30 text-wm-blue hover:bg-wm-neutral/30 font-bold">
+                <span className="flex items-center gap-2">
+                  <Icons.Copy />
+                  Copy to Clipboard
+                </span>
+              </button>
+              <button
+                onClick={copyAndOpenGoogleAIStudio}
+                className="px-4 py-2 rounded-md bg-gradient-to-r from-wm-accent to-wm-pink text-white hover:opacity-90 font-bold"
+              >
+                <span className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  Copy & Open Google AI Studio
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Current Workflow Upload Modal */}
+      {isCurrentWorkflowModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setIsCurrentWorkflowModalOpen(false)}>
+          <div className="bg-white border border-wm-neutral/30 rounded-xl shadow-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-wm-blue">Upload Current Workflow</h3>
+              <button onClick={() => setIsCurrentWorkflowModalOpen(false)} className="text-wm-blue/50 hover:text-wm-blue">
+                <Icons.X />
+              </button>
+            </div>
+            <input
+              type="file"
+              ref={currentImageInputRef}
+              onChange={handleCurrentImageChange}
+              accept="image/*"
+              className="hidden"
+            />
+            <div 
+              onClick={() => currentImageInputRef.current?.click()}
+              className="cursor-pointer flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-wm-neutral/50 hover:border-wm-accent rounded-lg bg-wm-neutral/10 hover:bg-wm-neutral/20 transition-all"
+            >
+              <Icons.Upload />
+              <p className="mt-3 text-sm text-wm-blue/60 text-center">Upload a screenshot or diagram of your current process</p>
+              <span className="mt-4 inline-block bg-wm-accent text-white font-bold py-2 px-4 rounded-lg hover:bg-wm-accent/90 transition-colors">
+                Select Image
+              </span>
             </div>
           </div>
         </div>

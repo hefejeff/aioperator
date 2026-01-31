@@ -27,7 +27,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
   return (
     <div className="animate-fade-in">
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold mb-2">Training Scenarios</h1>
+        <h1 className="text-3xl font-bold mb-2">Processes and Use Cases</h1>
         <p className="text-lg text-slate-400">Select a scenario to start practicing, or create your own.</p>
         <button
           onClick={() => setIsCreating(true)}

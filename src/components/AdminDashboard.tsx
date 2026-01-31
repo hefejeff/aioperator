@@ -3,7 +3,7 @@ import type { User } from 'firebase/auth';
 import { listAllUsers, setUserRole, deleteUser, getGlobalLeaderboard, getScenarios } from '../services/firebaseService';
 import type { Role, Scenario, LeaderboardEntry, UserProfile } from '../types';
 import { Icons } from '../constants';
-import DomainManagement from './domain/DomainManagement';
+import BusinessDomainManagement from './BusinessDomainManagement';
 
 interface AdminDashboardProps {
   currentUser: User;
@@ -12,8 +12,8 @@ interface AdminDashboardProps {
 const ROLE_OPTIONS: Role[] = ['SUPER_ADMIN', 'ADMIN', 'PRO_USER', 'USER'];
 
 const RoleBadge: React.FC<{ role?: Role | null }> = ({ role }) => {
-  const color = role === 'SUPER_ADMIN' ? 'bg-purple-700' : role === 'ADMIN' ? 'bg-indigo-700' : role === 'PRO_USER' ? 'bg-emerald-700' : 'bg-slate-700';
-  return <span className={`text-xs ${color} text-white px-2 py-0.5 rounded`}>{role || 'USER'}</span>;
+  const color = role === 'SUPER_ADMIN' ? 'bg-wm-pink' : role === 'ADMIN' ? 'bg-wm-accent' : role === 'PRO_USER' ? 'bg-green-600' : 'bg-wm-neutral';
+  return <span className={`text-xs ${color} text-white px-2 py-0.5 rounded font-bold`}>{role || 'USER'}</span>;
 };
 
 const UsersTab: React.FC<{
@@ -41,29 +41,29 @@ const UsersTab: React.FC<{
 }) => (
   <>
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-        <p className="text-slate-400 text-sm">Users</p>
-        <p className="text-3xl font-bold text-white">{totalUsers}</p>
+      <div className="bg-white border border-wm-neutral/30 rounded-xl p-4 shadow-sm">
+        <p className="text-wm-blue/60 text-sm font-bold">Users</p>
+        <p className="text-3xl font-bold text-wm-blue">{totalUsers}</p>
       </div>
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-        <p className="text-slate-400 text-sm">Scenarios</p>
-        <p className="text-3xl font-bold text-white">{totalScenarios}</p>
+      <div className="bg-white border border-wm-neutral/30 rounded-xl p-4 shadow-sm">
+        <p className="text-wm-blue/60 text-sm font-bold">Scenarios</p>
+        <p className="text-3xl font-bold text-wm-blue">{totalScenarios}</p>
       </div>
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-        <p className="text-slate-400 text-sm">Top Operators (avg)</p>
-        <p className="text-3xl font-bold text-white">{leaderboard.length}</p>
+      <div className="bg-white border border-wm-neutral/30 rounded-xl p-4 shadow-sm">
+        <p className="text-wm-blue/60 text-sm font-bold">Top Operators (avg)</p>
+        <p className="text-3xl font-bold text-wm-blue">{leaderboard.length}</p>
       </div>
     </div>
 
-    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-      <h2 className="text-xl font-bold text-white mb-4">Users & Roles</h2>
+    <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
+      <h2 className="text-xl font-bold text-wm-blue mb-4">Users & Roles</h2>
       {canDeleteUsers && (
-        <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3 mb-4">
-          <div className="flex items-center gap-2 text-red-300 text-sm">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+          <div className="flex items-center gap-2 text-red-600 text-sm">
             <Icons.Star />
             <span className="font-medium">Admin Warning:</span>
           </div>
-          <p className="text-red-200 text-sm mt-1">
+          <p className="text-red-600 text-sm mt-1">
             Deleting a user will permanently remove all their data including scenarios, workflows, and evaluations. This action cannot be undone.
           </p>
         </div>
@@ -71,23 +71,23 @@ const UsersTab: React.FC<{
       <div className="overflow-auto">
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="text-slate-300 border-b border-slate-700">
-              <th className="text-left py-2 pr-4">Name</th>
-              <th className="text-left py-2 pr-4">Email</th>
-              <th className="text-left py-2 pr-4">Role</th>
-              <th className="text-left py-2 pr-4">Role Actions</th>
-              {canDeleteUsers && <th className="text-left py-2">Delete</th>}
+            <tr className="text-wm-blue/70 border-b border-wm-neutral/30">
+              <th className="text-left py-2 pr-4 font-bold">Name</th>
+              <th className="text-left py-2 pr-4 font-bold">Email</th>
+              <th className="text-left py-2 pr-4 font-bold">Role</th>
+              <th className="text-left py-2 pr-4 font-bold">Role Actions</th>
+              {canDeleteUsers && <th className="text-left py-2 font-bold">Delete</th>}
             </tr>
           </thead>
           <tbody>
             {users.map(u => (
-              <tr key={u.uid} className="border-b border-slate-800">
-                <td className="py-2 pr-4 text-slate-200">{u.displayName || '-'}</td>
-                <td className="py-2 pr-4 text-slate-400">{u.email || '-'}</td>
+              <tr key={u.uid} className="border-b border-wm-neutral/20">
+                <td className="py-2 pr-4 text-wm-blue">{u.displayName || '-'}</td>
+                <td className="py-2 pr-4 text-wm-blue/60">{u.email || '-'}</td>
                 <td className="py-2 pr-4"><RoleBadge role={u.role || 'USER'} /></td>
                 <td className="py-2 pr-4">
                   <select
-                    className="bg-slate-900 border border-slate-700 text-slate-200 rounded px-2 py-1"
+                    className="bg-white border border-wm-neutral/30 text-wm-blue rounded px-2 py-1 focus:ring-2 focus:ring-wm-accent focus:outline-none"
                     value={(u.role as Role) || 'USER'}
                     disabled={saving === u.uid}
                     onChange={(e) => onChangeRole(u.uid, e.target.value as Role)}
@@ -126,16 +126,16 @@ const UsersTab: React.FC<{
       </div>
     </div>
 
-    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-      <h2 className="text-xl font-bold text-white mb-4">Top Operators</h2>
+    <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
+      <h2 className="text-xl font-bold text-wm-blue mb-4">Top Operators</h2>
       <ul className="space-y-2">
         {leaderboard.map(entry => (
-          <li key={entry.uid} className="flex justify-between text-slate-300">
+          <li key={entry.uid} className="flex justify-between text-wm-blue">
             <span>{entry.displayName} ({entry.uid.substring(0,6)}…)</span>
-            <span className="text-sky-400 font-semibold">{entry.score}</span>
+            <span className="text-wm-accent font-semibold">{entry.score}</span>
           </li>
         ))}
-        {leaderboard.length === 0 && <li className="text-slate-500">No data</li>}
+        {leaderboard.length === 0 && <li className="text-wm-blue/40">No data</li>}
       </ul>
     </div>
   </>
@@ -218,21 +218,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
 
   return (
     <div className="space-y-8">
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-        <h1 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+      <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
+        <h1 className="text-2xl font-bold text-wm-blue mb-2 flex items-center gap-2">
           <Icons.ChartBar /> Admin Dashboard
         </h1>
-        <p className="text-slate-400">Manage users, roles, and domains.</p>
-        {error && <p className="text-red-400 mt-2">{error}</p>}
+        <p className="text-wm-blue/60">Manage users, roles, and domains.</p>
+        {error && <p className="text-red-600 mt-2 font-bold">{error}</p>}
         
-        <div className="mt-4 border-b border-slate-700">
+        <div className="mt-4 border-b border-wm-neutral/30">
           <nav className="-mb-px flex gap-4">
             <button
               onClick={() => setActiveTab('users')}
-              className={`pb-3 px-1 inline-flex items-center gap-2 text-sm font-medium ${
+              className={`pb-3 px-1 inline-flex items-center gap-2 text-sm font-bold ${
                 activeTab === 'users'
-                  ? 'border-b-2 border-indigo-500 text-indigo-400'
-                  : 'text-slate-400 hover:text-slate-300'
+                  ? 'border-b-2 border-wm-accent text-wm-accent'
+                  : 'text-wm-blue/60 hover:text-wm-blue'
               }`}
             >
               <Icons.Users />
@@ -240,10 +240,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
             </button>
             <button
               onClick={() => setActiveTab('domains')}
-              className={`pb-3 px-1 inline-flex items-center gap-2 text-sm font-medium ${
+              className={`pb-3 px-1 inline-flex items-center gap-2 text-sm font-bold ${
                 activeTab === 'domains'
-                  ? 'border-b-2 border-indigo-500 text-indigo-400'
-                  : 'text-slate-400 hover:text-slate-300'
+                  ? 'border-b-2 border-wm-accent text-wm-accent'
+                  : 'text-wm-blue/60 hover:text-wm-blue'
               }`}
             >
               <Icons.Building />
@@ -267,7 +267,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
           onDeleteUser={onDeleteUser}
         />
       ) : (
-        <DomainManagement currentUser={currentUser} />
+        <BusinessDomainManagement currentUser={currentUser} />
       )}
     </div>
   );

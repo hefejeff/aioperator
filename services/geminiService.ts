@@ -12,7 +12,7 @@ interface ImagePart {
   mimeType: string;
 }
 
-export async function generateText(prompt: string, image: ImagePart | null): Promise<string> {
+export async function   generateText(prompt: string, image: ImagePart | null): Promise<string> {
   try {
     let contents: any;
 

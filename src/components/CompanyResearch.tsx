@@ -5,8 +5,8 @@ import RfpUploadField from './RfpUploadField';
 import type { CompanyResearch as CompanyInfo, CompanyResearchEntry, RelatedScenario, Company, Scenario, StoredEvaluationResult } from '../types';
 import ResearchSidebar from './ResearchSidebar';
 import { getScenarios, getCompanyResearch, saveCompanyResearch, getEvaluations, getLatestPrdForScenario, getLatestPitchForScenario, getWorkflowVersions, deleteEvaluation, deleteWorkflowVersion } from '../services/firebaseService';
-import { researchCompany, findRelevantScenarios, generatePresentationWebsite } from '../services/geminiService';
-import { saveCompany, getCompany, updateCompanySelectedScenarios } from '../services/companyService';
+import { researchCompany, findRelevantScenarios, generatePresentationWebsite, AI_MODELS, AIModelId } from '../services/geminiService';
+import { saveCompany, getCompany, updateCompanySelectedScenarios, updateCompanySelectedDomains } from '../services/companyService';
 import { createWordPressPage, isWordPressConfigured } from '../services/wordpressService';
 import { ref, onValue } from 'firebase/database';
 import { db } from '../services/firebaseInit';
@@ -60,6 +60,9 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
   const [isCreatingWordPressPage, setIsCreatingWordPressPage] = useState(false);
   const [wordPressPageUrl, setWordPressPageUrl] = useState<string | null>(null);
   const [scenarioRunsRefreshKey, setScenarioRunsRefreshKey] = useState(0);
+  const [selectedAIModel, setSelectedAIModel] = useState<AIModelId>('gemini-2.5-pro');
+  const [allScenarios, setAllScenarios] = useState<Scenario[]>([]);
+  const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
 
   const { t } = useTranslation();
 
@@ -146,10 +149,23 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
         }
 
         // Always set the selected scenarios if they exist
+        console.log('Company selectedScenarios:', company.selectedScenarios);
         if (company.selectedScenarios) {
+          console.log('Setting selectedScenarios:', company.selectedScenarios);
           setSelectedScenarios(company.selectedScenarios);
           // Load selected scenarios into sidebar
           await loadSelectedScenariosIntoSidebar(company.selectedScenarios);
+        } else {
+          console.log('Company has no selectedScenarios, setting empty array');
+          setSelectedScenarios([]);
+        }
+        
+        // Load selected domains if they exist
+        if (company.selectedDomains) {
+          console.log('Setting selectedDomains:', company.selectedDomains);
+          setSelectedDomains(company.selectedDomains);
+        } else {
+          setSelectedDomains([]);
         }
       } catch (researchError) {
         console.error('Failed to load research data:', researchError);
@@ -162,6 +178,22 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
       setIsLoadingResearch(false);
     }
   };
+
+  // Reload company data when initialCompany changes (navigation)
+  useEffect(() => {
+    if (initialCompany) {
+      // Reset states for the new company
+      setCurrentCompanyId(initialCompany);
+      setSelectedDomains([]);
+      setSelectedScenarios([]);
+      setScenarioCatalog({});
+      setScenarioRuns({});
+      setCompanyInfo(null);
+      
+      // Load the company data
+      loadExistingResearch(initialCompany);
+    }
+  }, [initialCompany]);
 
   useEffect(() => {
     const handleScenarioCreated = (event: Event) => {
@@ -195,10 +227,42 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
     }
 
     // Listen for evaluation-saved events to refresh scenario runs
-    const handleEvaluationSaved = (event: Event) => {
-      const detail = (event as CustomEvent<{ scenarioId: string; userId: string }>).detail;
-      // Refresh if this evaluation is for one of our selected scenarios
-      if (detail && selectedScenarios.includes(detail.scenarioId)) {
+    const handleEvaluationSaved = async (event: Event) => {
+      const detail = (event as CustomEvent<{ scenarioId: string; userId: string; companyId?: string }>).detail;
+      if (!detail) return;
+      
+      console.log('Evaluation saved event received:', detail);
+      console.log('Current company ID:', currentCompanyId);
+      console.log('Current selected scenarios:', selectedScenarios);
+      
+      // Check if this evaluation is for the current company
+      if (detail.companyId && detail.companyId === currentCompanyId) {
+        console.log('Evaluation is for current company');
+        // Add scenario to selectedScenarios if not already there
+        if (!selectedScenarios.includes(detail.scenarioId)) {
+          console.log('Adding scenario to selected scenarios:', detail.scenarioId);
+          const updatedScenarios = [...selectedScenarios, detail.scenarioId];
+          setSelectedScenarios(updatedScenarios);
+          
+          // Save to Firebase
+          if (currentCompanyId) {
+            try {
+              await updateCompanySelectedScenarios(currentCompanyId, userId, updatedScenarios);
+              console.log('Updated company selected scenarios in Firebase');
+            } catch (error) {
+              console.error('Failed to update company selected scenarios:', error);
+            }
+          }
+        } else {
+          console.log('Scenario already in selected scenarios');
+        }
+        
+        // Refresh runs
+        console.log('Refreshing scenario runs');
+        setScenarioRunsRefreshKey(prev => prev + 1);
+      } else if (selectedScenarios.includes(detail.scenarioId)) {
+        // Legacy: also refresh if this evaluation is for one of our selected scenarios
+        console.log('Refreshing runs for selected scenario (legacy)');
         setScenarioRunsRefreshKey(prev => prev + 1);
       }
     };
@@ -215,22 +279,41 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
     };
   }, [currentCompanyId, t, selectedScenarios]);
 
+  // Load all scenarios from library on mount
+  useEffect(() => {
+    const loadAllScenarios = async () => {
+      try {
+        const scenarios = await getScenarios(userId);
+        setAllScenarios(scenarios);
+      } catch (error) {
+        console.error('Failed to load all scenarios:', error);
+      }
+    };
+    loadAllScenarios();
+  }, [userId]);
+
   useEffect(() => {
     let isActive = true;
 
     const loadScenarioRuns = async () => {
+      console.log('loadScenarioRuns called, selectedScenarios:', selectedScenarios);
+      
       if (!selectedScenarios.length) {
+        console.log('No selectedScenarios, clearing runs');
         setScenarioRuns({});
         setIsLoadingScenarioRuns(false);
         return;
       }
 
       setIsLoadingScenarioRuns(true);
+      console.log('Loading runs for scenarios:', selectedScenarios);
       try {
         const runEntries = await Promise.all(
           selectedScenarios.map(async scenarioId => {
+            console.log('Loading runs for scenario:', scenarioId);
             // Get evaluations (scored runs)
             const evaluations = await getEvaluations(userId, scenarioId);
+            console.log(`Got ${evaluations.length} evaluations for scenario ${scenarioId}`);
             
             // Get workflow versions (saved work)
             const workflowVersions = await getWorkflowVersions(userId, scenarioId);
@@ -293,7 +376,9 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
         const nextRuns: Record<string, StoredEvaluationResult[]> = {};
         runEntries.forEach(([scenarioId, runs]) => {
           nextRuns[scenarioId] = runs;
+          console.log(`Set ${runs.length} runs for scenario ${scenarioId}`);
         });
+        console.log('Setting scenarioRuns:', nextRuns);
         setScenarioRuns(nextRuns);
       } catch (runError) {
         console.error('Failed to load scenario runs:', runError);
@@ -318,10 +403,11 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
     setIsLoadingResearch(true);
     setError(null);
     try {
-      // Research company
+      // Research company with selected AI model
       const researchData = await researchCompany({
         companyName,
-        rfpContent: rfpDocument?.content
+        rfpContent: rfpDocument?.content,
+        model: selectedAIModel
       });
 
       // Get existing research if any
@@ -584,22 +670,74 @@ Market Position: ${companyInfo.currentResearch.marketPosition}
 Key Challenges:
 ${companyInfo.currentResearch.challenges.map(c => `- ${c}`).join('\n')}
 
-Proposed AI Solutions:
-${selectedRuns.map(({ scenario, run }) => `
-Scenario: ${scenario.title}
-Solution Overview: ${run.workflowExplanation}
+Proposed AI Solutions with Working Demos:
+${selectedRuns.map(({ scenario, run }, index) => `
+═══════════════════════════════════════════════════════════════
+SOLUTION ${index + 1}: ${scenario.title}
+═══════════════════════════════════════════════════════════════
+
+Business Problem:
+${scenario.description}
+
+Goal:
+${scenario.goal}
+
+Complete Workflow Implementation:
+${run.workflowExplanation}
+
 Impact Score: ${run.score}/100
-Key Benefits:
-- Addresses specific challenge: ${scenario.goal}
-- Demonstrates clear ROI through automated workflow
+
+---
+WORKING DEMO FOR ${scenario.title.toUpperCase()}:
+
+Create an INTERACTIVE DEMO section for this solution that includes:
+
+1. **Live Input Form**: Create a realistic input form where users can enter sample data relevant to this workflow. Include:
+   - Appropriate input fields based on the workflow steps
+   - Placeholder text showing example values
+   - A "Run Demo" button
+
+2. **Simulated Processing Animation**: When the demo runs, show:
+   - A step-by-step progress indicator matching the workflow steps
+   - Brief animated transitions between steps (1-2 seconds each)
+   - Visual indicators showing AI vs Human decision points
+
+3. **Sample Output Display**: After the "processing" completes, display:
+   - Realistic sample output that would result from this workflow
+   - Key metrics or KPIs that would be generated
+   - Before/After comparison if applicable
+
+4. **ROI Calculator**: Include an interactive calculator showing:
+   - Time saved per execution
+   - Estimated cost savings (monthly/annually)
+   - Productivity improvement percentage
+
+Demo Implementation Notes:
+- Use JavaScript to create the interactive functionality
+- The demo should work entirely client-side (no backend required)
+- Use realistic but fictional data for the demo
+- Include a "Reset Demo" button to try again
+---
 `).join('\n')}
 
 Please structure the website presentation to include:
-1. Executive Summary
-2. Company Analysis & Challenges
-3. Proposed AI Solutions (showcasing the selected scenarios)
-4. Implementation Roadmap
-5. Expected ROI & Impact
+1. Executive Summary - Brief overview of ${companyInfo.name}'s digital transformation opportunity
+2. Company Analysis & Challenges - Deep dive into current state and pain points
+3. Proposed AI Solutions - For EACH solution above, include:
+   a. Problem statement and business impact
+   b. Solution overview with workflow diagram
+   c. **WORKING INTERACTIVE DEMO** (as specified above for each solution)
+   d. Expected ROI and metrics
+4. Implementation Roadmap - Phased approach with timeline
+5. Investment & Returns - Total cost of ownership and payback period
+6. Next Steps - Clear call to action
+
+CRITICAL REQUIREMENTS:
+- Each solution MUST have its own fully functional interactive demo
+- Demos should use realistic sample data relevant to ${companyInfo.currentResearch.industry}
+- All demos must work without any backend - pure HTML/CSS/JavaScript
+- Include smooth animations and professional transitions
+- Make the demos visually impressive and engaging for stakeholders
 
 The tone should be professional, consultative, and focused on digital transformation. Use West Monroe's signature style: bold, clean, and data-driven.`;
   };
@@ -925,6 +1063,25 @@ The tone should be professional, consultative, and focused on digital transforma
 
           <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
             <div className="space-y-4">
+              {/* AI Model Selector */}
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-wm-blue/70">AI Model:</label>
+                <select
+                  value={selectedAIModel}
+                  onChange={(e) => setSelectedAIModel(e.target.value as AIModelId)}
+                  className="bg-wm-neutral/10 text-wm-blue p-2 rounded-lg border border-wm-neutral/30 focus:border-wm-accent focus:outline-none text-sm"
+                >
+                  {AI_MODELS.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name} ({model.provider === 'google' ? 'Google' : 'OpenAI'})
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-wm-blue/50">
+                  {AI_MODELS.find(m => m.id === selectedAIModel)?.description}
+                </span>
+              </div>
+              
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -962,35 +1119,6 @@ The tone should be professional, consultative, and focused on digital transforma
         <h1 className="text-3xl font-bold text-wm-blue">{companyInfo.name}</h1>
       )}
 
-      {/* RFP Upload - always available */}
-      <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
-        <RfpUploadField
-          companyId={currentCompanyId}
-          onUploadSuccess={async () => {
-            if (currentCompanyId) {
-              // Add a small delay to allow for RFP analysis to complete
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              // Then reload the company data to get the latest RFP analysis
-              await loadExistingResearch(currentCompanyId);
-              setRfpDocument(null);
-            }
-          }}
-          onUploadError={(error) => {
-            console.error('RFP upload failed:', error);
-            setError(t('research.rfpUploadError'));
-          }}
-          onDelete={async () => {
-            if (currentCompanyId) {
-              setRfpDocument(null);
-              // Add a small delay to allow for RFP deletion to complete
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              // Then reload the company data
-              await loadExistingResearch(currentCompanyId);
-            }
-          }}
-        />
-      </div>
-
       {error && (
         <div className="bg-wm-pink/10 border-l-4 border-wm-pink text-wm-pink p-4 rounded-r-lg">
           {error}
@@ -1009,6 +1137,7 @@ The tone should be professional, consultative, and focused on digital transforma
               isScenarioRunsLoading={isLoadingScenarioRuns}
               onViewWorkflow={onViewWorkflow}
               companyId={currentCompanyId || undefined}
+              userId={userId}
               selectedRunIds={selectedRunIds}
               onToggleRunId={handleToggleRunId}
               onGenerateDiviPrompt={handleGenerateDiviPrompt}
@@ -1016,6 +1145,55 @@ The tone should be professional, consultative, and focused on digital transforma
               wordPressPageUrl={wordPressPageUrl}
               onCreatePresentation={handleCreatePresentation}
               onDeleteRun={handleDeleteRun}
+              initialSelectedDomains={selectedDomains}
+              onSelectedDomainsChange={(domains) => {
+                setSelectedDomains(domains);
+              }}
+              selectedScenarios={selectedScenarios}
+              onSelectedScenariosChange={(scenarios) => {
+                setSelectedScenarios(scenarios);
+              }}
+              allScenarios={allScenarios}
+              onSelectScenario={(scenarioId) => {
+                const scenario = allScenarios.find(s => s.id === scenarioId);
+                if (scenario) {
+                  // Add scenario to company's selectedScenarios immediately when selected
+                  if (currentCompanyId && !selectedScenarios.includes(scenarioId)) {
+                    const updatedScenarios = [...selectedScenarios, scenarioId];
+                    setSelectedScenarios(updatedScenarios);
+                    updateCompanySelectedScenarios(currentCompanyId, userId, updatedScenarios).catch(err => {
+                      console.error('Failed to update company selected scenarios:', err);
+                    });
+                  }
+                  
+                  if (onSelectScenario) {
+                    onSelectScenario(scenario, companyInfo.name, currentCompanyId || undefined);
+                  }
+                }
+              }}
+              documentUploadSection={
+                <RfpUploadField
+                  companyId={currentCompanyId}
+                  onUploadSuccess={async () => {
+                    if (currentCompanyId) {
+                      await new Promise(resolve => setTimeout(resolve, 1000));
+                      await loadExistingResearch(currentCompanyId);
+                      setRfpDocument(null);
+                    }
+                  }}
+                  onUploadError={(error) => {
+                    console.error('RFP upload failed:', error);
+                    setError(t('research.rfpUploadError'));
+                  }}
+                  onDelete={async () => {
+                    if (currentCompanyId) {
+                      setRfpDocument(null);
+                      await new Promise(resolve => setTimeout(resolve, 1000));
+                      await loadExistingResearch(currentCompanyId);
+                    }
+                  }}
+                />
+              }
             />
 
             {/* RFP Analysis Section - Completely Separate */}

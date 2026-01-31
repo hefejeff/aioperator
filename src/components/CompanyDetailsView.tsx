@@ -29,7 +29,10 @@ const CompanyDetailsView: React.FC<CompanyDetailsViewProps> = ({
   const [selectedScenarios, setSelectedScenarios] = useState<string[]>(company.selectedScenarios || []);
   const [isLoadingScenarios, setIsLoadingScenarios] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(true);
+  const [activeTab, setActiveTab] = useState<'info' | 'domains'>('info');
   const { t } = useTranslation();
+
+  console.log('CompanyDetailsView activeTab:', activeTab);
 
   // Load company info when component mounts
   useEffect(() => {
@@ -301,103 +304,174 @@ const CompanyDetailsView: React.FC<CompanyDetailsViewProps> = ({
           </div>
         </div>
 
-      {/* Current Research Details */}
-      {company.research?.currentResearch && (
-        <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-wm-blue mb-6">{t('research.companyInfo')}</h2>
-          
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-wm-blue font-bold mb-2">{t('research.description')}</h3>
-              <p className="text-wm-blue/70">{company.research.currentResearch.description}</p>
-            </div>
+        {/* Tabs */}
+        <div className="bg-white border border-wm-neutral/30 rounded-xl shadow-sm overflow-hidden">
+          <div className="flex border-b border-wm-neutral/30">
+            <button
+              onClick={() => setActiveTab('info')}
+              className={`flex-1 px-6 py-4 font-bold transition-all ${
+                activeTab === 'info'
+                  ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
+                  : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
+              }`}
+            >
+              Company Information
+            </button>
+            <button
+              onClick={() => setActiveTab('domains')}
+              className={`flex-1 px-6 py-4 font-bold transition-all ${
+                activeTab === 'domains'
+                  ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
+                  : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
+              }`}
+            >
+              Target Domains
+            </button>
+          </div>
 
-            <div>
-              <h3 className="text-wm-blue font-bold mb-2">{t('research.industry')}</h3>
-              <p className="text-wm-blue/70">{company.research.currentResearch.industry}</p>
-            </div>
-
-            <div>
-              <h3 className="text-wm-blue font-bold mb-2">{t('research.marketPosition')}</h3>
-              <p className="text-wm-blue/70">{company.research.currentResearch.marketPosition}</p>
-            </div>
-
-            <div>
-              <h3 className="text-wm-blue font-bold mb-2">{t('research.products')}</h3>
-              <ul className="list-disc list-inside text-wm-blue/70 space-y-1">
-                {company.research.currentResearch.products?.map((product, index) => (
-                  <li key={index}>{product}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-wm-blue font-bold mb-2">{t('research.competitors')}</h3>
-              <ul className="list-disc list-inside text-wm-blue/70 space-y-1">
-                {company.research.currentResearch.competitors?.map((competitor, index) => (
-                  <li key={index}>{competitor}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-wm-blue font-bold mb-2">{t('research.challenges')}</h3>
-              <ul className="list-disc list-inside text-wm-blue/70 space-y-1">
-                {company.research.currentResearch.challenges?.map((challenge, index) => (
-                  <li key={index}>{challenge}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-wm-blue font-bold mb-2">{t('research.opportunities')}</h3>
-              <ul className="list-disc list-inside text-wm-blue/70 space-y-1">
-                {company.research.currentResearch.opportunities?.map((opportunity, index) => (
-                  <li key={index}>{opportunity}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-wm-blue font-bold mb-2">{t('research.aiUseCases')}</h3>
-              <ul className="list-disc list-inside text-wm-blue/70 space-y-1">
-                {company.research.currentResearch.useCases?.map((useCase, index) => (
-                  <li key={index}>{useCase}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="border-t border-wm-neutral pt-6">
-              <h3 className="text-wm-blue font-bold mb-4">{t('research.aiAnalysis')}</h3>
-              
-              <div className="space-y-4">
+          <div className="p-6">
+            {/* Company Information Tab */}
+            {activeTab === 'info' && company.research?.currentResearch && (
+              <div className="space-y-6">
                 <div>
-                  <h4 className="text-wm-blue/80 font-bold mb-2">{t('research.currentAI')}</h4>
-                  <p className="text-wm-blue/60">{company.research.currentResearch.aiRelevance?.current}</p>
+                  <h3 className="text-wm-blue font-bold mb-2">{t('research.description')}</h3>
+                  <p className="text-wm-blue/70">{company.research.currentResearch.description}</p>
                 </div>
-                
+
                 <div>
-                  <h4 className="text-wm-blue/80 font-bold mb-2">{t('research.potentialAI')}</h4>
-                  <p className="text-wm-blue/60">{company.research.currentResearch.aiRelevance?.potential}</p>
+                  <h3 className="text-wm-blue font-bold mb-2">{t('research.industry')}</h3>
+                  <p className="text-wm-blue/70">{company.research.currentResearch.industry}</p>
                 </div>
-                
+
                 <div>
-                  <h4 className="text-wm-blue/80 font-bold mb-2">{t('research.aiRecommendations')}</h4>
-                  <ul className="list-disc list-inside text-wm-blue/60 space-y-1">
-                    {company.research.currentResearch.aiRelevance?.recommendations?.map((rec, index) => (
-                      <li key={index}>{rec}</li>
-                    ))}
-                  </ul>
+                  <h3 className="text-wm-blue font-bold mb-2">{t('research.marketPosition')}</h3>
+                <p className="text-wm-blue/70">{company.research.currentResearch.marketPosition}</p>
+              </div>
+
+              <div>
+                <h3 className="text-wm-blue font-bold mb-2">{t('research.products')}</h3>
+                <ul className="list-disc list-inside text-wm-blue/70 space-y-1">
+                  {company.research.currentResearch.products?.map((product, index) => (
+                    <li key={index}>{product}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-wm-blue font-bold mb-2">{t('research.competitors')}</h3>
+                <ul className="list-disc list-inside text-wm-blue/70 space-y-1">
+                  {company.research.currentResearch.competitors?.map((competitor, index) => (
+                    <li key={index}>{competitor}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-wm-blue font-bold mb-2">{t('research.challenges')}</h3>
+                <ul className="list-disc list-inside text-wm-blue/70 space-y-1">
+                  {company.research.currentResearch.challenges?.map((challenge, index) => (
+                    <li key={index}>{challenge}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-wm-blue font-bold mb-2">{t('research.opportunities')}</h3>
+                <ul className="list-disc list-inside text-wm-blue/70 space-y-1">
+                  {company.research.currentResearch.opportunities?.map((opportunity, index) => (
+                    <li key={index}>{opportunity}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-wm-blue font-bold mb-2">{t('research.aiUseCases')}</h3>
+                <ul className="list-disc list-inside text-wm-blue/70 space-y-1">
+                  {company.research.currentResearch.useCases?.map((useCase, index) => (
+                    <li key={index}>{useCase}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="border-t border-wm-neutral pt-6">
+                <h3 className="text-wm-blue font-bold mb-4">{t('research.aiAnalysis')}</h3>
+                
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-wm-blue/80 font-bold mb-2">{t('research.currentAI')}</h4>
+                    <p className="text-wm-blue/60">{company.research.currentResearch.aiRelevance?.current}</p>
+                  </div>
+                  
+                  <div>
+                    <h4 className="text-wm-blue/80 font-bold mb-2">{t('research.potentialAI')}</h4>
+                    <p className="text-wm-blue/60">{company.research.currentResearch.aiRelevance?.potential}</p>
+                  </div>
+                  
+                  <div>
+                    <h4 className="text-wm-blue/80 font-bold mb-2">{t('research.aiRecommendations')}</h4>
+                    <ul className="list-disc list-inside text-wm-blue/60 space-y-1">
+                      {company.research.currentResearch.aiRelevance?.recommendations?.map((rec, index) => (
+                        <li key={index}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               </div>
-            </div>
+              </div>
+            )}
+
+            {/* Target Domains Tab */}
+            {activeTab === 'domains' && (
+              <div>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-lg font-bold text-wm-blue">{t('research.relevantOpportunities')}</h2>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleFindOpportunities}
+                      disabled={isLoadingScenarios}
+                      className="px-4 py-2 bg-wm-neutral/30 text-wm-blue rounded-lg hover:bg-wm-neutral/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-bold"
+                    >
+                      {isLoadingScenarios ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-wm-blue"></div>
+                          {t('research.finding')}
+                        </>
+                      ) : (
+                        <>
+                          <Icons.Search className="w-4 h-4" />
+                          {t('research.findOpportunities')}
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => onCreateScenario({
+                        companyId: company.id,
+                        companyName: company.name
+                      })}
+                      className="px-4 py-2 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2 font-bold"
+                    >
+                      <Icons.Plus className="w-4 h-4" />
+                      {t('research.createScenario')}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <ScenarioSelection
+                    scenarios={relatedScenarios}
+                    selectedScenarios={selectedScenarios}
+                    onToggleScenario={handleToggleScenario}
+                    onScenarioClick={onSelectScenario}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
 
-      {/* Research History */}
-      {company.research?.history && company.research.history.length > 0 && (
-        <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
+        {/* Research History */}
+        {company.research?.history && company.research.history.length > 0 && (
+          <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
           <h2 className="text-lg font-bold text-wm-blue mb-4">{t('research.history')}</h2>
           <div className="space-y-6">
             {company.research.history.map((entry, index) => (
@@ -489,51 +563,6 @@ const CompanyDetailsView: React.FC<CompanyDetailsViewProps> = ({
           </div>
         </div>
       )}
-
-      {/* Scenario Management */}
-        <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-bold text-wm-blue">{t('research.relevantOpportunities')}</h2>
-            <div className="flex gap-3">
-              <button
-                onClick={handleFindOpportunities}
-                disabled={isLoadingScenarios}
-                className="px-4 py-2 bg-wm-neutral/30 text-wm-blue rounded-lg hover:bg-wm-neutral/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-bold"
-              >
-                {isLoadingScenarios ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-wm-blue"></div>
-                    {t('research.finding')}
-                  </>
-                ) : (
-                  <>
-                    <Icons.Search className="w-4 h-4" />
-                    {t('research.findOpportunities')}
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => onCreateScenario({
-                  companyId: company.id,
-                  companyName: company.name
-                })}
-                className="px-4 py-2 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2 font-bold"
-              >
-                <Icons.Plus className="w-4 h-4" />
-                {t('research.createScenario')}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <ScenarioSelection
-              scenarios={relatedScenarios}
-              selectedScenarios={selectedScenarios}
-              onToggleScenario={handleToggleScenario}
-              onScenarioClick={onSelectScenario}
-            />
-          </div>
-        </div>
       </div>
 
       <ResearchSidebar

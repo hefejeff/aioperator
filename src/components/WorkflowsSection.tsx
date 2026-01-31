@@ -54,6 +54,25 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
     ? scenariosWithWorkflows.filter(scenario => scenario.favoritedBy?.[user.uid])
     : scenariosWithWorkflows;
 
+  // Sort scenarios: 1) Has runs, 2) Starred, 3) Rest
+  const sortedScenarios = [...filteredScenarios].sort((a, b) => {
+    const aHasRuns = workflowsByScenario[a.id]?.length > 0;
+    const bHasRuns = workflowsByScenario[b.id]?.length > 0;
+    const aStarred = !!a.favoritedBy?.[user.uid];
+    const bStarred = !!b.favoritedBy?.[user.uid];
+
+    // 1. Prioritize workflows the user has run
+    if (aHasRuns && !bHasRuns) return -1;
+    if (!aHasRuns && bHasRuns) return 1;
+
+    // 2. Then prioritize starred workflows
+    if (aStarred && !bStarred) return -1;
+    if (!aStarred && bStarred) return 1;
+
+    // 3. Rest stay in their order
+    return 0;
+  });
+
   const toggleScenarioExpansion = (scenarioId: string) => {
     setExpandedScenarios(prev => {
       const next = new Set(prev);
@@ -111,9 +130,9 @@ const WorkflowsSection: React.FC<WorkflowsSectionProps> = ({
       </div>
 
       {/* Workflow Cards List */}
-      {filteredScenarios.length > 0 ? (
+      {sortedScenarios.length > 0 ? (
         <div className="space-y-3 animate-in fade-in duration-500 max-h-[calc(100vh-16rem)] overflow-y-auto pr-2">
-          {filteredScenarios.map((scenario, index) => {
+          {sortedScenarios.map((scenario, index) => {
             const isExpanded = expandedScenarios.has(scenario.id);
             const isFavorited = !!scenario.favoritedBy?.[user.uid];
             const workflowCount = workflowsByScenario[scenario.id]?.length ?? 0;

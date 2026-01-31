@@ -53,7 +53,7 @@ The AI Operator Training Hub is a web-based platform that enables organizations 
 |-----------|-----------------|
 | Frontend Hosting | Azure Static Web Apps |
 | Authentication | Azure Active Directory B2C |
-| Database | Azure Cosmos DB (NoSQL) |
+| Database | Azure Database for PostgreSQL |
 | File Storage | Azure Blob Storage |
 | AI Services | Azure OpenAI Service + Google Gemini API |
 | API Layer | Azure Functions (Serverless) |
@@ -140,15 +140,15 @@ The AI Operator Training Hub is a web-based platform that enables organizations 
         ┌─────────┴─────────┐
         ▼                   ▼
 ┌───────────────────┐ ┌─────────────────────┐
-│  Azure Cosmos DB  │ │  Azure Key Vault    │
-│  (NoSQL Database) │ │  (Secrets)          │
+│  Azure PostgreSQL │ │  Azure Key Vault    │
+│  (SQL Database)   │ │  (Secrets)          │
 └───────────────────┘ └─────────────────────┘
 ```
 
 ### 4.2 Data Flow
 
 1. **User Authentication**: Azure AD B2C → JWT Token → Frontend
-2. **API Requests**: Frontend → Azure API Management → Azure Functions → Cosmos DB
+2. **API Requests**: Frontend → Azure API Management → Azure Functions → PostgreSQL
 3. **AI Processing**: Azure Functions → Azure OpenAI / Gemini API → Response
 4. **File Operations**: Frontend → Azure Functions → Azure Blob Storage
 
@@ -171,7 +171,7 @@ The AI Operator Training Hub is a web-based platform that enables organizations 
 | 1.3 | As a DevOps engineer, I need to set up Azure Key Vault for secrets management | All API keys and connection strings stored in Key Vault with RBAC | P0 |
 | 1.4 | As a DevOps engineer, I need to configure Application Insights for monitoring | Dashboard with key metrics, alerting rules, log analytics workspace | P0 |
 | 1.5 | As a DevOps engineer, I need to set up CI/CD pipelines in Azure DevOps | Automated build, test, and deployment to all environments | P0 |
-| 1.6 | As a DevOps engineer, I need to configure virtual network and private endpoints | Cosmos DB and Blob Storage accessible only via private endpoints | P1 |
+| 1.6 | As a DevOps engineer, I need to configure virtual network and private endpoints | PostgreSQL and Blob Storage accessible only via private endpoints | P1 |
 
 **Technical Tasks**:
 - [ ] Create Azure subscription and management groups
@@ -228,39 +228,39 @@ interface UserProfile {
 
 ---
 
-### Epic 3: Database Layer (Azure Cosmos DB)
+### Epic 3: Database Layer (Azure Database for PostgreSQL)
 
-**Description**: Migrate from Firebase Realtime Database to Azure Cosmos DB with proper partitioning, indexing, and data migration.
+**Description**: Migrate from Firebase Realtime Database to Azure Database for PostgreSQL with proper schema design, indexing, and data migration.
 
 **User Stories**:
 
 | ID | Story | Acceptance Criteria | Priority |
 |----|-------|---------------------|----------|
-| 3.1 | As a developer, I need Cosmos DB containers for all entities | Containers created with optimal partition keys | P0 |
+| 3.1 | As a developer, I need PostgreSQL tables for all entities | Tables created with proper schema and indexes | P0 |
 | 3.2 | As a developer, I need data access layer with TypeScript SDK | Repository pattern with CRUD operations for all entities | P0 |
 | 3.3 | As a DevOps engineer, I need backup and restore procedures | Point-in-time restore enabled, 30-day retention | P0 |
-| 3.4 | As a developer, I need change feed for real-time updates | Azure Functions triggered by Cosmos DB changes | P1 |
+| 3.4 | As a developer, I need triggers for real-time updates | Azure Functions triggered by PostgreSQL notifications | P1 |
 | 3.5 | As a data engineer, I need migration scripts from Firebase | One-time migration with data validation | P0 |
 
-**Container Design**:
+**Table Design**:
 
-| Container | Partition Key | Description |
-|-----------|--------------|-------------|
-| users | /id | User profiles and preferences |
-| organizations | /id | Organization/tenant data |
-| scenarios | /organizationId | Training scenarios (default + custom) |
-| evaluations | /userId | User evaluation results |
-| workflows | /userId | Saved workflow versions |
-| companies | /userId | Company research data |
-| documents | /companyId | Uploaded documents and analysis |
+| Table | Primary Key | Foreign Keys | Description |
+|-------|-------------|--------------|-------------|
+| users | id (UUID) | organization_id | User profiles and preferences |
+| organizations | id (UUID) | - | Organization/tenant data |
+| scenarios | id (UUID) | organization_id | Training scenarios (default + custom) |
+| evaluations | id (UUID) | user_id, scenario_id | User evaluation results |
+| workflows | id (UUID) | user_id, scenario_id | Saved workflow versions |
+| companies | id (UUID) | user_id | Company research data |
+| documents | id (UUID) | company_id | Uploaded documents and analysis |
 
 **Technical Tasks**:
-- [ ] Design Cosmos DB data model with proper partitioning
-- [ ] Implement repository pattern with TypeScript
-- [ ] Create indexing policies for common queries
-- [ ] Set up cross-partition query optimization
-- [ ] Build Firebase to Cosmos DB migration tool
-- [ ] Configure auto-scale throughput (RU/s)
+- [ ] Design PostgreSQL schema with proper normalization
+- [ ] Implement repository pattern with TypeScript (using Prisma or TypeORM)
+- [ ] Create indexes for common queries
+- [ ] Set up query optimization and connection pooling
+- [ ] Build Firebase to PostgreSQL migration tool
+- [ ] Configure auto-scale compute and storage
 
 ---
 
@@ -765,16 +765,17 @@ const TYPOGRAPHY = {
 | Logging | Azure Application Insights |
 | Rate Limiting | Azure API Management policies |
 
-### 6.3 Database Requirements (Cosmos DB)
+### 6.3 Database Requirements (PostgreSQL)
 
 | Requirement | Specification |
 |-------------|---------------|
-| API | NoSQL (Document) |
-| Consistency | Session consistency |
-| Partitioning | Partition key per container (see Epic 3) |
-| Indexing | Automatic + custom policies |
-| Backup | Continuous backup with PITR |
-| Throughput | Auto-scale 400-4000 RU/s |
+| Service | Azure Database for PostgreSQL - Flexible Server |
+| Version | PostgreSQL 16 |
+| Compute | Burstable B2s (dev) / General Purpose D4s_v3 (prod) |
+| Storage | 32GB - 256GB with auto-grow |
+| High Availability | Zone-redundant HA (production) |
+| Backup | Automated backups with 35-day retention, PITR |
+| Connection Pooling | PgBouncer enabled |
 
 ### 6.4 Storage Requirements (Blob Storage)
 

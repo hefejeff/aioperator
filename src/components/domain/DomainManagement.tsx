@@ -96,7 +96,7 @@ const DomainManagement: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-48">
-        <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-4 border-wm-accent border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -104,10 +104,10 @@ const DomainManagement: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold text-white">Domains</h2>
+        <h2 className="text-xl font-bold text-wm-blue">Domains</h2>
         <button
           onClick={openCreateModal}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-sm font-medium flex items-center gap-2"
+          className="bg-wm-accent hover:bg-wm-accent/90 text-white px-4 py-2 rounded font-bold text-sm flex items-center gap-2 transition-colors"
         >
           <Icons.Plus />
           Add Domain
@@ -115,49 +115,49 @@ const DomainManagement: React.FC<{ currentUser: User }> = ({ currentUser }) => {
       </div>
 
       {error && (
-        <div className="bg-red-900/20 border border-red-500/30 rounded p-3 text-red-400">
+        <div className="bg-red-50 border border-red-200 rounded p-3 text-red-600">
           {error}
         </div>
       )}
 
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden">
+      <div className="bg-white border border-wm-neutral/30 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-700">
-            <thead className="bg-slate-800/50">
+          <table className="min-w-full divide-y divide-wm-neutral/30">
+            <thead className="bg-wm-neutral/10">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-wm-blue uppercase tracking-wider">
                   Domain
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-wm-blue uppercase tracking-wider">
                   Users
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-wm-blue uppercase tracking-wider">
                   Workflows
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-wm-blue uppercase tracking-wider">
                   Last Activity
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-wm-blue uppercase tracking-wider">
                   API Usage
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-wm-blue uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-700">
+            <tbody className="divide-y divide-wm-neutral/20">
               {domains.map(domain => (
-                <tr key={domain.id} className="hover:bg-slate-800/30">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
+                <tr key={domain.id} className="hover:bg-wm-neutral/5 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-wm-blue font-semibold">
                     {domain.name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-wm-blue/70">
                     {formatNumber(domain.activeUsers)} active
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-wm-blue/70">
                     {formatNumber(domain.workflowCount)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-wm-blue/70">
                     {domain.lastWorkflowCreated 
                       ? formatDate(domain.lastWorkflowCreated)
                       : 'Never'
@@ -165,15 +165,15 @@ const DomainManagement: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-slate-700 rounded-full h-2 w-24">
+                      <div className="flex-1 bg-wm-neutral/30 rounded-full h-2 w-24">
                         <div
-                          className="bg-indigo-600 rounded-full h-2"
+                          className="bg-wm-accent rounded-full h-2 transition-all"
                           style={{
                             width: `${Math.min(100, (domain.monthlyUsage.apiCalls / (domain.settings.maxApiCalls || 1000)) * 100)}%`
                           }}
                         />
                       </div>
-                      <span className="text-slate-400 text-xs">
+                      <span className="text-wm-blue/60 text-xs">
                         {formatNumber(domain.monthlyUsage.apiCalls)}
                         {domain.settings.maxApiCalls 
                           ? `/${formatNumber(domain.settings.maxApiCalls)}`
@@ -182,11 +182,11 @@ const DomainManagement: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-wm-blue/70">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => openEditModal(domain)}
-                        className="text-slate-400 hover:text-white"
+                        className="text-wm-blue/60 hover:text-wm-accent transition-colors"
                         title="Edit domain"
                       >
                         <Icons.Edit />
@@ -194,7 +194,7 @@ const DomainManagement: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                       <button
                         onClick={() => handleDeleteDomain(domain.id)}
                         disabled={deleting === domain.id}
-                        className="text-red-400 hover:text-red-300 disabled:opacity-50"
+                        className="text-red-400 hover:text-red-600 disabled:opacity-50 transition-colors"
                         title="Delete domain"
                       >
                         {deleting === domain.id ? (
@@ -209,7 +209,7 @@ const DomainManagement: React.FC<{ currentUser: User }> = ({ currentUser }) => {
               ))}
               {domains.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={6} className="px-6 py-8 text-center text-wm-blue/40">
                     No domains found. Create your first domain to get started.
                   </td>
                 </tr>

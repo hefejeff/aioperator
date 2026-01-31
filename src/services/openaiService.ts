@@ -410,3 +410,96 @@ export async function listAssistants(): Promise<Array<{
     return [];
   }
 }
+/**
+ * Research a company using OpenAI models
+ */
+export async function researchCompanyWithOpenAI(
+  companyName: string,
+  rfpContent?: string,
+  model: string = 'gpt-4o'
+): Promise<import('../types').CompanyResearch> {
+  const client = getOpenAIClient();
+  
+  const systemPrompt = `You are an expert business analyst and AI consultant. Research the given company and provide a comprehensive analysis including:
+- Company overview and core business
+- Industry analysis
+- Key products/services
+- Market challenges and opportunities
+- Current market position and competitors
+- Use cases for AI/automation
+- Current AI implementation status
+- Potential AI opportunities
+
+You MUST respond with valid JSON matching this exact schema:
+{
+  "name": "string",
+  "description": "string",
+  "industry": "string",
+  "products": ["string"],
+  "challenges": ["string"],
+  "opportunities": ["string"],
+  "marketPosition": "string",
+  "competitors": ["string"],
+  "useCases": ["string"],
+  "aiRelevance": {
+    "current": "string",
+    "potential": "string",
+    "recommendations": ["string"]
+  }
+}`;
+
+  const userPrompt = `Research and analyze ${companyName}, focusing on their business operations and AI/automation opportunities.${rfpContent ? `\n\nAdditionally, analyze this RFP document from the company:\n${rfpContent}` : ''}`;
+
+  try {
+    // Map model ID to actual OpenAI model name
+    const modelMapping: Record<string, string> = {
+      'gpt-4o': 'gpt-4o',
+      'gpt-4-turbo': 'gpt-4-turbo',
+      'gpt-5.2': 'gpt-4o', // Fallback to gpt-4o until GPT-5.2 is available
+    };
+    
+    const actualModel = modelMapping[model] || 'gpt-4o';
+    
+    const response = await client.chat.completions.create({
+      model: actualModel,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('No response from OpenAI');
+    }
+
+    const rawResponse = JSON.parse(content);
+    
+    return {
+      name: rawResponse.name || companyName,
+      currentResearch: {
+        description: rawResponse.description || '',
+        industry: rawResponse.industry || '',
+        marketPosition: rawResponse.marketPosition || '',
+        products: rawResponse.products || [],
+        challenges: rawResponse.challenges || [],
+        opportunities: rawResponse.opportunities || [],
+        competitors: rawResponse.competitors || [],
+        useCases: rawResponse.useCases || [],
+        aiRelevance: {
+          current: rawResponse.aiRelevance?.current || '',
+          potential: rawResponse.aiRelevance?.potential || '',
+          recommendations: rawResponse.aiRelevance?.recommendations || []
+        },
+        timestamp: Date.now()
+      },
+      history: [],
+      lastUpdated: Date.now()
+    };
+  } catch (error) {
+    console.error('Error researching company with OpenAI:', error);
+    throw new Error('Failed to research company with OpenAI');
+  }
+}

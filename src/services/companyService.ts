@@ -1,6 +1,6 @@
 import { ref, get, push, set, update, remove, query, orderByChild, equalTo } from 'firebase/database';
 import { db } from './firebaseInit';
-import type { Company, CompanyResearch } from '../types';
+import type { Company, CompanyResearch, Meeting } from '../types';
 
 // Company Operations
 export const saveCompany = async (
@@ -243,6 +243,7 @@ export const getCompany = async (companyIdOrName: string, userId?: string): Prom
       createdAt: companyData.createdAt,
       lastUpdated: companyData.lastUpdated,
       selectedScenarios: companyData.selectedScenarios || [],
+      selectedDomains: companyData.selectedDomains || [],
       research: companyData.research || null
     } as Company;
 
@@ -323,6 +324,44 @@ export const updateCompanySelectedScenarios = async (
   }
 };
 
+export const updateCompanySelectedDomains = async (
+  companyId: string,
+  userId: string,
+  selectedDomains: string[]
+): Promise<void> => {
+  try {
+    const currentTime = Date.now();
+    
+    // Get company to verify ownership
+    const companyRef = ref(db, `companies/${companyId}`);
+    const snapshot = await get(companyRef);
+    
+    if (!snapshot.exists()) {
+      console.error('Company not found:', companyId);
+      throw new Error('Company not found');
+    }
+    
+    const company = snapshot.val();
+    
+    if (company.createdBy !== userId) {
+      console.error('Authorization failed for updateCompanySelectedDomains');
+      throw new Error('Not authorized to update this company');
+    }
+
+    // Update selected domains
+    await update(companyRef, {
+      selectedDomains,
+      lastUpdated: currentTime
+    });
+    
+    console.log('Successfully updated selected domains for company:', companyId);
+
+  } catch (error) {
+    console.error('Failed to update company selected domains:', error);
+    throw error;
+  }
+};
+
 export const deleteCompany = async (companyId: string, userId: string): Promise<void> => {
   try {
     // First verify user owns the company
@@ -354,3 +393,132 @@ export {
   getCompanyResearchHistory,
   getRelatedScenarios
 } from './firebaseService';
+
+// Meeting operations
+export const saveMeeting = async (
+  companyId: string,
+  meeting: Omit<Meeting, 'id' | 'companyId' | 'createdAt' | 'updatedAt'>
+): Promise<Meeting> => {
+  try {
+    const meetingsRef = ref(db, `companies/${companyId}/meetings`);
+    const newMeetingRef = push(meetingsRef);
+    const now = Date.now();
+
+    const meetingData = {
+      ...meeting,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await set(newMeetingRef, meetingData);
+
+    return {
+      id: newMeetingRef.key as string,
+      companyId,
+      ...meetingData,
+    };
+  } catch (error) {
+    console.error('Failed to save meeting:', error);
+    throw error;
+  }
+};
+
+export const getMeetings = async (companyId: string): Promise<Meeting[]> => {
+  try {
+    const meetingsRef = ref(db, `companies/${companyId}/meetings`);
+    const snapshot = await get(meetingsRef);
+
+    if (!snapshot.exists()) {
+      return [];
+    }
+
+    const meetings: Meeting[] = [];
+    const data = snapshot.val();
+
+    for (const [id, meeting] of Object.entries<any>(data)) {
+      meetings.push({
+        id,
+        companyId,
+        ...(meeting as Omit<Meeting, 'id' | 'companyId'>),
+      });
+    }
+
+    return meetings;
+  } catch (error) {
+    console.error('Failed to fetch meetings:', error);
+    throw error;
+  }
+};
+
+export const updateMeeting = async (
+  companyId: string,
+  meetingId: string,
+  meeting: Omit<Meeting, 'id' | 'companyId' | 'createdAt' | 'updatedAt'>
+): Promise<void> => {
+  try {
+    const meetingRef = ref(db, `companies/${companyId}/meetings/${meetingId}`);
+    await update(meetingRef, {
+      ...meeting,
+      updatedAt: Date.now(),
+    });
+  } catch (error) {
+    console.error('Failed to update meeting:', error);
+    throw error;
+  }
+};
+
+export const deleteMeeting = async (companyId: string, meetingId: string): Promise<void> => {
+  try {
+    const meetingRef = ref(db, `companies/${companyId}/meetings/${meetingId}`);
+    await remove(meetingRef);
+  } catch (error) {
+    console.error('Failed to delete meeting:', error);
+    throw error;
+  }
+};
+
+// Document Operations
+export const saveDocuments = async (
+  companyId: string,
+  documents: Array<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number }>
+): Promise<void> => {
+  try {
+    const documentsRef = ref(db, `companies/${companyId}/documents`);
+    await set(documentsRef, documents);
+    console.log('Documents saved to Firebase:', documents.length);
+  } catch (error) {
+    console.error('Failed to save documents:', error);
+    throw error;
+  }
+};
+
+export const getDocuments = async (companyId: string): Promise<Array<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number }>> => {
+  try {
+    const documentsRef = ref(db, `companies/${companyId}/documents`);
+    const snapshot = await get(documentsRef);
+    if (snapshot.exists()) {
+      const docs = snapshot.val();
+      return Array.isArray(docs) ? docs : [];
+    }
+    return [];
+  } catch (error) {
+    console.error('Failed to fetch documents:', error);
+    throw error;
+  }
+};
+
+export const deleteDocument = async (companyId: string, documentId: string): Promise<void> => {
+  try {
+    const documentsRef = ref(db, `companies/${companyId}/documents`);
+    const snapshot = await get(documentsRef);
+    if (snapshot.exists()) {
+      const docs = snapshot.val();
+      const filtered = Array.isArray(docs) ? docs.filter(d => d.id !== documentId) : [];
+      await set(documentsRef, filtered);
+      console.log('Document deleted from Firebase:', documentId);
+    }
+  } catch (error) {
+    console.error('Failed to delete document:', error);
+    throw error;
+  }
+};

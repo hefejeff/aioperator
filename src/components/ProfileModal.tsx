@@ -76,31 +76,31 @@ const ProfileModal: React.FC<Props> = ({ user, onClose, onSaved }) => {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-md max-h-[85vh] overflow-y-auto" role="dialog" aria-modal="true">
-  <h2 className="text-xl font-bold text-white mb-4">{t('profile.title')}</h2>
+      <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 w-full max-w-md max-h-[85vh] overflow-y-auto shadow-2xl" role="dialog" aria-modal="true">
+        <h2 className="text-xl font-bold text-wm-blue mb-4">{t('profile.title')}</h2>
         {isLoading ? (
           <div className="p-6 text-center"><LoadingSpinner /></div>
         ) : (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-slate-300 mb-1">{t('profile.displayName')}</label>
-              <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-slate-200" />
+              <label className="block text-sm font-bold text-wm-blue/70 mb-1">{t('profile.displayName')}</label>
+              <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow" />
             </div>
             <div>
-              <label className="block text-sm text-slate-300 mb-1">{t('profile.avatar')}</label>
-              <input value={photoURL} onChange={(e) => setPhotoURL(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-slate-200" />
+              <label className="block text-sm font-bold text-wm-blue/70 mb-1">{t('profile.avatar')}</label>
+              <input value={photoURL} onChange={(e) => setPhotoURL(e.target.value)} className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow" />
             </div>
             <div>
-              <label className="block text-sm text-slate-300 mb-1">{t('profile.language')}</label>
-              <select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as 'English' | 'Spanish')} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-slate-200">
+              <label className="block text-sm font-bold text-wm-blue/70 mb-1">{t('profile.language')}</label>
+              <select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as 'English' | 'Spanish')} className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow">
                 <option>English</option>
                 <option>Spanish</option>
               </select>
             </div>
 
-            <div className="flex justify-end space-x-3">
-              <button onClick={onClose} className="px-4 py-2 rounded-md text-slate-300 hover:bg-slate-700">{t('profile.cancel')}</button>
-              <button onClick={handleSave} className="px-4 py-2 bg-sky-600 text-white rounded-md disabled:opacity-60" disabled={isSaving}>
+            <div className="flex justify-end space-x-3 pt-4">
+              <button onClick={onClose} className="px-4 py-2 rounded-md text-wm-blue/70 hover:bg-wm-neutral/20 font-bold transition-colors">{t('profile.cancel')}</button>
+              <button onClick={handleSave} className="px-4 py-2 bg-wm-accent text-white rounded-md disabled:opacity-60 hover:bg-wm-accent/90 font-bold transition-colors" disabled={isSaving}>
                 {isSaving ? <LoadingSpinner /> : t('profile.save')}
               </button>
             </div>

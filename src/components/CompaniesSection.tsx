@@ -24,39 +24,30 @@ const CompaniesSection: React.FC<CompaniesSectionProps> = ({
   return (
     <div>
       <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold text-wm-blue mb-2">{t('dashboard.yourCompanies')}</h2>
-            <p className="text-wm-blue/60">{t('dashboard.companiesDescription')}</p>
-          </div>
-          <button
-            onClick={onStartNewResearch}
-            className="flex items-center gap-2 px-4 py-2 bg-wm-accent text-wm-white text-sm font-bold rounded-lg hover:bg-wm-accent/90 transition-colors"
-          >
-            <Icons.Plus className="w-4 h-4" />
-            {t('dashboard.newResearch')}
-          </button>
+        <div>
+          <h2 className="text-3xl font-bold text-wm-blue mb-2">{t('dashboard.yourCompanies')}</h2>
+          <p className="text-wm-blue/60">{t('dashboard.companiesDescription')}</p>
         </div>
       </div>
 
       {companies.length > 0 ? (
-        <div className="space-y-4 animate-in fade-in duration-500">
+        <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-500">
           {companies.map((company, index) => (
             <div 
               key={company.id}
-              className="animate-in slide-in-from-bottom duration-300 p-6 bg-wm-white border border-wm-neutral rounded-xl hover:border-wm-accent/40 hover:shadow-lg transition-all group cursor-pointer"
+              className="animate-in slide-in-from-bottom duration-300 p-5 bg-wm-white border border-wm-neutral rounded-xl hover:border-wm-accent/40 hover:shadow-lg transition-all group cursor-pointer"
               style={{ animationDelay: `${index * 100}ms` }}
               onClick={() => handleCompanyClick(company)}
             >
-              <div className="flex items-start justify-between mb-4">
-                <h3 className="text-xl font-bold text-wm-blue group-hover:text-wm-accent transition-colors">
+              <div className="flex items-start justify-between mb-3">
+                <h3 className="text-lg font-bold text-wm-blue group-hover:text-wm-accent transition-colors line-clamp-1">
                   {company.name}
                 </h3>
-                <span className="text-xs text-wm-blue/50">
+                <span className="text-xs text-wm-blue/50 flex-shrink-0 ml-2">
                   {t('dashboard.scenarios')}: {company.selectedScenarios?.length || 0}
                 </span>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <p className="text-sm text-wm-blue/70 line-clamp-2">
                   {company.research?.currentResearch?.description || company.research?.history[0]?.description || t('dashboard.noResearch')}
                 </p>
