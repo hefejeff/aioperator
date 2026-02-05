@@ -400,7 +400,7 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
                     <svg className={`w-3 h-3 transition-transform ${expandedDomain === index ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
-                    {expandedDomain === index ? 'Hide' : 'View'} example processes
+                    {expandedDomain === index ? 'Hide' : 'View'} sub-domains
                   </button>
 
                   {expandedDomain === index && (
@@ -433,7 +433,7 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
                             value={newExample}
                             onChange={(e) => setNewExample(e.target.value)}
                             onKeyPress={(e) => e.key === 'Enter' && handleAddExample(index)}
-                            placeholder="Example process name"
+                            placeholder="Example sub-domain name"
                             className="flex-1 bg-white border border-wm-neutral/30 rounded px-2 py-1 text-xs text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none"
                             autoFocus
                           />
@@ -459,7 +459,7 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
                           className="w-full text-xs text-wm-accent hover:text-wm-accent/80 font-bold flex items-center gap-1 px-2 py-1.5 hover:bg-wm-accent/5 rounded transition-colors"
                         >
                           <Icons.Plus className="w-3 h-3" />
-                          Add example process
+                          Add sub-domain
                         </button>
                       )}
                     </div>

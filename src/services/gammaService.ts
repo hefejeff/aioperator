@@ -7,6 +7,7 @@
 export interface GammaGenerateRequest {
   text: string;
   format?: 'pptx' | 'pdf' | 'webpage';
+  themeId?: string;
   apiKey: string;
 }
 
@@ -22,13 +23,14 @@ export interface GammaGenerateResponse {
  * Generate a presentation using Gamma AI via Firebase Cloud Function
  * @param text - The slide presentation text/outline to generate from
  * @param apiKey - Gamma AI API key
- * @param format - Output format (default: pptx)
+ * @param themeId - Optional Gamma theme ID (default: g_kwtkpaa9032ruke)
  * @returns Promise with generation result including download link
  */
 export async function generateGammaPresentation(
   text: string,
   apiKey: string,
-  format: 'pptx' | 'pdf' | 'webpage' = 'pptx'
+  format: 'pptx' | 'pdf' | 'webpage' = 'pptx',
+  themeId: string = 'lbwzv30urvx3eqk'
 ): Promise<GammaGenerateResponse> {
   try {
     // Get Firebase Cloud Function URL
@@ -43,6 +45,7 @@ export async function generateGammaPresentation(
       body: JSON.stringify({
         text,
         format,
+        themeId,
         apiKey,
       }),
     });
@@ -58,6 +61,80 @@ export async function generateGammaPresentation(
     console.error('Gamma presentation generation failed:', error);
     throw error;
   }
+}
+
+/**
+ * Check the status of a Gamma presentation generation
+ * @param generationId - The generation ID returned by generateGammaPresentation
+ * @param apiKey - Gamma AI API key
+ * @returns Promise with generation status and download link if completed
+ */
+export async function checkGammaStatus(
+  generationId: string,
+  apiKey: string
+): Promise<GammaGenerateResponse> {
+  try {
+    const functionUrl = getFunctionUrl().replace('generateGammaPresentation', 'checkGammaStatus');
+    
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        generationId,
+        apiKey,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Function error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Failed to check Gamma status:', error);
+    throw error;
+  }
+}
+
+/**
+ * Poll for Gamma presentation completion
+ * @param generationId - The generation ID to poll
+ * @param apiKey - Gamma AI API key
+ * @param maxAttempts - Maximum number of polling attempts (default: 30)
+ * @param interval - Polling interval in milliseconds (default: 3000)
+ * @returns Promise with completed generation data
+ */
+export async function pollGammaCompletion(
+  generationId: string,
+  apiKey: string,
+  maxAttempts: number = 30,
+  interval: number = 3000
+): Promise<GammaGenerateResponse> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    console.log(`Polling attempt ${attempt + 1}/${maxAttempts} for generation ${generationId}`);
+    
+    const status = await checkGammaStatus(generationId, apiKey);
+    
+    if (status.status === 'completed') {
+      console.log('Generation completed!', status);
+      return status;
+    }
+    
+    if (status.status === 'failed') {
+      throw new Error('Generation failed');
+    }
+    
+    // Wait before next attempt
+    if (attempt < maxAttempts - 1) {
+      await new Promise(resolve => setTimeout(resolve, interval));
+    }
+  }
+  
+  throw new Error('Generation timed out after ' + (maxAttempts * interval / 1000) + ' seconds');
 }
 
 /**
@@ -106,9 +183,16 @@ export async function copySlideTextToClipboard(text: string): Promise<void> {
 }
 
 /**
- * Get Gamma API key from localStorage
+ * Get Gamma API key from localStorage or environment variable
  */
 export function getGammaApiKey(): string | null {
+  // First check environment variable
+  const envKey = import.meta.env.VITE_GAMMA_API_KEY;
+  if (envKey) {
+    return envKey;
+  }
+  
+  // Fall back to user's stored key in localStorage
   const userKey = localStorage.getItem('gamma_api_key');
   return userKey;
 }

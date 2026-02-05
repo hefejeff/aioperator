@@ -151,10 +151,10 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                   
                   {/* Library/Resources with icon */}
                   <Link 
-                    to="/training"
+                    to="/library"
                     onClick={() => onNavigate('TRAINING')}
                     className={`p-2 rounded-md transition-colors ${
-                      isActive('/training') 
+                      isActive('/library') 
                         ? 'bg-wm-white/20 text-wm-white' 
                         : 'text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white'
                     }`}
@@ -306,10 +306,10 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
           {t('nav.dashboard')}
         </Link>
         <Link 
-          to="/training"
+          to="/library"
           onClick={() => handleMobileNav('TRAINING')}
           className={`w-full text-xl py-4 rounded-md font-bold transition-colors ${
-            isActive('/training')
+            isActive('/library')
               ? 'bg-wm-white/20 text-wm-white'
               : 'text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white'
           }`}

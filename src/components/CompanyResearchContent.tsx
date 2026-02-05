@@ -5,6 +5,9 @@ import MeetingsList from './MeetingsList';
 import { saveMeeting, getMeetings, updateMeeting, deleteMeeting, updateCompanySelectedDomains, updateCompanySelectedScenarios, saveDocuments, getDocuments, deleteDocument } from '../services/companyService';
 import { analyzeDocumentWithGemini } from '../services/geminiService';
 import { extractTextFromPDF } from '../services/pdfExtractor';
+import { generateGammaPresentation, getGammaApiKey, setGammaApiKey, pollGammaCompletion } from '../services/gammaService';
+import { db } from '../services/firebaseInit';
+import { ref, set, query, orderByChild, equalTo, onValue, remove } from 'firebase/database';
 
 interface CompanyResearchContentProps {
   companyInfo: CompanyResearch;
@@ -28,6 +31,8 @@ interface CompanyResearchContentProps {
   onSelectedDomainsChange?: (domains: string[]) => void;
   selectedScenarios?: string[];
   onSelectedScenariosChange?: (scenarios: string[]) => void;
+  onActiveTabChange?: (tab: 'info' | 'domains' | 'documents' | 'meetings') => void;
+  onCreateScenario?: (context?: { companyId?: string; companyName?: string; domain?: string }) => void;
 }
 
 const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
@@ -52,6 +57,8 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
   onSelectedDomainsChange,
   selectedScenarios = [],
   onSelectedScenariosChange,
+  onActiveTabChange,
+  onCreateScenario,
 }) => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'info' | 'domains' | 'documents' | 'meetings'>('info');
@@ -64,6 +71,39 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
   const [isAnalyzingDocument, setIsAnalyzingDocument] = useState(false);
   const [documents, setDocuments] = useState<Array<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number }>>([]);
   const [selectedDocument, setSelectedDocument] = useState<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number } | null>(null);
+  const [isGeneratingPresentation, setIsGeneratingPresentation] = useState(false);
+  const [presentationUrl, setPresentationUrl] = useState<string | null>(null);
+  const [gammaApiKeyInput, setGammaApiKeyInput] = useState('');
+  const [showGammaKeyModal, setShowGammaKeyModal] = useState(false);
+  const [presentations, setPresentations] = useState<Array<{
+    generationId: string;
+    status: string;
+    createdAt: number;
+    downloadUrl?: string;
+    publicUrl?: string;
+    devUrl?: string;
+  }>>([]);
+  const [presentationPhase, setPresentationPhase] = useState<'phase1' | 'phase2'>('phase1');
+  const [showUrlModal, setShowUrlModal] = useState(false);
+  const [currentGenerationId, setCurrentGenerationId] = useState<string | null>(null);
+  const [urlModalPublicUrl, setUrlModalPublicUrl] = useState('');
+  const [urlModalDevUrl, setUrlModalDevUrl] = useState('');
+  
+  // Delete presentation handler
+  const handleDeletePresentation = async (generationId: string) => {
+    if (!window.confirm('Are you sure you want to delete this presentation? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      const presentationRef = ref(db, `presentations/${generationId}`);
+      await remove(presentationRef);
+      console.log('Presentation deleted:', generationId);
+    } catch (error) {
+      console.error('Failed to delete presentation:', error);
+      alert('Failed to delete presentation. Please try again.');
+    }
+  };
   
   // Update selected domains when initialSelectedDomains changes
   useEffect(() => {
@@ -117,6 +157,40 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
           setIsLoadingMeetings(false);
         }
       })();
+    }
+  }, [companyId]);
+  
+  // Load presentations
+  useEffect(() => {
+    if (companyId) {
+      const presentationsRef = ref(db, 'presentations');
+      
+      const presentationsQuery = query(
+        presentationsRef,
+        orderByChild('companyId'),
+        equalTo(companyId)
+      );
+      
+      const unsubscribe = onValue(presentationsQuery, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const presentationsList = Object.entries(data).map(([id, value]: [string, any]) => ({
+            generationId: id,
+            status: value.status,
+            createdAt: value.createdAt,
+            downloadUrl: value.downloadUrl,
+            publicUrl: value.publicUrl,
+            devUrl: value.devUrl,
+          }));
+          // Sort by most recent first
+          presentationsList.sort((a, b) => b.createdAt - a.createdAt);
+          setPresentations(presentationsList);
+        } else {
+          setPresentations([]);
+        }
+      });
+      
+      return () => unsubscribe();
     }
   }, [companyId]);
   
@@ -251,6 +325,498 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
     }
   };
   
+  // Generate Gamma presentation based on completed workflows and domains
+  const handleGeneratePresentation = async () => {
+    if (!companyInfo || !userId) return;
+    
+    // Check if user has Gamma API key (from env or localStorage)
+    let apiKey = getGammaApiKey();
+    if (!apiKey) {
+      setShowGammaKeyModal(true);
+      return;
+    }
+    
+    try {
+      setIsGeneratingPresentation(true);
+      setPresentationUrl(null);
+      
+      console.log('Starting presentation generation...');
+      
+      // Gather data about completed workflows
+      const completedWorkflows = Object.entries(scenarioRuns)
+        .filter(([, runs]) => runs.length > 0)
+        .map(([scenarioId, runs]) => {
+          const scenario = scenariosById?.[scenarioId];
+          // Get the latest run's demo URL
+          const latestRun = runs[0];
+          return {
+            title: scenario?.title || 'Unknown Workflow',
+            domain: scenario?.domain || 'General',
+            description: scenario?.description || '',
+            completedCount: runs.length,
+            latestScore: runs[0]?.score || 0,
+            demoUrl: latestRun?.demoPublishedUrl || ''
+          };
+        });
+      
+      // Get selected domains or all domains with completed workflows
+      const targetDomains = selectedDomains.size > 0 
+        ? Array.from(selectedDomains)
+        : Array.from(new Set(completedWorkflows.map(w => w.domain)));
+      
+      // Group workflows by domain
+      const workflowsByDomain: Record<string, typeof completedWorkflows> = {};
+      completedWorkflows.forEach(workflow => {
+        if (!workflowsByDomain[workflow.domain]) {
+          workflowsByDomain[workflow.domain] = [];
+        }
+        workflowsByDomain[workflow.domain].push(workflow);
+      });
+      
+      // Build domain slides with tables
+      const domainSlides = targetDomains.map(domain => {
+        const domainWorkflows = workflowsByDomain[domain] || [];
+        
+        return `
+## ${domain}
+
+| Priority | Core Process | Potential Agentic AI Use Cases | Detailed Use Case Description | Demo Published URL |
+|----------|--------------|--------------------------------|-------------------------------|--------------------|
+${domainWorkflows.map((workflow, idx) => 
+  `| ${idx + 1} | ${workflow.title} | ${workflow.description.substring(0, 100)}... | Completed ${workflow.completedCount} time${workflow.completedCount !== 1 ? 's' : ''} with ${workflow.latestScore}% success rate | ${workflow.demoUrl ? workflow.demoUrl : 'Not published'} |`
+).join('\n')}
+
+### Value
+${domain} workflows offer high value potential through faster resolution, reduced manual work, and improved efficiency. The solutions enable ${domainWorkflows.length} process${domainWorkflows.length !== 1 ? 'es' : ''} that can benefit from AI automation.
+
+### Feasibility
+Feasibility is ${domainWorkflows.length > 0 ? 'strong' : 'moderate'}, supported by proven workflows and repeatable patterns. Solutions can be implemented incrementally with existing infrastructure.
+
+### Readiness
+Readiness is ${domainWorkflows.length > 2 ? 'high' : 'moderate'}, with demonstrated capability through completed implementations. Team has experience with ${domainWorkflows.reduce((sum, w) => sum + w.completedCount, 0)} total workflow executions.
+        `.trim();
+      }).join('\n\n---\n\n');
+      
+      // Build presentation content based on selected phase
+      const presentationText = presentationPhase === 'phase1' ? `
+# Phase 1: Art of the Possible - Target Domains
+## AI Automation Opportunity Assessment for ${companyInfo.name}
+
+---
+
+## Executive Summary
+
+This presentation showcases AI automation opportunities and workflow implementations for ${companyInfo.name}.
+
+**Company Overview:**
+- Industry: ${companyInfo.industry || 'Not specified'}
+- Employee Count: ${companyInfo.employeeCount || 'Not specified'}
+- Website: ${companyInfo.website || 'Not specified'}
+
+**AI Readiness Score:** ${companyInfo.currentResearch?.aiRelevance?.relevanceScore || 'Pending'}/10
+
+---
+
+## Target Business Domains
+
+We've identified and analyzed ${targetDomains.length} key business domains for AI automation:
+
+${targetDomains.map(domain => `- **${domain}**`).join('\n')}
+
+These domains represent areas where AI workflow automation can deliver significant value and efficiency gains.
+
+---
+
+${domainSlides}
+
+---
+
+## Domain Stack Ranking
+
+Strategic prioritization of business domains for AI automation initiatives based on automation potential, business impact, and implementation readiness.
+
+| Rank | Domain | FTE Opportunity | Justification for Ranking |
+|------|--------|-----------------|---------------------------|
+${targetDomains.map((domain, idx) => {
+  const domainWorkflows = workflowsByDomain[domain] || [];
+  const totalExecutions = domainWorkflows.reduce((sum, w) => sum + w.completedCount, 0);
+  const avgScore = domainWorkflows.length > 0 
+    ? Math.round(domainWorkflows.reduce((sum, w) => sum + w.latestScore, 0) / domainWorkflows.length)
+    : 0;
+  
+  const justification = [
+    `${domain} represents ${domainWorkflows.length} automated workflow${domainWorkflows.length !== 1 ? 's' : ''} with proven implementation`,
+    `Average success rate of ${avgScore}% across ${totalExecutions} execution${totalExecutions !== 1 ? 's' : ''}`,
+    `${domainWorkflows.filter(w => w.demoUrl).length > 0 ? 'Live demos available showing production-ready solutions' : 'Strong potential for measurable efficiency gains'}`
+  ].join(' • ');
+  
+  return `| ${idx + 1} | ${domain} | ${domainWorkflows.length * 0.25} - ${domainWorkflows.length * 0.5} | ${justification} |`;
+}).join('\n')}
+
+### Key Insights
+- Domains ranked by combination of workflow maturity, execution success, and automation potential
+- FTE estimates based on workflow complexity and automation coverage
+- Higher-ranked domains show stronger near-term ROI and lower implementation risk
+
+---
+
+## Implementation Roadmap
+
+### Phase 1: Quick Wins (0-3 months)
+Focus on top-ranked domain with existing proven workflows and high success rates for immediate value demonstration.
+
+### Phase 2: Scale & Optimize (3-6 months)
+Expand to secondary domains, refine workflows based on Phase 1 learnings, and establish standardized processes.
+
+### Phase 3: Enterprise Deployment (6-12 months)
+Full deployment across remaining domains with comprehensive training, monitoring, and continuous improvement framework.
+
+---
+
+## Implementation Summary
+
+**Total Workflows Analyzed:** ${completedWorkflows.length}
+**Domains Covered:** ${targetDomains.length}
+**Total Executions:** ${completedWorkflows.reduce((sum, w) => sum + w.completedCount, 0)}
+
+${companyInfo.currentResearch?.aiRelevance?.recommendations?.length ? `
+### Key Recommendations
+${companyInfo.currentResearch.aiRelevance.recommendations.map(rec => `- ${rec}`).join('\n')}
+` : ''}
+
+---
+
+## Next Steps
+
+1. Prioritize domains based on value, feasibility, and readiness scores
+2. Begin pilot implementations with highest-scoring workflows
+3. Establish success metrics and monitoring framework
+4. Plan phased rollout across remaining domains
+5. Schedule regular reviews and optimization cycles
+
+---
+
+## Next Steps & Contact
+
+For more information about AI automation solutions and implementation support, please contact your account team.
+
+**Company:** ${companyInfo.name}
+**Date:** ${new Date().toLocaleDateString()}
+**Phase:** 1 - Art of the Possible
+      `.trim() : `
+# Phase 2: Deep Dive Analysis
+## AI Automation Implementation for ${companyInfo.name}
+
+---
+
+## Executive Summary
+
+This deep dive presentation provides detailed analysis of selected AI automation workflows, including technical requirements, implementation approach, ROI projections, and success metrics.
+
+**Focus Areas:**
+- Technical feasibility and architecture
+- Implementation methodology
+- ROI analysis and business case
+- Risk mitigation strategies
+- Detailed implementation roadmap
+
+---
+
+## Company Context
+
+${companyInfo.currentResearch?.description || 'Leading organization ready for AI transformation'}
+
+**Industry:** ${companyInfo.currentResearch?.industry || 'Not specified'}
+**Market Position:** ${companyInfo.currentResearch?.marketPosition || 'Not specified'}
+
+---
+
+## Selected Workflows for Analysis
+
+${availableDomains.map((domain) => {
+  const domainWorkflows = allScenarios.filter(s => s.domain === domain && s.type === 'TRAINING');
+  const workflowsWithRuns = domainWorkflows.filter(w => scenarioRuns[w.id]?.length > 0);
+  
+  if (workflowsWithRuns.length === 0) return '';
+  
+  return `### ${domain} Deep Dive\n${workflowsWithRuns.slice(0, 3).map((w, idx) => {
+    const runs = scenarioRuns[w.id] || [];
+    const avgFeasibility = runs.length > 0 ? (runs.reduce((sum, r) => sum + (r.technicalFeasibility || 0), 0) / runs.length).toFixed(1) : 'N/A';
+    const avgValue = runs.length > 0 ? (runs.reduce((sum, r) => sum + (r.businessValue || 0), 0) / runs.length).toFixed(1) : 'N/A';
+    return `**${idx + 1}. ${w.title}**\n- Description: ${w.description || 'Workflow analysis'}\n- Technical Feasibility: ${avgFeasibility}/10\n- Business Value: ${avgValue}/10\n- Evaluation Count: ${runs.length}`;
+  }).join('\\n\\n')}`;
+}).filter(Boolean).join('\\n\\n---\\n\\n')}
+
+---
+
+## Domain Analysis Summary
+
+${availableDomains.map((domain) => {
+  const domainWorkflows = allScenarios.filter(s => s.domain === domain && s.type === 'TRAINING');
+  return `### ${domain}\n- Total Workflows: ${domainWorkflows.length}\n- Completed Runs: ${domainWorkflows.reduce((sum, w) => sum + (scenarioRuns[w.id]?.length || 0), 0)}\n- Readiness: ${domainWorkflows.length > 2 ? 'High' : 'Moderate'}`;
+}).join('\\n\\n')}
+
+---
+
+## Technical Architecture
+
+### Enterprise AI Platform
+- **AI/ML Framework:** Production-grade automation engine
+- **Integration Layer:** RESTful API architecture
+- **Data Pipeline:** Real-time processing and analytics
+- **Security:** Enterprise-grade security and compliance
+- **Scalability:** Cloud-native, horizontally scalable
+
+### Technology Components
+- Natural Language Processing (NLP)
+- Machine Learning Models
+- Process Automation Engine
+- Business Intelligence Dashboard
+- Integration Middleware
+
+---
+
+## Implementation Methodology
+
+### Agile Delivery Approach
+
+**Sprint 1-2 (Weeks 1-4): Foundation**
+- Environment setup and configuration
+- Integration development
+- Initial testing framework
+
+**Sprint 3-4 (Weeks 5-8): Pilot**
+- First workflow deployment
+- User acceptance testing
+- Performance monitoring
+
+**Sprint 5-6 (Weeks 9-12): Scale**
+- Additional workflow rollout
+- Cross-domain integration
+- User training completion
+
+---
+
+## ROI & Business Case
+
+### Expected Benefits (Year 1)
+- **Efficiency:** 45-65% reduction in manual processing time
+- **Quality:** 35-50% error rate reduction
+- **Cost:** 30-45% operational cost savings
+- **Capacity:** 4-6x throughput increase without additional headcount
+
+### Investment Summary
+- **Platform & Licensing:** Initial setup and annual subscription
+- **Implementation:** Integration, development, and deployment
+- **Change Management:** Training and adoption program
+- **Support:** Ongoing maintenance and optimization
+
+### Payback Period
+Expected ROI positive within 8-14 months
+
+---
+
+## Success Metrics & KPIs
+
+### Operational Metrics
+- Average processing time per workflow
+- Transaction accuracy and error rates
+- System uptime and availability
+- User satisfaction scores
+
+### Business Metrics
+- Cost per transaction
+- Throughput volume
+- Resource utilization
+- Compliance adherence
+
+### Monitoring Dashboard
+Real-time visibility into all key metrics with automated alerting
+
+---
+
+## Risk Assessment & Mitigation
+
+### Technical Risks
+**Risk:** Integration complexity with legacy systems
+**Mitigation:** Phased integration approach, dedicated technical resources
+
+**Risk:** Data quality and availability
+**Mitigation:** Data governance framework, cleansing procedures
+
+### Organizational Risks
+**Risk:** User adoption and change resistance
+**Mitigation:** Comprehensive training program, change champions
+
+**Risk:** Stakeholder alignment
+**Mitigation:** Regular communication, executive sponsorship
+
+---
+
+## Implementation Timeline
+
+### 90-Day Detailed Roadmap
+
+**Phase 1: Setup (Days 1-30)**
+\u2713 Technical architecture finalization
+\u2713 Environment provisioning
+\u2713 Integration development begins
+\u2713 Team onboarding complete
+
+**Phase 2: Pilot (Days 31-60)**
+\u2713 First workflow deployed to test environment
+\u2713 UAT completion
+\u2713 Performance baseline established
+\u2192 Pilot launch
+
+**Phase 3: Production (Days 61-90)**
+\u2192 Production deployment
+\u2192 Monitoring and optimization
+\u2192 Additional workflow rollout
+\u2192 Success metrics tracking
+
+---
+
+## Resource Plan
+
+### Core Project Team
+- **Project Manager:** Overall coordination and delivery
+- **Technical Lead:** Architecture and technical decisions
+- **Developers (2-3):** Integration and customization
+- **Business Analyst:** Requirements and testing
+- **Change Manager:** Training and adoption
+
+### Business Stakeholders
+- Executive Sponsor
+- Domain Subject Matter Experts
+- End User Representatives
+- IT Operations Team
+
+---
+
+## Governance & Support
+
+### Project Governance
+- Weekly status meetings
+- Bi-weekly steering committee updates
+- Risk and issue escalation process
+- Change control procedures
+
+### Post-Implementation Support
+- Level 1-3 support structure
+- Knowledge base and documentation
+- Continuous improvement process
+- Quarterly business reviews
+
+---
+
+## Next Steps - Action Plan
+
+1. **Executive Approval:** Secure budget and resource commitment
+2. **Team Assembly:** Assign project team members
+3. **Vendor Selection:** Finalize platform and partners (if needed)
+4. **Kickoff:** Project initiation within 2 weeks
+5. **Quick Wins:** Identify early value opportunities
+
+### Immediate Actions (This Week)
+- Approve project scope and budget
+- Assign executive sponsor
+- Schedule project kickoff
+- Begin resource allocation
+
+---
+
+## Contact & Follow-Up
+
+Ready to transform your operations with AI automation. Let's discuss the implementation details and timeline.
+
+**Company:** ${companyInfo.name}
+**Date:** ${new Date().toLocaleDateString()}
+**Phase:** 2 - Deep Dive Analysis
+      `.trim();
+      
+      console.log('Presentation text generated, length:', presentationText.length);
+      console.log('Calling Gamma API...');
+      
+      // Generate presentation via Gamma API (always webpage format)
+      const result = await generateGammaPresentation(presentationText, apiKey, 'webpage');
+      
+      console.log('Gamma API result:', JSON.stringify(result, null, 2));
+      
+      // Save generationId to database immediately
+      if ((result.generationId || result.id) && userId && companyId) {
+        const generationId = result.generationId || result.id;
+        const presentationData = {
+          generationId,
+          userId: userId,
+          companyId: companyId,
+          companyName: companyInfo.name,
+          phase: presentationPhase === 'phase1' ? 'Phase 1 - Art of the Possible' : 'Phase 2 - Deep Dive',
+          status: result.status || 'processing',
+          createdAt: Date.now(),
+          presentationText,
+        };
+        
+        await set(ref(db, `presentations/${generationId}`), presentationData);
+        console.log('Saved presentation to database:', generationId);
+        
+        // Show URL modal immediately so user can add URLs when ready
+        setCurrentGenerationId(generationId);
+        setShowUrlModal(true);
+        alert('Presentation generation started! Add the URLs after checking your Gamma dashboard.');
+      } else {
+        console.error('No generationId in response. Full response:', result);
+        throw new Error('Presentation generation did not return a generationId');
+      }
+      
+    } catch (error) {
+      console.error('Failed to generate presentation:', error);
+      alert(`Failed to generate presentation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsGeneratingPresentation(false);
+    }
+  };
+  
+  // Handle saving URLs from modal
+  const handleSaveUrls = async () => {
+    if (!currentGenerationId) return;
+    
+    try {
+      if (urlModalPublicUrl) {
+        await set(ref(db, `presentations/${currentGenerationId}/publicUrl`), urlModalPublicUrl);
+      }
+      if (urlModalDevUrl) {
+        await set(ref(db, `presentations/${currentGenerationId}/devUrl`), urlModalDevUrl);
+      }
+      
+      // Open the public URL if provided
+      if (urlModalPublicUrl) {
+        window.open(urlModalPublicUrl, '_blank');
+      }
+      
+      // Reset and close modal
+      setShowUrlModal(false);
+      setUrlModalPublicUrl('');
+      setUrlModalDevUrl('');
+      setCurrentGenerationId(null);
+      
+      alert('URLs saved successfully!');
+    } catch (error) {
+      console.error('Failed to save URLs:', error);
+      alert('Failed to save URLs. Please try again.');
+    }
+  };
+  
+  const handleSaveGammaKey = () => {
+    if (gammaApiKeyInput.trim()) {
+      setGammaApiKey(gammaApiKeyInput.trim());
+      setShowGammaKeyModal(false);
+      setGammaApiKeyInput('');
+      // Retry generation
+      handleGeneratePresentation();
+    }
+  };
+  
   // Debug logging
   console.log('CompanyResearchContent render:', {
     scenarioRunsKeys: Object.keys(scenarioRuns),
@@ -320,12 +886,18 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
     });
   };
 
+  const handleTabChange = (tab: 'info' | 'domains' | 'documents' | 'meetings') => {
+    setActiveTab(tab);
+    onActiveTabChange?.(tab);
+  };
+
   return (
-    <div className="bg-wm-white border border-wm-neutral rounded-xl">
-      {/* Tabs */}
-      <div className="flex border-b border-wm-neutral/30">
+    <>
+      <div className="bg-wm-white border border-wm-neutral rounded-xl">
+        {/* Tabs */}
+        <div className="flex border-b border-wm-neutral/30">
         <button
-          onClick={() => setActiveTab('info')}
+          onClick={() => handleTabChange('info')}
           className={`flex-1 px-6 py-4 font-bold transition-all ${
             activeTab === 'info'
               ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
@@ -335,7 +907,7 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
           Company Information
         </button>
         <button
-          onClick={() => setActiveTab('domains')}
+          onClick={() => handleTabChange('domains')}
           className={`flex-1 px-6 py-4 font-bold transition-all ${
             activeTab === 'domains'
               ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
@@ -345,7 +917,7 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
           Target Domains
         </button>
         <button
-          onClick={() => setActiveTab('documents')}
+          onClick={() => handleTabChange('documents')}
           className={`flex-1 px-6 py-4 font-bold transition-all ${
             activeTab === 'documents'
               ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
@@ -355,7 +927,7 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
           Documents
         </button>
         <button
-          onClick={() => setActiveTab('meetings')}
+          onClick={() => handleTabChange('meetings')}
           className={`flex-1 px-6 py-4 font-bold transition-all ${
             activeTab === 'meetings'
               ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
@@ -413,15 +985,6 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
         </div>
 
         <div>
-          <h3 className="text-wm-blue font-bold mb-2">{t('research.opportunities')}</h3>
-          <ul className="list-disc list-inside text-wm-blue/70 space-y-1">
-            {companyInfo?.currentResearch?.opportunities?.map((opportunity, index) => (
-              <li key={index}>{opportunity}</li>
-            )) || []}
-          </ul>
-        </div>
-
-        <div>
           <h3 className="text-wm-blue font-bold mb-2">{t('research.aiUseCases')}</h3>
           <ul className="list-disc list-inside text-wm-blue/70 space-y-1">
             {companyInfo?.currentResearch?.useCases?.map((useCase, index) => (
@@ -460,20 +1023,6 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
         {/* Target Domains Tab */}
         {activeTab === 'domains' && (
           <div>
-            {/* Find Opportunities Button */}
-            <div className="mb-6 flex gap-3">
-              <button
-                onClick={() => {
-                  console.log('=== Find Opportunities clicked ===');
-                  setShowOpportunityModal(true);
-                  console.log('Modal state set to true');
-                }}
-                className="px-4 py-2 bg-wm-accent text-white font-bold rounded-lg hover:bg-wm-accent/90 transition-colors"
-              >
-                Find Opportunities
-              </button>
-            </div>
-
             {/* Target Domain Pills */}
             <div className="mb-6">
               <h3 className="text-sm font-bold text-wm-blue mb-3">Target Domains:</h3>
@@ -518,57 +1067,84 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
               )}
             </div>
 
-            {/* Workflows for Selected Domains */}
-            {selectedDomains.size > 0 && (
-              <div className="space-y-6">
-                {Array.from(selectedDomains).map((domain) => {
-                  const domainWorkflows = allScenarios.filter(
-                    (scenario) => scenario.domain === domain && scenario.type === 'TRAINING'
-                  );
-                  
-                  if (domainWorkflows.length === 0) return null;
-                  
-                  // Sort workflows: 1) Has runs, 2) Starred, 3) The rest
-                  const sortedWorkflows = [...domainWorkflows].sort((a, b) => {
-                    const aHasRuns = scenarioRuns[a.id]?.length > 0;
-                    const bHasRuns = scenarioRuns[b.id]?.length > 0;
-                    const aStarred = !!a.favoritedBy?.[userId];
-                    const bStarred = !!b.favoritedBy?.[userId];
+            <div className="flex gap-6">
+              {/* Workflows for Selected Domains */}
+              <div className="flex-1 min-w-0">
+                {selectedDomains.size > 0 && (
+                  <div className="space-y-6">
+                  {Array.from(selectedDomains).map((domain) => {
+                    const domainWorkflows = allScenarios.filter(
+                      (scenario) => scenario.domain === domain && scenario.type === 'TRAINING'
+                    );
                     
-                    // 1. Prioritize workflows the user has run
-                    if (aHasRuns && !bHasRuns) return -1;
-                    if (!aHasRuns && bHasRuns) return 1;
+                    if (domainWorkflows.length === 0) return null;
                     
-                    // 2. Then prioritize starred workflows
-                    if (aStarred && !bStarred) return -1;
-                    if (!aStarred && bStarred) return 1;
+                    // Sort workflows: 1) Selected scenarios, 2) Has runs, 3) Starred, 4) The rest
+                    const sortedWorkflows = [...domainWorkflows].sort((a, b) => {
+                      const aSelected = selectedScenarios?.includes(a.id);
+                      const bSelected = selectedScenarios?.includes(b.id);
+                      const aHasRuns = scenarioRuns[a.id]?.length > 0;
+                      const bHasRuns = scenarioRuns[b.id]?.length > 0;
+                      const aStarred = !!a.favoritedBy?.[userId];
+                      const bStarred = !!b.favoritedBy?.[userId];
+                      
+                      // 1. Prioritize selected scenarios (including newly created)
+                      if (aSelected && !bSelected) return -1;
+                      if (!aSelected && bSelected) return 1;
+                      
+                      // 2. Prioritize workflows the user has run
+                      if (aHasRuns && !bHasRuns) return -1;
+                      if (!aHasRuns && bHasRuns) return 1;
+                      
+                      // 3. Then prioritize starred workflows
+                      if (aStarred && !bStarred) return -1;
+                      if (!aStarred && bStarred) return 1;
+                      
+                      // 4. Rest stay in their order
+                      return 0;
+                    });
                     
-                    // 3. Rest stay in their order
-                    return 0;
-                  });
-                  
-                  return (
-                    <div key={domain} className="border border-wm-neutral/30 rounded-lg p-4 bg-white">
-                      <h3 className="text-lg font-bold text-wm-blue mb-4">{domain} Workflows</h3>
-                      <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
-                        {sortedWorkflows.map((workflow) => {
-                          const hasRuns = scenarioRuns[workflow.id]?.length > 0;
-                          console.log(`Workflow ${workflow.id} (${workflow.title}):`, {
-                            hasRuns,
-                            runsCount: scenarioRuns[workflow.id]?.length || 0,
-                            runs: scenarioRuns[workflow.id]
-                          });
-                          
-                          return (
-                            <button
-                              key={workflow.id}
-                              onClick={() => onSelectScenario?.(workflow.id)}
-                              className={`flex-shrink-0 w-80 text-left p-3 border rounded-lg hover:shadow-md transition-all ${
-                                hasRuns
-                                  ? 'border-wm-accent bg-wm-accent/10 hover:bg-wm-accent/20 ring-2 ring-wm-accent/30'
-                                  : 'border-wm-neutral/30 bg-wm-neutral/5 hover:bg-wm-accent/5 hover:border-wm-accent'
-                              }`}
-                            >
+                    return (
+                      <div key={domain} className="border border-wm-neutral/30 rounded-lg p-4 bg-white">
+                        <div className="flex items-center gap-2 mb-4">
+                          <h3 className="text-lg font-bold text-wm-blue">{domain} Workflows</h3>
+                          <button
+                            onClick={() => onCreateScenario?.({
+                              companyId: companyId,
+                              companyName: companyInfo?.name,
+                              domain: domain
+                            })}
+                            className="p-1 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 transition-colors"
+                            title={`Create new workflow for ${domain}`}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
+                          {sortedWorkflows.map((workflow) => {
+                            const hasRuns = scenarioRuns[workflow.id]?.length > 0;
+                            const isSelected = selectedScenarios?.includes(workflow.id);
+                            const shouldHighlight = hasRuns || isSelected;
+                            console.log(`Workflow ${workflow.id} (${workflow.title}):`, {
+                              hasRuns,
+                              isSelected,
+                              shouldHighlight,
+                              runsCount: scenarioRuns[workflow.id]?.length || 0,
+                              runs: scenarioRuns[workflow.id]
+                            });
+                            
+                            return (
+                              <button
+                                key={workflow.id}
+                                onClick={() => onSelectScenario?.(workflow.id)}
+                                className={`flex-shrink-0 w-80 text-left p-3 border rounded-lg hover:shadow-md transition-all ${
+                                  shouldHighlight
+                                    ? 'border-wm-accent bg-wm-accent/10 hover:bg-wm-accent/20 ring-2 ring-wm-accent/30'
+                                    : 'border-wm-neutral/30 bg-wm-neutral/5 hover:bg-wm-accent/5 hover:border-wm-accent'
+                                }`}
+                              >
                               <div className="flex items-center justify-between mb-1">
                                 <div className="font-bold text-wm-blue text-sm flex-1">
                                   {workflow.title}
@@ -634,140 +1210,151 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
                                   ))}
                                 </div>
                               )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-        
-        {/* Use Case Runs Section */}
-        <div className={`${selectedDomains.size > 0 ? 'border-t border-wm-neutral pt-6 mt-6' : ''}`}>
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-wm-blue font-bold text-lg">{t('research.scenarioRuns')}</h3>
-            {selectedRunIds.length > 0 && (
-              <div className="flex gap-2">
-                {onGenerateDiviPrompt && (
-                  <button
-                    onClick={onGenerateDiviPrompt}
-                    disabled={isCreatingWordPressPage}
-                    className="px-3 py-1.5 bg-wm-accent text-wm-white text-sm font-bold rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isCreatingWordPressPage ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Creating Page...
-                      </>
-                    ) : (
-                      'Create WordPress Page'
-                    )}
-                  </button>
-                )}
-                {onCreatePresentation && (
-                  <button
-                    onClick={onCreatePresentation}
-                    className="px-3 py-1.5 bg-wm-accent text-wm-white text-sm font-bold rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2"
-                  >
-                    Gen AI Prompt
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-          {wordPressPageUrl && (
-            <div className="mb-4 p-3 bg-wm-accent/10 border border-wm-accent/30 rounded-lg">
-              <p className="text-wm-accent text-sm">
-                ✓ WordPress page created successfully!{' '}
-                <a 
-                  href={wordPressPageUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="underline hover:text-wm-accent/80"
-                >
-                  View Page →
-                </a>
-              </p>
-            </div>
-          )}
-          {isScenarioRunsLoading ? (
-            <div className="space-y-3">
-              <div className="h-4 bg-wm-neutral/60 rounded w-1/2 animate-pulse"></div>
-              <div className="h-4 bg-wm-neutral/60 rounded w-2/3 animate-pulse"></div>
-              <div className="h-4 bg-wm-neutral/60 rounded w-1/3 animate-pulse"></div>
-            </div>
-          ) : filteredScenarioEntries.length > 0 ? (
-            <div className="space-y-4">
-              {filteredScenarioEntries.map(([scenarioId, runs]) => {
-                const scenario = scenariosById[scenarioId];
-                return (
-                  <div key={scenarioId} className="bg-wm-neutral/20 border border-wm-neutral rounded-lg p-4">
-                    <h4 className="text-wm-blue font-bold mb-3">{scenario?.title || t('research.unknownScenario')}</h4>
-                    <ul className="space-y-2">
-                      {runs.map(run => {
-                        const formattedDate = run.timestamp ? new Date(run.timestamp).toLocaleString() : t('research.unknownRunDate');
-                        const scoreLabel = typeof run.score === 'number' ? t('research.runScore', { score: Math.round(run.score) }) : null;
-                        const hasWorkflowVersion = Boolean(run.workflowVersionId);
-
-                        return (
-                          <li key={run.id} className="flex items-start gap-3">
-                            {onToggleRunId && (
-                              <div className="pt-3">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedRunIds.includes(run.id)}
-                                  onChange={() => onToggleRunId(run.id)}
-                                  className="w-4 h-4 rounded border-wm-neutral bg-wm-white text-wm-accent focus:ring-wm-accent focus:ring-offset-wm-white"
-                                />
-                              </div>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => hasWorkflowVersion && onViewWorkflow?.(run.workflowVersionId!, companyInfo.name, companyId)}
-                              className={`flex-1 text-left text-wm-blue/70 text-sm flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md px-3 py-2 ${hasWorkflowVersion ? 'hover:bg-wm-neutral/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-wm-accent' : 'cursor-default opacity-70'}`}
-                              disabled={!hasWorkflowVersion}
-                            >
-                              <span className="font-bold text-wm-blue">{scenario?.title || t('research.untitledVersion')}</span>
-                              <span className="text-wm-blue/50 text-xs sm:text-sm flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                                {scoreLabel && <span>{scoreLabel}</span>}
-                                <span>{t('research.ranOn', { date: formattedDate })}</span>
-                              </span>
-                            </button>
-                            {onDeleteRun && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (window.confirm(t('research.confirmDeleteRun'))) {
-                                    onDeleteRun(run.id);
-                                  }
-                                }}
-                                className="p-2 text-wm-pink hover:bg-wm-pink/10 rounded-md transition-colors flex-shrink-0"
-                                title={t('common.delete')}
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
                               </button>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                   </div>
-                );
-              })}
+                )}
+              </div>
+              
+              {/* Presentation Generator - Right Sidebar */}
+              <div className="w-96 flex-shrink-0">
+                <div className="sticky top-6 border border-wm-neutral/30 rounded-lg p-4 bg-gradient-to-br from-wm-pink/5 to-wm-accent/5">
+                  <h3 className="text-lg font-bold text-wm-blue mb-4">Presentation Generator</h3>
+                  
+                  <div className="mb-4">
+                    <label className="block text-sm font-bold text-wm-blue mb-2">
+                      Report Type:
+                    </label>
+                    <select
+                      value={presentationPhase}
+                      onChange={(e) => setPresentationPhase(e.target.value as 'phase1' | 'phase2')}
+                      className="w-full px-3 py-2 border border-wm-neutral/30 rounded-lg bg-white text-wm-blue focus:outline-none focus:ring-2 focus:ring-wm-accent"
+                    >
+                      <option value="phase1">Phase 1 - Art of the Possible (Target Domains)</option>
+                      <option value="phase2">Phase 2 - Deep Dive</option>
+                    </select>
+                  </div>
+                  
+                  <button
+                  onClick={handleGeneratePresentation}
+                  disabled={isGeneratingPresentation}
+                  className="w-full mb-4 px-4 py-3 bg-wm-pink text-white font-bold rounded-lg hover:bg-wm-pink/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                >
+                  {isGeneratingPresentation ? 'Generating...' : 'Generate Presentation'}
+                </button>
+                
+                {presentationUrl && (
+                  <a
+                    href={presentationUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full mb-4 px-4 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition-colors text-center shadow-md"
+                  >
+                    Open Presentation
+                  </a>
+                )}
+                
+                {/* Presentations List */}
+                {presentations.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-bold text-wm-blue mb-3">Generated Presentations:</h4>
+                    <div className="space-y-2 max-h-96 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+                      {presentations.map((presentation) => (
+                        <div
+                          key={presentation.generationId}
+                          className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm"
+                        >
+                          {/* Header Section */}
+                          <div className="mb-3">
+                            <h3 className="text-base font-bold text-wm-blue mb-1">
+                              AI Automation Solutions
+                            </h3>
+                            <h4 className="text-lg font-semibold text-gray-900 mb-1">
+                              {presentation.companyName || companyInfo.name}
+                            </h4>
+                            <p className="text-sm text-gray-600 mb-1">
+                              {presentation.phase || 'Workflow Implementation & Opportunities'}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {new Date(presentation.createdAt).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              })}
+                            </p>
+                          </div>
+                          
+                          {/* URLs Display */}
+                          {(presentation.publicUrl || presentation.devUrl) && (
+                            <div className="flex gap-2 mb-2 text-xs">
+                              {presentation.publicUrl && (
+                                <a
+                                  href={presentation.publicUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:underline flex items-center gap-1"
+                                >
+                                  <span>🌐</span> Public
+                                </a>
+                              )}
+                              {presentation.devUrl && (
+                                <a
+                                  href={presentation.devUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-purple-600 hover:underline flex items-center gap-1"
+                                >
+                                  <span>🔧</span> Dev
+                                </a>
+                              )}
+                            </div>
+                          )}
+                          
+                          <div className="flex flex-col gap-2">
+                            <a
+                              href={`https://gamma.app/doc/${presentation.generationId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full px-3 py-1.5 bg-wm-pink text-white text-xs font-bold rounded-lg hover:bg-wm-pink/90 transition-colors text-center"
+                            >
+                              Open in Gamma
+                            </a>
+                            
+                            <div className="flex gap-2">
+                              {!presentation.publicUrl && !presentation.devUrl && (
+                                <button
+                                  onClick={() => {
+                                    setCurrentGenerationId(presentation.generationId);
+                                    setShowUrlModal(true);
+                                  }}
+                                  className="flex-1 px-2 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors"
+                                >
+                                  Add URLs
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDeletePresentation(presentation.generationId)}
+                                className="flex-1 px-2 py-1.5 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700 transition-colors"
+                                title="Delete presentation"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          ) : (
-            <p className="text-wm-blue/50">{t('research.noScenarioRuns')}</p>
-          )}
-        </div>
           </div>
+        </div>
         )}
 
         {/* Documents Tab */}
@@ -937,7 +1524,6 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
         )}
 
         {/* Meetings Tab */}
-        {/* Meetings Tab */}
         {activeTab === 'meetings' && (
           <div>
             <h3 className="text-xl font-bold text-wm-blue mb-4">Meetings</h3>
@@ -950,109 +1536,118 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
             />
           </div>
         )}
-
-        {/* Find Opportunities Modal */}
-        {showOpportunityModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
-              <h3 className="text-lg font-bold text-wm-blue mb-4">Find Opportunities</h3>
-              
-              <div className="space-y-4">
-                {/* Domain Selection */}
-                <div>
-                  <label className="block text-sm font-bold text-wm-blue mb-2">
-                    Select Domain
-                  </label>
-                  <select
-                    value={opportunitySelectedDomain}
-                    onChange={(e) => {
-                      console.log('Domain selected:', e.target.value);
-                      setOpportunitySelectedDomain(e.target.value);
-                    }}
-                    className="w-full px-3 py-2 border border-wm-neutral/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-wm-accent"
-                  >
-                    <option value="">Choose a domain...</option>
-                    {availableDomains.map((domain) => (
-                      <option key={domain} value={domain}>
-                        {domain}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Search Type Selection */}
-                <div>
-                  <label className="block text-sm font-bold text-wm-blue mb-2">
-                    Search Type
-                  </label>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="searchType"
-                        value="library"
-                        checked={opportunitySearchType === 'library'}
-                        onChange={(e) => {
-                          console.log('Search type selected:', e.target.value);
-                          setOpportunitySearchType('library');
-                        }}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm text-wm-blue">Workflows from Library</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="searchType"
-                        value="new"
-                        checked={opportunitySearchType === 'new'}
-                        onChange={(e) => {
-                          console.log('Search type selected:', e.target.value);
-                          setOpportunitySearchType('new');
-                        }}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm text-wm-blue">Generate New Ideas</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Modal Actions */}
-              <div className="flex gap-2 mt-6">
-                <button
-                  onClick={() => {
-                    console.log('Starting search with domain:', opportunitySelectedDomain, 'type:', opportunitySearchType);
-                    if (opportunitySelectedDomain) {
-                      // TODO: Implement search logic here
-                      console.log('Search would execute here');
-                      setShowOpportunityModal(false);
-                    }
-                  }}
-                  disabled={!opportunitySelectedDomain}
-                  className="flex-1 px-4 py-2 bg-wm-accent text-white font-bold rounded-lg hover:bg-wm-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Search
-                </button>
-                <button
-                  onClick={() => {
-                    console.log('Closing modal');
-                    setShowOpportunityModal(false);
-                  }}
-                  className="flex-1 px-4 py-2 bg-wm-neutral/20 text-wm-blue font-bold rounded-lg hover:bg-wm-neutral/30 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Document Upload Modal */}
-        {/* Removed - using direct file upload instead */}
       </div>
     </div>
-  );
+
+    {/* URL Input Modal */}
+    {showUrlModal && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
+          <h2 className="text-xl font-bold text-wm-blue mb-4">Add Presentation URLs</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Add the public and development URLs for this presentation:
+          </p>
+          
+          <div className="space-y-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Public URL
+              </label>
+              <input
+                type="url"
+                placeholder="https://gamma.app/public/..."
+                value={urlModalPublicUrl}
+                onChange={(e) => setUrlModalPublicUrl(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-wm-pink"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Development URL
+              </label>
+              <input
+                type="url"
+                placeholder="https://gamma.app/docs/..."
+                value={urlModalDevUrl}
+                onChange={(e) => setUrlModalDevUrl(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-wm-pink"
+              />
+            </div>
+          </div>
+          
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => {
+                setShowUrlModal(false);
+                setUrlModalPublicUrl('');
+                setUrlModalDevUrl('');
+                setCurrentGenerationId(null);
+              }}
+              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Skip
+            </button>
+            <button
+              onClick={handleSaveUrls}
+              className="px-4 py-2 bg-wm-pink text-white font-bold rounded-lg hover:bg-wm-pink/90 transition-colors"
+            >
+              Save URLs
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Gamma API Key Modal */}
+    {showGammaKeyModal && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
+          <h3 className="text-lg font-bold text-wm-blue mb-4">Enter Gamma API Key</h3>
+          
+          <p className="text-sm text-wm-blue/70 mb-4">
+            To generate presentations with Gamma AI, you need an API key. Get yours at{' '}
+            <a 
+              href="https://gamma.app/settings/api" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-wm-accent underline"
+            >
+              gamma.app/settings/api
+            </a>
+          </p>
+          
+          <input
+            type="password"
+            value={gammaApiKeyInput}
+            onChange={(e) => setGammaApiKeyInput(e.target.value)}
+            placeholder="Enter your Gamma API key"
+            className="w-full px-3 py-2 border border-wm-neutral/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-wm-accent mb-4"
+          />
+          
+          <div className="flex gap-2">
+            <button
+              onClick={handleSaveGammaKey}
+              disabled={!gammaApiKeyInput.trim()}
+              className="flex-1 px-4 py-2 bg-wm-accent text-white font-bold rounded-lg hover:bg-wm-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Save & Continue
+            </button>
+            <button
+              onClick={() => {
+                setShowGammaKeyModal(false);
+                setGammaApiKeyInput('');
+              }}
+              className="flex-1 px-4 py-2 bg-wm-neutral/20 text-wm-blue font-bold rounded-lg hover:bg-wm-neutral/30 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
+);
 };
 
 export default CompanyResearchContent;

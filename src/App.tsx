@@ -11,7 +11,6 @@ import { auth } from './services/firebaseInit';
 import type { Scenario } from './types';
 import { getScenarios, seedScenarios, seedExampleCompany, updateUserProfile, getAllUserEvaluations, getUserProfile } from './services/firebaseService';
 import Header from './components/Header';
-import DashboardView from './components/DashboardView';
 import TrainingView from './components/TrainingView';
 import OperatorConsole from './components/OperatorConsole';
 import RightSidebar from './components/RightSidebar';
@@ -26,12 +25,13 @@ import Dashboard2 from './components/Dashboard2';
 import { ALL_SCENARIOS } from './constants';
 import { I18nProvider } from './i18n';
 
-type View = 'DASHBOARD' | 'DASHBOARD2' | 'TRAINING' | 'SCENARIO' | 'ADMIN' | 'WORKFLOW_DETAIL' | 'RESEARCH';
+type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'ADMIN' | 'WORKFLOW_DETAIL' | 'RESEARCH';
 
 type ScenarioCreationContext = {
   source: 'RESEARCH' | 'DEFAULT';
   companyId?: string;
   companyName?: string;
+  domain?: string;
 };
 
 // Route path to View mapping
@@ -39,8 +39,7 @@ const pathToView: Record<string, View> = {
   '/': 'DASHBOARD',
   '': 'DASHBOARD',
   '/dashboard': 'DASHBOARD',
-  '/dashboard2': 'DASHBOARD2',
-  '/training': 'TRAINING',
+  '/library': 'TRAINING',
   '/scenario': 'SCENARIO',
   '/admin': 'ADMIN',
   '/workflow': 'WORKFLOW_DETAIL',
@@ -49,8 +48,7 @@ const pathToView: Record<string, View> = {
 
 const viewToPath: Record<View, string> = {
   'DASHBOARD': '/dashboard',
-  'DASHBOARD2': '/dashboard2',
-  'TRAINING': '/training',
+  'TRAINING': '/library',
   'SCENARIO': '/scenario',
   'ADMIN': '/admin',
   'WORKFLOW_DETAIL': '/workflow',
@@ -358,6 +356,7 @@ const App: React.FC = () => {
     goal: string;
     goal_es?: string;
     domain?: string;
+    industry?: string;
     currentWorkflowImage?: File;
   }) => {
     if (!user) return;
@@ -387,6 +386,10 @@ const App: React.FC = () => {
       goal: data.goal,
       goal_es: data.goal_es,
       domain: data.domain,
+      industry: data.industry,
+      process: data.process,
+      valueDrivers: data.valueDrivers,
+      painPoints: data.painPoints,
       currentWorkflowImage: base64Image || null,
       favoritedBy: {}
     };
@@ -487,15 +490,6 @@ const App: React.FC = () => {
                  />;
         }
         return null;
-      case 'DASHBOARD2':
-        return <DashboardView 
-                    user={user!}
-                    onStartTraining={handleStartTraining}
-                    onNavigateToScenario={handleNavigateToScenario}
-                    onViewWorkflow={handleSelectWorkflow}
-                    onScenarioCreated={handleScenarioCreated}
-                    handleNavigate={handleNavigate}
-               />;
       case 'ADMIN':
         if (user) {
           return <AdminDashboard currentUser={user} />;
@@ -503,17 +497,39 @@ const App: React.FC = () => {
         return null;
       case 'RESEARCH':
         if (user) {
+          // Extract company ID and tab from URL if present (e.g., /research/companyId/domains)
+          const pathParts = location.pathname.split('/').filter(Boolean);
+          const companyIdFromUrl = pathParts.length > 1 ? pathParts[1] : null;
+          const tabFromUrl = pathParts.length > 2 ? pathParts[2] as 'info' | 'domains' | 'documents' | 'meetings' : null;
+          
+          // Also check localStorage as fallback
+          const lastViewedCompany = !companyIdFromUrl ? localStorage.getItem('lastViewedCompany') : null;
+          const initialCompanyId = companyIdFromUrl || lastViewedCompany;
+          
           return <CompanyResearch 
                     userId={user.uid} 
-                    initialCompany={selectedCompanyId || undefined}
-                    startWithNewForm={!selectedCompanyId}
+                    initialCompany={initialCompanyId || undefined}
+                    initialTab={tabFromUrl || undefined}
+                    startWithNewForm={!initialCompanyId}
                     onSelectScenario={handleSelectScenario}
                     onCreateScenario={(ctx) => openScenarioCreator({
                       source: 'RESEARCH',
                       companyId: ctx?.companyId,
-                      companyName: ctx?.companyName
+                      companyName: ctx?.companyName,
+                      domain: ctx?.domain
                     })}
                     onViewWorkflow={handleSelectWorkflow}
+                    onCompanyChange={(companyId, tab) => {
+                      // Update URL and localStorage when company or tab changes
+                      if (companyId) {
+                        const url = tab ? `/research/${companyId}/${tab}` : `/research/${companyId}`;
+                        navigate(url, { replace: true });
+                        localStorage.setItem('lastViewedCompany', companyId);
+                      } else {
+                        navigate('/research', { replace: true });
+                        localStorage.removeItem('lastViewedCompany');
+                      }
+                    }}
                   />;
         }
         return null;
@@ -553,6 +569,7 @@ const App: React.FC = () => {
               {renderAppContent()}
               {isCreatingScenario && (
                 <CreateScenarioForm 
+                  initialDomain={scenarioCreationContext?.domain}
                   onSave={async (data) => {
                     await handleSaveScenario(data);
                     setIsCreatingScenario(false);

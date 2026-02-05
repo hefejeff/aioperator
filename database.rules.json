@@ -69,6 +69,13 @@
           ".write": "auth != null && auth.uid === root.child('companies').child($companyId).child('createdBy').val()"
         }
       }
+    },
+    
+    "presentations": {
+      ".indexOn": ["userId", "companyId", "createdAt"],
+      "$generationId": {
+        ".write": "auth != null && (!data.exists() || auth.uid === data.child('userId').val() || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')"
+      }
     }
   }
 }

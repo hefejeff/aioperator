@@ -1,6 +1,7 @@
-import { db, storage } from './firebaseInit';
+import { db, storage, auth } from './firebaseInit';
 import { ref, get, push, set, update, remove, query, orderByChild, equalTo } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import type { 
   WorkflowVersion,
   TeamMember, 
@@ -10,7 +11,6 @@ import type {
   Scenario,
   StoredEvaluationResult,
   EvaluationResult,
-  LeaderboardEntry,
   SavedPitch,
   SavedPrd,
   Platform,
@@ -93,30 +93,6 @@ export const saveEvaluation = async (
     const userEvaluationsRef = ref(db, `evaluations/${userId}`);
     const newEvaluationRef = push(userEvaluationsRef);
     await set(newEvaluationRef, evaluationData);
-    
-    // After successful save, update leaderboard if it's a new high score
-    if (displayName) { // Only update if display name is available
-      const leaderboardRef = ref(db, `leaderboards/${scenarioId}/${userId}`);
-      const snapshot = await get(leaderboardRef);
-      const currentBestScore = snapshot.exists() ? snapshot.val().score : 0;
-
-      if (evaluation.score > currentBestScore) {
-        await set(leaderboardRef, {
-          score: evaluation.score,
-          displayName: displayName,
-          uid: userId,
-        });
-        // Notify UI that the global leaderboard may have changed so other components can refresh
-        try {
-          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-            window.dispatchEvent(new CustomEvent('leaderboard-updated'));
-          }
-        } catch (e) {
-          // Non-fatal if the environment doesn't support window events
-          console.debug('Could not dispatch leaderboard-updated event', e);
-        }
-      }
-    }
 
     // Notify UI that an evaluation was saved so components can refresh their data
     try {
@@ -785,6 +761,10 @@ export const uploadDocument = async (
   file: File
 ): Promise<string> => {
   try {
+    console.log('=== uploadDocument DEBUG START ===');
+    console.log('companyId:', companyId);
+    console.log('file.name:', file.name);
+    
     // First check if we already have 5 documents
     const companyRef = ref(db, `companies/${companyId}`);
     const companySnapshot = await get(companyRef);
@@ -793,8 +773,16 @@ export const uploadDocument = async (
     }
     
     const company = companySnapshot.val();
+    console.log('Company data:', company);
+    console.log('company.research:', company.research);
+    console.log('company.research?.currentResearch:', company.research?.currentResearch);
+    
     const currentResearch = company.research?.currentResearch || {};
+    console.log('Extracted currentResearch:', currentResearch);
+    
     const existingDocuments = currentResearch.documents || [];
+    console.log('Existing documents:', existingDocuments);
+    console.log('Existing documents count:', existingDocuments.length);
     
     if (existingDocuments.length >= 5) {
       throw new Error('Maximum of 5 documents allowed. Delete one to upload more.');
@@ -805,11 +793,14 @@ export const uploadDocument = async (
     const fileName = `${companyId}/${documentId}_${file.name}`;
     const fileRef = storageRef(storage, `company_documents/${fileName}`);
     
+    console.log('Uploading to storage...');
     await uploadBytes(fileRef, file);
     const downloadURL = await getDownloadURL(fileRef);
+    console.log('Upload complete, downloadURL:', downloadURL);
     
     // Read the file content
     const fileContent = await file.text();
+    console.log('File content length:', fileContent.length);
     
     // Add new document with isAnalyzing flag
     const newDocument = {
@@ -821,20 +812,50 @@ export const uploadDocument = async (
       path: `company_documents/${fileName}`,
       isAnalyzing: true
     };
+    console.log('New document object:', newDocument);
     
     const updatedDocuments = [...existingDocuments, newDocument];
+    console.log('Updated documents array:', updatedDocuments);
+    console.log('Updated documents count:', updatedDocuments.length);
     
-    const currentResearchRef = ref(db, `companies/${companyId}/research/currentResearch`);
-    await set(currentResearchRef, {
+    const dataToSave = {
       ...currentResearch,
       documents: updatedDocuments
-    });
+    };
+    console.log('Data to save to Firebase:', dataToSave);
+    console.log('Data to save - documents field:', dataToSave.documents);
+    
+    const currentResearchRef = ref(db, `companies/${companyId}/research/currentResearch`);
+    console.log('Saving to path:', `companies/${companyId}/research/currentResearch`);
+    await set(currentResearchRef, dataToSave);
+    console.log('Save complete!');
+    
+    // Verify the save
+    console.log('Verifying save...');
+    const verifySnapshot = await get(currentResearchRef);
+    if (verifySnapshot.exists()) {
+      const savedData = verifySnapshot.val();
+      console.log('Verified saved data:', savedData);
+      console.log('Verified documents field:', savedData.documents);
+      console.log('Verified documents count:', savedData.documents?.length || 0);
+    } else {
+      console.error('VERIFICATION FAILED: Data not found after save!');
+    }
+    
+    // Dispatch event to notify UI components
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('document-uploaded', { 
+        detail: { companyId, documentId } 
+      }));
+      console.log('Event dispatched: document-uploaded');
+    }
     
     // Run document category analysis in background (don't await)
     analyzeAndUpdateDocument(companyId, documentId, fileContent, file.name).catch(err => {
       console.error('Background document analysis failed:', err);
     });
     
+    console.log('=== uploadDocument DEBUG END ===');
     return downloadURL;
   } catch (error) {
     console.error('Failed to upload document:', error);
@@ -953,6 +974,13 @@ export const deleteDocument = async (companyId: string, documentId: string): Pro
     
     const currentResearchRef = ref(db, `companies/${companyId}/research/currentResearch`);
     await set(currentResearchRef, currentResearch);
+    
+    // Dispatch event to notify UI components
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('document-deleted', { 
+        detail: { companyId, documentId } 
+      }));
+    }
   } catch (error) {
     console.error('Failed to delete document:', error);
     throw error;
@@ -1142,12 +1170,28 @@ export const listCompanyResearch = async (userId: string): Promise<CompanyResear
       return [];
     }
     
-    return Object.values<any>(snapshot.val())
+    const companies = Object.values<any>(snapshot.val());
+    console.log('=== listCompanyResearch DEBUG ===');
+    console.log('Total companies found:', companies.length);
+    
+    const result = companies
       .filter(company => company.research) // Only include companies with research data
-      .map(company => ({
-        ...company.research,
-        selectedScenarios: company.selectedScenarios || [] // Include selectedScenarios from Company level
-      }));
+      .map(company => {
+        console.log('Company:', company.name);
+        console.log('Has research:', !!company.research);
+        console.log('Has currentResearch:', !!company.research?.currentResearch);
+        console.log('Has documents:', !!company.research?.currentResearch?.documents);
+        console.log('Documents count:', company.research?.currentResearch?.documents?.length || 0);
+        console.log('Documents:', company.research?.currentResearch?.documents);
+        
+        return {
+          ...company.research,
+          selectedScenarios: company.selectedScenarios || [] // Include selectedScenarios from Company level
+        };
+      });
+    
+    console.log('Returning research data:', result);
+    return result;
   } catch (error) {
     console.error('Failed to list company research:', error);
     throw error;
@@ -1324,54 +1368,60 @@ export const setUserRole = async (adminUserId: string, targetUserId: string, new
   }
 };
 
-// Get global leaderboard
-export const getGlobalLeaderboard = async (limit: number = 10): Promise<LeaderboardEntry[]> => {
+// Create a new user (admin only)
+export const createNewUser = async (
+  adminUserId: string, 
+  email: string, 
+  password: string, 
+  displayName: string,
+  role: Role = 'USER'
+): Promise<{ success: boolean; uid?: string; error?: string }> => {
   try {
-    const leaderboardsRef = ref(db, 'leaderboards');
-    const snapshot = await get(leaderboardsRef);
-    
-    if (!snapshot.exists()) {
-      return [];
+    // First verify admin permissions
+    const adminRef = ref(db, `users/${adminUserId}`);
+    const adminSnap = await get(adminRef);
+    if (!adminSnap.exists()) throw new Error('Admin not found');
+    const adminData = adminSnap.val();
+    if (adminData.role !== 'SUPER_ADMIN' && adminData.role !== 'ADMIN') {
+      throw new Error('Not authorized');
     }
-    
-    const leaderboardData = snapshot.val();
-    const entries: { uid: string; displayName: string; totalScore: number }[] = [];
-    const userScores: Record<string, number> = {};
-    
-    // Calculate total scores across all scenarios
-    for (const scenarioEntries of Object.values<Record<string, { score: number; displayName: string; uid: string }>>(leaderboardData)) {
-      for (const [uid, entry] of Object.entries(scenarioEntries)) {
-        if (!userScores[uid]) {
-          userScores[uid] = 0;
-          entries.push({
-            uid,
-            displayName: entry.displayName,
-            totalScore: 0
-          });
-        }
-        userScores[uid] += entry.score;
-      }
-    }
-    
-    // Update total scores and calculate averages
-    entries.forEach(entry => {
-      entry.totalScore = userScores[entry.uid];
+
+    // Create user with Firebase Auth
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const newUser = userCredential.user;
+
+    // Create user profile in database
+    const userRef = ref(db, `users/${newUser.uid}`);
+    await set(userRef, {
+      displayName: displayName,
+      email: email,
+      photoURL: null,
+      preferredLanguage: 'English',
+      role: role,
+      createdAt: new Date().toISOString(),
+      createdBy: adminUserId
     });
-    
-    // Sort by total score and take top N
-    return entries
-      .sort((a, b) => b.totalScore - a.totalScore)
-      .slice(0, limit)
-      .map(entry => ({
-        uid: entry.uid,
-        displayName: entry.displayName,
-        score: Math.round(entry.totalScore)
-      }));
-  } catch (error) {
-    console.error('Failed to get global leaderboard:', error);
-    return [];
+
+    // Send password reset email so user can set their own password
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (emailError) {
+      console.warn('Failed to send password reset email:', emailError);
+    }
+
+    return { success: true, uid: newUser.uid };
+  } catch (error: any) {
+    console.error('Failed to create user:', error);
+    return { 
+      success: false, 
+      error: error.code === 'auth/email-already-in-use' 
+        ? 'Email already in use' 
+        : error.message || 'Failed to create user'
+    };
   }
 };
+
+
 
 // Get all users
 export const getAllUsers = async (): Promise<UserProfile[]> => {

@@ -53,11 +53,6 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
   onOpenLastPrd,
   onOpenLastPitch,
 }) => {
-  const [isN8NGenerating, setIsN8NGenerating] = useState(false);
-  const [n8nWorkflow, setN8nWorkflow] = useState('');
-  const [isPushingToN8N, setIsPushingToN8N] = useState(false);
-  const [pushResult, setPushResult] = useState<{ success: boolean; url?: string; error?: string } | null>(null);
-  const [n8nAvailable, setN8nAvailable] = useState(false);
   const [isRunningAll, setIsRunningAll] = useState(false);
   const [runAllStep, setRunAllStep] = useState<'idle' | 'prd' | 'pitch' | 'eval'>('idle');
 
@@ -89,16 +84,6 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
       setIsRunningAll(false);
     }
   };
-
-  // Check if n8n is available on component mount
-  React.useEffect(() => {
-    const checkN8N = async () => {
-      const { checkN8NConnection } = await import('../services/n8nService');
-      const available = await checkN8NConnection();
-      setN8nAvailable(available);
-    };
-    checkN8N();
-  }, []);
 
   const clsBase = 'inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-60';
   const clsIndigo = clsBase + ' bg-wm-accent hover:bg-wm-accent/90 disabled:bg-wm-neutral disabled:text-wm-blue/50 text-white';
@@ -249,178 +234,6 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
           </button>
         </div>
       )}
-    </section>
-
-    {/* N8N Workflow Generator Section */}
-    <section className="mt-4 rounded-xl border border-wm-neutral/30 bg-white p-5 space-y-5 shadow-sm" aria-labelledby="n8n-heading">
-      <header className="space-y-1">
-        <div className="flex items-center gap-2">
-          <h3 id="n8n-heading" className="text-sm font-bold tracking-wide text-wm-blue uppercase">
-            N8N Workflow Generator
-          </h3>
-          <div className="flex-1" />
-          <img src="https://n8n.io/favicon.ico" alt="N8N Logo" className="h-5 w-5" />
-        </div>
-        <p className="text-xs text-wm-blue/60">
-          Generate an N8N workflow from your automation scenario
-        </p>
-      </header>
-
-      <div className="space-y-4">
-        {!n8nWorkflow && (
-          <button
-            type="button"
-            onClick={async () => {
-              setIsN8NGenerating(true);
-              try {
-                const { generateN8NWorkflow } = await import('../services/n8nWorkflowGenerator');
-                const workflow = generateN8NWorkflow(workflowExplanation);
-                setN8nWorkflow(JSON.stringify(workflow, null, 2));
-              } catch (error) {
-                console.error('Failed to generate N8N workflow:', error);
-              } finally {
-                setIsN8NGenerating(false);
-              }
-            }}
-            disabled={!hasWorkflow || isN8NGenerating}
-            className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-bold transition-all duration-200 ${
-              !hasWorkflow
-                ? 'bg-wm-neutral/30 text-wm-blue/40 cursor-not-allowed'
-                : isN8NGenerating
-                ? 'bg-wm-pink/20 text-wm-pink cursor-wait'
-                : 'bg-wm-pink/20 text-wm-pink hover:bg-wm-pink/30 hover:text-wm-pink'
-            } border ${
-              !hasWorkflow
-                ? 'border-wm-neutral/30'
-                : 'border-wm-pink/30 hover:border-wm-pink/50'
-            }`}
-          >
-            {isN8NGenerating ? (
-              <>
-                <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                <span>Generating N8N Workflow...</span>
-              </>
-            ) : (
-              <>
-                <Icons.Sparkles />
-                <span>Generate N8N Workflow</span>
-              </>
-            )}
-          </button>
-        )}
-
-        {n8nWorkflow && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-wm-blue">Generated Workflow</h4>
-              <div className="flex items-center gap-2">
-                {n8nAvailable && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setIsPushingToN8N(true);
-                      setPushResult(null);
-                      try {
-                        const { pushWorkflowToN8N } = await import('../services/n8nService');
-                        const workflow = JSON.parse(n8nWorkflow);
-                        const result = await pushWorkflowToN8N(workflow);
-                        setPushResult(result);
-                        if (result.success && result.url) {
-                          // Show success message, file was downloaded
-                          setTimeout(() => {
-                            setPushResult({ ...result, url: result.url });
-                          }, 100);
-                        }
-                      } catch (error) {
-                        console.error('Failed to download workflow:', error);
-                        setPushResult({
-                          success: false,
-                          error: error instanceof Error ? error.message : 'Unknown error'
-                        });
-                      } finally {
-                        setIsPushingToN8N(false);
-                      }
-                    }}
-                    disabled={isPushingToN8N}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-wm-pink bg-wm-pink/10 hover:bg-wm-pink/20 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isPushingToN8N ? (
-                      <>
-                        <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        <span>Downloading...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Icons.Download />
-                        <span>Download for n8n</span>
-                      </>
-                    )}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(n8nWorkflow);
-                  }}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-wm-blue bg-wm-neutral/30 hover:bg-wm-neutral/50 rounded-md transition-colors"
-                >
-                  <Icons.Document />
-                  <span>Copy</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setN8nWorkflow('');
-                    setPushResult(null);
-                  }}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-wm-pink bg-wm-pink/10 hover:bg-wm-pink/20 rounded-md transition-colors"
-                >
-                  <Icons.Trash />
-                  <span>Clear</span>
-                </button>
-              </div>
-            </div>
-            
-            {pushResult && (
-              <div className={`p-3 rounded-lg ${pushResult.success ? 'bg-green-50 border border-green-300' : 'bg-wm-pink/10 border border-wm-pink/30'}`}>
-                <p className={`text-sm font-bold ${pushResult.success ? 'text-green-700' : 'text-wm-pink'}`}>
-                  {pushResult.success ? (
-                    <>
-                      ✓ Workflow downloaded! Import it in n8n: 
-                      <a 
-                        href={pushResult.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="ml-1 underline hover:text-green-600"
-                      >
-                        Open n8n →
-                      </a>
-                    </>
-                  ) : (
-                    <>
-                      ✗ Failed to download: {pushResult.error}
-                    </>
-                  )}
-                </p>
-              </div>
-            )}
-            
-            <div className="relative group">
-              <pre className="overflow-x-auto p-4 rounded-lg bg-wm-blue/5 border border-wm-neutral/30 text-sm text-wm-blue">
-                <code>{n8nWorkflow}</code>
-              </pre>
-              <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-white/90 to-transparent pointer-events-none" />
-            </div>
-          </div>
-        )}
-
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-wm-neutral/10 border border-wm-neutral/30">
-          <Icons.Beaker />
-          <p className="text-xs text-wm-blue/60">
-            Download your workflow as JSON and import it into n8n: Click "Workflows" → "Import from File" → Select the downloaded JSON file.
-          </p>
-        </div>
-      </div>
     </section>
     </>
   );

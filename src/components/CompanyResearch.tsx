@@ -2,11 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Icons } from '../constants';
 import { useTranslation } from '../i18n';
 import RfpUploadField from './RfpUploadField';
-import type { CompanyResearch as CompanyInfo, CompanyResearchEntry, RelatedScenario, Company, Scenario, StoredEvaluationResult } from '../types';
-import ResearchSidebar from './ResearchSidebar';
-import { getScenarios, getCompanyResearch, saveCompanyResearch, getEvaluations, getLatestPrdForScenario, getLatestPitchForScenario, getWorkflowVersions, deleteEvaluation, deleteWorkflowVersion } from '../services/firebaseService';
+import type { CompanyResearch as CompanyInfo, CompanyResearchEntry, RelatedScenario, Company, Scenario, StoredEvaluationResult, WorkflowVersion } from '../types';
+import { getScenarios, getCompanyResearch, saveCompanyResearch, getLatestPrdForScenario, getLatestPitchForScenario, deleteEvaluation, deleteWorkflowVersion, getAllUserEvaluations, getAllUserWorkflowVersions } from '../services/firebaseService';
 import { researchCompany, findRelevantScenarios, generatePresentationWebsite, AI_MODELS, AIModelId } from '../services/geminiService';
-import { saveCompany, getCompany, updateCompanySelectedScenarios, updateCompanySelectedDomains } from '../services/companyService';
+import { saveCompany, getCompany, updateCompanySelectedScenarios } from '../services/companyService';
 import { createWordPressPage, isWordPressConfigured } from '../services/wordpressService';
 import { ref, onValue } from 'firebase/database';
 import { db } from '../services/firebaseInit';
@@ -17,10 +16,12 @@ import CompanyResearchContent from './CompanyResearchContent';
 interface CompanyResearchProps {
   userId: string;
   initialCompany?: string;  // This is now expected to be a company ID
+  initialTab?: 'info' | 'domains' | 'documents' | 'meetings'; // Initial tab to show
   startWithNewForm?: boolean; // Start directly in research form view
   onSelectScenario?: (scenario: Scenario, companyName?: string, companyId?: string) => void;
   onCreateScenario?: (context?: { companyId?: string; companyName?: string }) => void;
   onViewWorkflow?: (workflowId: string, companyName?: string, companyId?: string) => void;
+  onCompanyChange?: (companyId: string | null, tab?: 'info' | 'domains' | 'documents' | 'meetings') => void; // Callback when company or tab changes
 }
 
 type View = 'LIST' | 'RESEARCH';
@@ -32,6 +33,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
   onSelectScenario,
   onCreateScenario,
   onViewWorkflow,
+  onCompanyChange,
 }) => {
   const [view, setView] = useState<View>(initialCompany || startWithNewForm ? 'RESEARCH' : 'LIST');
   const [companyName, setCompanyName] = useState('');
@@ -63,6 +65,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
   const [selectedAIModel, setSelectedAIModel] = useState<AIModelId>('gemini-2.5-pro');
   const [allScenarios, setAllScenarios] = useState<Scenario[]>([]);
   const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<'info' | 'domains' | 'documents' | 'meetings'>('info');
 
   const { t } = useTranslation();
 
@@ -142,6 +145,9 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
       setCurrentCompanyId(company.id);
       setCompanyName(company.name);
       
+      // Notify parent of company selection (keep current tab)
+      onCompanyChange?.(company.id, activeTab);
+      
       try {
         // Set company research info if it exists
         if (company.research) {
@@ -208,6 +214,14 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
       );
 
       setScenarioCatalog(prev => ({ ...prev, [scenario.id]: scenario }));
+
+      // Add to allScenarios so it appears in domain workflows
+      setAllScenarios(prev => {
+        if (prev.some(s => s.id === scenario.id)) {
+          return prev;
+        }
+        return [...prev, scenario];
+      });
 
       setRelatedScenarios(prev => {
         if (prev.some(s => s.id === scenario.id)) {
@@ -296,89 +310,104 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
     let isActive = true;
 
     const loadScenarioRuns = async () => {
-      console.log('loadScenarioRuns called, selectedScenarios:', selectedScenarios);
+      console.log('loadScenarioRuns called');
       
-      if (!selectedScenarios.length) {
-        console.log('No selectedScenarios, clearing runs');
-        setScenarioRuns({});
-        setIsLoadingScenarioRuns(false);
-        return;
-      }
-
       setIsLoadingScenarioRuns(true);
-      console.log('Loading runs for scenarios:', selectedScenarios);
       try {
-        const runEntries = await Promise.all(
-          selectedScenarios.map(async scenarioId => {
-            console.log('Loading runs for scenario:', scenarioId);
-            // Get evaluations (scored runs)
-            const evaluations = await getEvaluations(userId, scenarioId);
-            console.log(`Got ${evaluations.length} evaluations for scenario ${scenarioId}`);
-            
-            // Get workflow versions (saved work)
-            const workflowVersions = await getWorkflowVersions(userId, scenarioId);
-            
-            // Get IDs of evaluations that already have workflow versions linked
-            const linkedWorkflowIds = new Set(
-              evaluations.map(e => e.workflowVersionId).filter(Boolean)
-            );
-            
-            // Also track evaluation timestamps to filter out workflow versions created at same time
-            // (within 5 second window) - this handles cases where workflowVersionId wasn't set
-            const evaluationTimestamps = new Set(
-              evaluations.map(e => Math.floor(e.timestamp / 5000)) // 5 second buckets
-            );
-            
-            // Convert workflow versions that don't have evaluations to a compatible format
-            const unlinkedWorkflows: StoredEvaluationResult[] = workflowVersions
-              .filter(wv => {
-                // Skip if this workflow is linked to an evaluation
-                if (linkedWorkflowIds.has(wv.id)) return false;
-                
-                // Also skip if there's an evaluation with same timestamp (within 5 seconds)
-                // AND same score - this catches duplicate saves
-                const wvTimeBucket = Math.floor(wv.timestamp / 5000);
-                if (evaluationTimestamps.has(wvTimeBucket)) {
-                  // Check if there's an evaluation with matching score
-                  const hasMatchingEval = evaluations.some(e => 
-                    Math.floor(e.timestamp / 5000) === wvTimeBucket &&
-                    e.score === wv.evaluationScore
-                  );
-                  if (hasMatchingEval) return false;
-                }
-                
-                return true;
-              })
-              .map(wv => ({
-                id: wv.id,
-                userId: wv.userId,
-                scenarioId: scenarioId,
-                score: wv.evaluationScore || 0,
-                feedback: wv.evaluationFeedback || 'Saved workflow (not evaluated)',
-                workflowExplanation: wv.workflowExplanation,
-                imageUrl: wv.imageBase64 ? `data:${wv.imageMimeType || 'image/png'};base64,${wv.imageBase64}` : null,
-                workflowVersionId: wv.id,
-                timestamp: wv.timestamp,
-              }));
-            
-            // Combine evaluations with unlinked workflow versions
-            const combinedRuns = [...evaluations, ...unlinkedWorkflows]
-              .sort((a, b) => b.timestamp - a.timestamp);
-            
-            return [scenarioId, combinedRuns] as [string, StoredEvaluationResult[]];
-          })
-        );
+        // Get ALL evaluations for the user across all scenarios
+        const allEvaluations = await getAllUserEvaluations(userId);
+        console.log(`Got ${allEvaluations.length} total evaluations for user`);
+        
+        // Get all workflow versions for the user
+        const allWorkflowVersions = await getAllUserWorkflowVersions(userId);
+        console.log(`Got ${allWorkflowVersions.length} total workflow versions for user`);
+        
+        // Group evaluations by scenario
+        const evaluationsByScenario: Record<string, StoredEvaluationResult[]> = {};
+        allEvaluations.forEach(evaluation => {
+          if (!evaluationsByScenario[evaluation.scenarioId]) {
+            evaluationsByScenario[evaluation.scenarioId] = [];
+          }
+          evaluationsByScenario[evaluation.scenarioId].push(evaluation);
+        });
+        
+        // Group workflow versions by scenario
+        const workflowsByScenario: Record<string, WorkflowVersion[]> = {};
+        allWorkflowVersions.forEach(wv => {
+          if (!workflowsByScenario[wv.scenarioId]) {
+            workflowsByScenario[wv.scenarioId] = [];
+          }
+          workflowsByScenario[wv.scenarioId].push(wv);
+        });
+        
+        // Get all unique scenario IDs that have either evaluations or workflow versions
+        const allScenarioIds = new Set([
+          ...Object.keys(evaluationsByScenario),
+          ...Object.keys(workflowsByScenario)
+        ]);
+        
+        const nextRuns: Record<string, StoredEvaluationResult[]> = {};
+        
+        // Process each scenario
+        allScenarioIds.forEach(scenarioId => {
+          const evaluations = evaluationsByScenario[scenarioId] || [];
+          const workflowVersions = workflowsByScenario[scenarioId] || [];
+          
+          // Get IDs of evaluations that already have workflow versions linked
+          const linkedWorkflowIds = new Set(
+            evaluations.map(e => e.workflowVersionId).filter(Boolean)
+          );
+          
+          // Track evaluation timestamps to filter out workflow versions created at same time
+          const evaluationTimestamps = new Set(
+            evaluations.map(e => Math.floor(e.timestamp / 5000)) // 5 second buckets
+          );
+          
+          // Convert workflow versions that don't have evaluations to a compatible format
+          const unlinkedWorkflows: StoredEvaluationResult[] = workflowVersions
+            .filter(wv => {
+              // Skip if this workflow is linked to an evaluation
+              if (linkedWorkflowIds.has(wv.id)) return false;
+              
+              // Also skip if there's an evaluation with same timestamp (within 5 seconds)
+              // AND same score - this catches duplicate saves
+              const wvTimeBucket = Math.floor(wv.timestamp / 5000);
+              if (evaluationTimestamps.has(wvTimeBucket)) {
+                // Check if there's an evaluation with matching score
+                const hasMatchingEval = evaluations.some(e => 
+                  Math.floor(e.timestamp / 5000) === wvTimeBucket &&
+                  e.score === wv.evaluationScore
+                );
+                if (hasMatchingEval) return false;
+              }
+              
+              return true;
+            })
+            .map(wv => ({
+              id: wv.id,
+              userId: wv.userId,
+              scenarioId: scenarioId,
+              score: wv.evaluationScore || 0,
+              feedback: wv.evaluationFeedback || 'Saved workflow (not evaluated)',
+              workflowExplanation: wv.workflowExplanation,
+              imageUrl: wv.imageBase64 ? `data:${wv.imageMimeType || 'image/png'};base64,${wv.imageBase64}` : null,
+              workflowVersionId: wv.id,
+              timestamp: wv.timestamp,
+            }));
+          
+          // Combine evaluations with unlinked workflow versions
+          const combinedRuns = [...evaluations, ...unlinkedWorkflows]
+            .sort((a, b) => b.timestamp - a.timestamp);
+          
+          nextRuns[scenarioId] = combinedRuns;
+          console.log(`Set ${combinedRuns.length} runs for scenario ${scenarioId}`);
+        });
 
         if (!isActive) {
           return;
         }
 
-        const nextRuns: Record<string, StoredEvaluationResult[]> = {};
-        runEntries.forEach(([scenarioId, runs]) => {
-          nextRuns[scenarioId] = runs;
-          console.log(`Set ${runs.length} runs for scenario ${scenarioId}`);
-        });
-        console.log('Setting scenarioRuns:', nextRuns);
+        console.log('Setting scenarioRuns with', Object.keys(nextRuns).length, 'scenarios');
         setScenarioRuns(nextRuns);
       } catch (runError) {
         console.error('Failed to load scenario runs:', runError);
@@ -394,7 +423,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
     return () => {
       isActive = false;
     };
-  }, [selectedScenarios, userId, scenarioRunsRefreshKey]);
+  }, [userId, scenarioRunsRefreshKey]);
 
   const handleResearch = async () => {
     if (!companyName.trim()) return;
@@ -490,6 +519,9 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
             isYours: savedCompany.createdBy === userId
           });
           setCurrentCompanyId(savedCompany.id);
+          
+          // Notify parent of company creation (keep current tab)
+          onCompanyChange?.(savedCompany.id, activeTab);
           if (savedCompany.selectedScenarios) {
             setSelectedScenarios(savedCompany.selectedScenarios);
             await loadSelectedScenariosIntoSidebar(savedCompany.selectedScenarios);
@@ -530,6 +562,9 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
     setScenarioCatalog({});
     setScenarioRuns({});
     setIsLoadingScenarioRuns(false);
+    
+    // Notify parent to clear company from URL
+    onCompanyChange?.(null);
   };
 
   // Effect to load company research when switching to RESEARCH view with a selected company
@@ -966,86 +1001,7 @@ The tone should be professional, consultative, and focused on digital transforma
   }
 
   return (
-    <div className="space-y-6 lg:mr-80">
-      {/* Research Sidebar */}
-      <ResearchSidebar
-        relatedScenarios={relatedScenarios}
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        onSelectScenario={handleScenarioSelect}
-        onFindOpportunities={handleFindOpportunities}
-        onCreateScenario={() => onCreateScenario?.({
-          companyId: currentCompanyId ?? undefined,
-          companyName: companyName || undefined
-        })}
-        selectedScenarios={selectedScenarios}
-        onToggleScenario={async (scenarioId: string) => {
-          if (!currentCompanyId) {
-            console.error('No company ID available');
-            setError(t('research.noCompanyToSaveScenarios'));
-            return;
-          }
-          
-          try {
-            const updatedScenarios = selectedScenarios.includes(scenarioId)
-              ? selectedScenarios.filter(id => id !== scenarioId)
-              : [...selectedScenarios, scenarioId];
-            
-            // Optimistically update the UI
-            setSelectedScenarios(updatedScenarios);
-            
-            // Try to save to database
-            try {
-              console.log('Attempting to save selected scenarios:', {
-                companyId: currentCompanyId,
-                userId,
-                scenarios: updatedScenarios
-              });
-              await updateCompanySelectedScenarios(currentCompanyId, userId, updatedScenarios);
-              console.log('Successfully saved selected scenarios');
-            } catch (authError: any) {
-              // If not authorized (user doesn't own this company), just keep the UI state
-              if (authError.message?.includes('Not authorized')) {
-                console.warn('Viewing company in read-only mode - selections not saved to database');
-                setError(t('research.readOnlyMode'));
-                // Keep the local UI state but don't persist to database
-              } else {
-                console.error('Error saving scenarios:', authError);
-                throw authError; // Re-throw other errors
-              }
-            }
-
-            // Keep existing scenarios and add selected ones if they're not already present
-            const existingScenarios = await getScenarios(userId);
-            const updatedRelatedScenarios = [...relatedScenarios];
-            
-            // Add newly selected scenario if it's not already in the list
-            if (!relatedScenarios.some(s => s.id === scenarioId) && updatedScenarios.includes(scenarioId)) {
-              const scenario = existingScenarios.find(s => s.id === scenarioId);
-              if (scenario) {
-                updatedRelatedScenarios.push({
-                  ...scenario,
-                  relevanceScore: 1,
-                  relevanceReason: 'Selected scenario'
-                });
-              }
-            }
-
-            // Update the related scenarios list
-            setRelatedScenarios(updatedRelatedScenarios);
-          } catch (error) {
-            console.error('Failed to update selected scenarios:', error);
-            setError(t('research.failedToSaveScenarios'));
-            // Revert the local state if save fails
-            setSelectedScenarios(selectedScenarios);
-          }
-        }}
-        isLoadingOpportunities={isLoadingOpportunities}
-        userId={userId}
-        companyId={currentCompanyId ?? undefined}
-        companyName={companyName || undefined}
-      />
-
+    <div className="space-y-6">
       {/* Search Input - only show if no research exists yet */}
       {!companyInfo?.currentResearch && (
         <>
@@ -1054,7 +1010,10 @@ The tone should be professional, consultative, and focused on digital transforma
               <h1 className="text-2xl font-bold text-wm-blue">{t('research.title')}</h1>
             </div>
             <button
-              onClick={() => setSelectedCompanyName(null)}
+              onClick={() => {
+                setSelectedCompanyName(null);
+                onCompanyChange?.(null);
+              }}
               className="px-4 py-2 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2 font-bold"
             >
               {t('research.clearCompany')}
@@ -1154,6 +1113,7 @@ The tone should be professional, consultative, and focused on digital transforma
                 setSelectedScenarios(scenarios);
               }}
               allScenarios={allScenarios}
+              onCreateScenario={onCreateScenario}
               onSelectScenario={(scenarioId) => {
                 const scenario = allScenarios.find(s => s.id === scenarioId);
                 if (scenario) {
@@ -1194,6 +1154,12 @@ The tone should be professional, consultative, and focused on digital transforma
                   }}
                 />
               }
+              onActiveTabChange={(tab) => {
+                setActiveTab(tab);
+                if (currentCompanyId) {
+                  onCompanyChange?.(currentCompanyId, tab);
+                }
+              }}
             />
 
             {/* RFP Analysis Section - Completely Separate */}

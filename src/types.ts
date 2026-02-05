@@ -10,7 +10,8 @@ export interface UseCase {
   goal: string;
   goal_es?: string;
   domain?: string;
-  process?: string; // Specific process within the domain (e.g., 'Lead Qualification' within 'Sales')
+  industry?: string; // Industry categorization (e.g., 'Healthcare', 'Finance', 'Retail')
+  process?: string; // Sub-domain within the main domain (e.g., 'Lead Qualification' within 'Sales')
   process_es?: string;
   valueDrivers?: string; // Business value this use case will deliver
   valueDrivers_es?: string;
@@ -55,12 +56,6 @@ export interface StoredEvaluationResult extends EvaluationResult {
 
 export interface AggregatedEvaluationResult extends StoredEvaluationResult {
   scenarioTitle: string;
-}
-
-export interface LeaderboardEntry {
-  uid: string;
-  displayName: string;
-  score: number;
 }
 
 export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER';

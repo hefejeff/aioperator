@@ -308,12 +308,26 @@ Make this demo impressive, clearly branded for West Monroe, and demonstrate the 
 
   const copyAndOpenGoogleAIStudio = async () => {
     try {
+      // Copy to clipboard first
       await navigator.clipboard.writeText(demoPrompt);
-      // Open Google AI Studio in a new tab
-      window.open('https://aistudio.google.com', '_blank');
-      alert('Prompt copied to clipboard! Paste it into Google AI Studio.');
-    } catch {
-      alert('Could not copy prompt. Please copy manually before using Google AI Studio.');
+      
+      // Small delay to ensure clipboard is set before opening new window
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Confirm copy was successful
+      const copiedText = await navigator.clipboard.readText();
+      if (copiedText === demoPrompt) {
+        alert('✓ Prompt copied to clipboard! Opening Google AI Studio...\n\nPress Ctrl+V (or Cmd+V on Mac) to paste.');
+        // Open Google AI Studio in a new tab after user sees the alert
+        setTimeout(() => {
+          window.open('https://aistudio.google.com/app/prompts/new_chat', '_blank');
+        }, 100);
+      } else {
+        throw new Error('Clipboard verification failed');
+      }
+    } catch (error) {
+      console.error('Copy failed:', error);
+      alert('Could not copy prompt. Please use the "Copy to Clipboard" button first, then manually open Google AI Studio.');
     }
   };
 
@@ -465,7 +479,6 @@ Make this demo impressive, clearly branded for West Monroe, and demonstrate the 
   const [savingVersion, setSavingVersion] = useState(false);
   const [isVersionNameOpen, setIsVersionNameOpen] = useState(false);
   const [versionTitleInput, setVersionTitleInput] = useState('');
-  // Leaderboard state (dummy initial values)
 
   // ...existing code...
 
@@ -1392,6 +1405,57 @@ Return only the steps.`;
                     {(prdMarkdown?.trim() || pitchMarkdown?.trim()) && ' (Includes your PRD and pitch content)'}
                   </p>
                   
+                  {/* Show saved URLs if they exist - always visible */}
+                  {(evaluation?.demoProjectUrl || evaluation?.demoPublishedUrl) && (
+                    <div className="mb-3">
+                      <span className="text-xs font-bold text-wm-blue/70 block mb-2">Demo Links</span>
+                      <div className="space-y-2">
+                        {evaluation.demoProjectUrl && (
+                          <div className="bg-gradient-to-r from-wm-accent/10 to-wm-pink/10 border-l-4 border-wm-accent rounded-lg p-3">
+                            <label className="text-xs font-bold text-wm-accent block mb-1 flex items-center gap-1">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                              </svg>
+                              Google AI Studio Project
+                            </label>
+                            <a
+                              href={evaluation.demoProjectUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-wm-blue hover:text-wm-accent underline break-all flex items-center gap-1 font-medium"
+                            >
+                              {evaluation.demoProjectUrl}
+                              <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                            </a>
+                          </div>
+                        )}
+                        {evaluation.demoPublishedUrl && (
+                          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500 rounded-lg p-3">
+                            <label className="text-xs font-bold text-green-700 block mb-1 flex items-center gap-1">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Published Demo
+                            </label>
+                            <a
+                              href={evaluation.demoPublishedUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-wm-blue hover:text-green-700 underline break-all flex items-center gap-1 font-medium"
+                            >
+                              {evaluation.demoPublishedUrl}
+                              <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Show saved prompt if it exists */}
                   {evaluation?.demoPrompt && (
                     <div className="mb-3">
@@ -1413,47 +1477,6 @@ Return only the steps.`;
                           <div className="max-h-60 overflow-y-auto bg-wm-neutral/5 rounded p-2">
                             <pre className="text-xs text-wm-blue/80 whitespace-pre-wrap font-mono">{evaluation.demoPrompt}</pre>
                           </div>
-                          
-                          {/* Show saved URLs if they exist */}
-                          {(evaluation.demoProjectUrl || evaluation.demoPublishedUrl) && (
-                            <div className="mt-3 pt-3 border-t border-wm-neutral/20">
-                              <span className="text-xs font-bold text-wm-blue/70 block mb-2">Demo Links</span>
-                              <div className="space-y-2">
-                                {evaluation.demoProjectUrl && (
-                                  <div>
-                                    <label className="text-xs text-wm-blue/50 block mb-0.5">Project URL:</label>
-                                    <a
-                                      href={evaluation.demoProjectUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-xs text-wm-accent hover:text-wm-accent/80 underline break-all flex items-center gap-1"
-                                    >
-                                      {evaluation.demoProjectUrl}
-                                      <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                      </svg>
-                                    </a>
-                                  </div>
-                                )}
-                                {evaluation.demoPublishedUrl && (
-                                  <div>
-                                    <label className="text-xs text-wm-blue/50 block mb-0.5">Published URL:</label>
-                                    <a
-                                      href={evaluation.demoPublishedUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-xs text-wm-accent hover:text-wm-accent/80 underline break-all flex items-center gap-1"
-                                    >
-                                      {evaluation.demoPublishedUrl}
-                                      <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                      </svg>
-                                    </a>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
                           
                           <button
                             onClick={() => {
@@ -1805,7 +1828,17 @@ Return only the steps.`;
             <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-xs font-bold text-wm-blue/70">Edit Your Prompt</label>
-                <span className="text-xs text-wm-blue/50">{demoPrompt.length} characters</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={copyDemoPromptToClipboard}
+                    className="text-xs text-wm-accent hover:text-wm-accent/80 font-bold flex items-center gap-1 transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    <Icons.Copy className="w-4 h-4" />
+                    Copy
+                  </button>
+                  <span className="text-xs text-wm-blue/50">{demoPrompt.length} characters</span>
+                </div>
               </div>
               <textarea
                 value={demoPrompt}

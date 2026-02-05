@@ -17,14 +17,18 @@ interface GammaGenerateRequest {
   themeId?: string;
 }
 
-export const generateGammaPresentation = onRequest({cors: true}, async (req, res) => {
+export const generateGammaPresentation = onRequest({
+  cors: true,
+  timeoutSeconds: 300,
+  maxInstances: 10,
+}, async (req, res) => {
 
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
     return;
   }
 
-  const { text, apiKey, format = 'pptx' } = req.body as GammaGenerateRequest;
+  const { text, apiKey, format = 'pptx', themeId = 'lbwzv30urvx3eqk', gammaId = 'g_kwtkpaa9032ruke' } = req.body as GammaGenerateRequest;
 
   if (!text || !apiKey) {
     res.status(400).json({ error: 'Missing required fields: text and apiKey' });
@@ -37,8 +41,8 @@ export const generateGammaPresentation = onRequest({cors: true}, async (req, res
     const requestBody = {
       prompt: text,
       exportAs: format,
-      gammaId: 'g_0f53ajq4rdf4b8m', // Template ID
-      themeId: '9c419c9zpcetcnq', // Theme ID
+      gammaId: gammaId,
+      themeId: themeId,
     };
 
     console.log('Calling Gamma API:', {
@@ -47,6 +51,8 @@ export const generateGammaPresentation = onRequest({cors: true}, async (req, res
       apiKeyPrefix: apiKey.substring(0, 15) + '...',
       promptLength: text.length,
       exportAs: format,
+      gammaId: gammaId,
+      themeId: themeId,
     });
 
     const response = await fetch(`${GAMMA_API_URL}/generations/from-template`, {
@@ -87,11 +93,18 @@ export const generateGammaPresentation = onRequest({cors: true}, async (req, res
 
     const data = await response.json() as any;
     
-    // If processing, poll for completion
-    if (data.status === 'processing' && data.id) {
-      const result = await pollGammaStatus(data.id, apiKey);
-      res.json(result);
+    console.log('Gamma API success response:', JSON.stringify(data, null, 2));
+    
+    // Return generationId immediately - let client poll for completion
+    // This avoids Cloud Function timeout issues
+    if (data.generationId) {
+      console.log('Returning generationId immediately:', data.generationId);
+      res.json({
+        generationId: data.generationId,
+        status: 'processing',
+      });
     } else {
+      console.log('No generationId in response, returning as-is');
       res.json(data);
     }
   } catch (error: any) {
@@ -102,31 +115,51 @@ export const generateGammaPresentation = onRequest({cors: true}, async (req, res
   }
 });
 
-async function pollGammaStatus(
-  id: string,
-  apiKey: string,
-  maxAttempts: number = 30,
-  interval: number = 2000
-): Promise<any> {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await new Promise(resolve => setTimeout(resolve, interval));
+// Cloud Function to check generation status
+export const checkGammaStatus = onRequest({
+  cors: true,
+  timeoutSeconds: 60,
+}, async (req, res) => {
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
+  }
 
-    const response = await fetch(`${GAMMA_API_URL}/generations/${id}`, {
+  const generationId = req.method === 'GET' ? req.query.generationId as string : req.body.generationId;
+  const apiKey = req.method === 'GET' ? req.query.apiKey as string : req.body.apiKey;
+
+  if (!generationId || !apiKey) {
+    res.status(400).json({ error: 'Missing required fields: generationId and apiKey' });
+    return;
+  }
+
+  try {
+    console.log('Checking status for generation:', generationId);
+
+    const response = await fetch(`${GAMMA_API_URL}/generations/${generationId}`, {
       headers: {
         'x-api-key': apiKey,
       },
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to check status: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`Failed to check status: ${response.status}`, errorText);
+      res.status(response.status).json({
+        error: `Failed to check status: ${response.status}`,
+        details: errorText,
+      });
+      return;
     }
 
     const data = await response.json() as any;
-
-    if (data.status === 'completed' || data.status === 'failed') {
-      return data;
-    }
+    console.log(`Generation ${generationId} status:`, JSON.stringify(data, null, 2));
+    
+    res.json(data);
+  } catch (error: any) {
+    console.error('Check status error:', error);
+    res.status(500).json({
+      error: error.message || 'Internal server error',
+    });
   }
-
-  throw new Error('Presentation generation timed out');
-}
+});

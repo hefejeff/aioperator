@@ -166,7 +166,7 @@ export const resources: Record<string, Record<string, string>> = {
     'research.marketPosition': 'Market Position',
     'research.products': 'Products',
     'form.optional': '(form optional)',
-    'form.workflow.title': 'Create New Process',
+    'form.workflow.title': 'Create New Workflow',
     'form.domain': 'Domain',
     'form.selectDomain': 'Select a domain',
     'form.title': 'Title',
@@ -482,9 +482,9 @@ export const resources: Record<string, Record<string, string>> = {
   'toolsDocs.latestPitch': 'Latest pitch',
 
   // Training
-  'training.title': 'Processes and Use Cases',
+  'training.title': 'Workflows and Use Cases',
   'training.subtitle': 'Practice with curated AI workflows or create your own.',
-  'training.createButton': 'Create process',
+  'training.createButton': 'Create Workflow',
   'training.filter': 'Filter by domain'
   },
   'Spanish': {

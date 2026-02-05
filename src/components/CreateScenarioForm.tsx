@@ -4,6 +4,7 @@ import { LoadingSpinner } from './OperatorConsole';
 // Note: import is done dynamically in the handler to avoid throwing at module load if API key is missing
 
 interface CreateScenarioFormProps {
+  initialDomain?: string;
   onSave: (data: { 
     title: string; 
     title_es?: string; 
@@ -12,6 +13,7 @@ interface CreateScenarioFormProps {
     goal: string; 
     goal_es?: string; 
     domain?: string;
+    industry?: string;
     process?: string;
     valueDrivers?: string;
     painPoints?: string;
@@ -22,11 +24,12 @@ interface CreateScenarioFormProps {
 
 export type ScenarioFormPayload = Parameters<CreateScenarioFormProps['onSave']>[0];
 
-const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ onSave, onClose }) => {
+const CreateScenarioForm: React.FC<CreateScenarioFormProps> = ({ initialDomain, onSave, onClose }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [goal, setGoal] = useState('');
-  const [domain, setDomain] = useState('');
+  const [domain, setDomain] = useState(initialDomain || '');
+  const [industry, setIndustry] = useState('');
   const [process, setProcess] = useState('');
   const [isCustomProcess, setIsCustomProcess] = useState(false);
   const [customProcess, setCustomProcess] = useState('');
@@ -375,18 +378,46 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
             </select>
           </div>
 
+          {/* Industry (Optional) */}
+          <div>
+            <label className="block text-sm font-bold text-wm-blue mb-1">Industry (Optional)</label>
+            <select
+              value={industry}
+              onChange={(e) => setIndustry(e.target.value)}
+              className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow"
+            >
+              <option value="">Select an industry (optional)</option>
+              <option value="Healthcare">Healthcare</option>
+              <option value="Finance">Finance</option>
+              <option value="Retail">Retail</option>
+              <option value="Manufacturing">Manufacturing</option>
+              <option value="Technology">Technology</option>
+              <option value="Education">Education</option>
+              <option value="Real Estate">Real Estate</option>
+              <option value="Hospitality">Hospitality</option>
+              <option value="Transportation">Transportation</option>
+              <option value="Energy">Energy</option>
+              <option value="Telecommunications">Telecommunications</option>
+              <option value="Media & Entertainment">Media & Entertainment</option>
+              <option value="Government">Government</option>
+              <option value="Non-Profit">Non-Profit</option>
+              <option value="Professional Services">Professional Services</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
           {/* Process */}
           {domain && availableProcesses.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-bold text-wm-blue">Process</label>
+                <label className="block text-sm font-bold text-wm-blue">Sub-domain</label>
                 {!isCustomProcess && (
                   <button
                     type="button"
                     onClick={() => setIsCustomProcess(true)}
                     className="text-xs text-wm-accent hover:text-wm-accent/80 font-bold"
                   >
-                    + Add custom process
+                    + Add custom sub-domain
                   </button>
                 )}
               </div>
@@ -397,7 +428,7 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
                     type="text"
                     value={customProcess}
                     onChange={(e) => setCustomProcess(e.target.value)}
-                    placeholder="Enter custom process name"
+                    placeholder="Enter custom sub-domain name"
                     className="flex-1 bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow placeholder:text-wm-blue/40"
                     autoFocus
                   />
@@ -418,7 +449,7 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
                   onChange={(e) => setProcess(e.target.value)}
                   className="w-full bg-white border border-wm-neutral/30 rounded-lg p-3 text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow"
                 >
-                  <option value="">Select a process (optional)</option>
+                  <option value="">Select a sub-domain (optional)</option>
                   {availableProcesses.map(proc => (
                     <option key={proc} value={proc}>{proc}</option>
                   ))}

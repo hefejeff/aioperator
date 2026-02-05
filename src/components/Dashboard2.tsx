@@ -83,8 +83,19 @@ const CompaniesTableWithScenarios: React.FC<CompaniesTableProps> = ({
 
   // Get documents for a company
   const getCompanyDocs = (company: Company) => {
+    console.log('=== getCompanyDocs DEBUG ===');
+    console.log('Company name:', company.name);
+    console.log('Full company object:', company);
+    console.log('company.research:', company.research);
+    console.log('company.research?.currentResearch:', company.research?.currentResearch);
+    console.log('documents:', company.research?.currentResearch?.documents);
+    
     const docs = company.research?.currentResearch?.documents || [];
     const rfp = company.research?.currentResearch?.rfpDocument;
+    
+    console.log('Extracted docs array:', docs);
+    console.log('Docs length:', docs.length);
+    
     if (rfp) {
       return [{ ...rfp, id: 'rfp-doc', isRfp: true }, ...docs];
     }
@@ -925,8 +936,15 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
         ]);
 
         // Transform company research data
+        console.log('=== DASHBOARD TRANSFORM DEBUG ===');
+        console.log('Raw companyResearchData:', companyResearchData);
+        
         const transformedCompanies = companyResearchData.reduce((uniqueCompanies, researchData) => {
           const { name, currentResearch, history, lastUpdated, selectedScenarios = [] } = researchData;
+          console.log(`Processing company: ${name}`);
+          console.log('currentResearch:', currentResearch);
+          console.log('currentResearch.documents:', currentResearch?.documents);
+          
           const resolvedLastUpdated = lastUpdated ?? Date.now();
           const existingCompany = uniqueCompanies.find(c => c.name.toLowerCase() === name.toLowerCase());
           
@@ -966,16 +984,6 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
         setWorkflowVersions(workflowData);
         setEvaluations(evaluationsData);
         setCompanies(transformedCompanies);
-        
-        console.log('Dashboard2 Data Loaded:', {
-          scenariosCount: scenariosData.length,
-          workflowVersionsCount: workflowData.length,
-          evaluationsCount: evaluationsData.length,
-          evaluationsWithDemoUrls: evaluationsData.filter(e => e.demoProjectUrl || e.demoPublishedUrl).length,
-          workflowsWithDemoUrls: workflowData.filter(w => w.demoProjectUrl || w.demoPublishedUrl).length,
-          sampleEvaluation: evaluationsData[0],
-          sampleWorkflow: workflowData[0]
-        });
       } catch (e) {
         console.error('Could not fetch dashboard data', e);
       } finally {
@@ -984,6 +992,64 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
     };
 
     fetchData();
+  }, [user]);
+
+  // Listen for document upload events to refresh company data
+  useEffect(() => {
+    const handleDocumentUploaded = () => {
+      // Refetch company data when a document is uploaded
+      if (user && !user.isAnonymous) {
+        listCompanyResearch(user.uid).then(companyResearchData => {
+          const transformedCompanies = companyResearchData.reduce((uniqueCompanies, researchData) => {
+            const { name, currentResearch, history, lastUpdated, selectedScenarios = [] } = researchData;
+            const resolvedLastUpdated = lastUpdated ?? Date.now();
+            const existingCompany = uniqueCompanies.find(c => c.name.toLowerCase() === name.toLowerCase());
+            
+            if (existingCompany) {
+              if (resolvedLastUpdated > existingCompany.lastUpdated) {
+                existingCompany.lastUpdated = resolvedLastUpdated;
+                existingCompany.selectedScenarios = selectedScenarios;
+                existingCompany.research = {
+                  name,
+                  currentResearch,
+                  history: [...(history || []), ...(existingCompany.research.history || [])],
+                  lastUpdated: resolvedLastUpdated
+                };
+              }
+              return uniqueCompanies;
+            }
+
+            uniqueCompanies.push({
+              id: `${name.toLowerCase()}_${Date.now()}`,
+              name,
+              createdBy: user.uid,
+              createdAt: resolvedLastUpdated,
+              lastUpdated: resolvedLastUpdated,
+              selectedScenarios,
+              research: {
+                name,
+                currentResearch,
+                history: history || [],
+                lastUpdated: resolvedLastUpdated
+              }
+            });
+
+            return uniqueCompanies;
+          }, [] as Company[]);
+          
+          setCompanies(transformedCompanies);
+        }).catch(err => {
+          console.error('Failed to refresh companies after document upload:', err);
+        });
+      }
+    };
+
+    window.addEventListener('document-uploaded', handleDocumentUploaded);
+    window.addEventListener('document-deleted', handleDocumentUploaded);
+    return () => {
+      window.removeEventListener('document-uploaded', handleDocumentUploaded);
+      window.removeEventListener('document-deleted', handleDocumentUploaded);
+    };
   }, [user]);
 
   // Handlers
@@ -1457,30 +1523,10 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                   return (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {Object.entries(groupedByScenario).map(([scenarioId, { scenario, workflows }]) => {
-                        // Get latest workflow for demo URLs
+                        // Get latest workflow - all data is stored on workflow version
                         const latestWorkflow = workflows[0];
-                        
-                        // Check workflow version for demo URLs first, then fall back to evaluation
-                        const hasDirectDemoUrls = latestWorkflow?.demoProjectUrl || latestWorkflow?.demoPublishedUrl;
-                        const evaluation = !hasDirectDemoUrls && latestWorkflow?.sourceEvaluationId 
-                          ? evaluations.find(e => e.id === latestWorkflow.sourceEvaluationId)
-                          : null;
-                        
-                        const projectUrl = latestWorkflow?.demoProjectUrl || evaluation?.demoProjectUrl;
-                        const publishedUrl = latestWorkflow?.demoPublishedUrl || evaluation?.demoPublishedUrl;
-                        
-                        console.log('Dashboard2 Latest Workflow:', {
-                          scenarioTitle: scenario?.title,
-                          workflowHasDemoUrls: hasDirectDemoUrls,
-                          workflowDemoProjectUrl: latestWorkflow?.demoProjectUrl,
-                          workflowDemoPublishedUrl: latestWorkflow?.demoPublishedUrl,
-                          sourceEvaluationId: latestWorkflow?.sourceEvaluationId,
-                          evaluationFound: !!evaluation,
-                          evaluationDemoProjectUrl: evaluation?.demoProjectUrl,
-                          evaluationDemoPublishedUrl: evaluation?.demoPublishedUrl,
-                          finalProjectUrl: projectUrl,
-                          finalPublishedUrl: publishedUrl
-                        });
+                        const projectUrl = latestWorkflow?.demoProjectUrl;
+                        const publishedUrl = latestWorkflow?.demoPublishedUrl;
                         
                         return (
                           <div key={scenarioId} className="bg-white rounded-xl border border-wm-neutral/20 shadow-sm hover:shadow-md transition-shadow flex flex-col">
@@ -1561,27 +1607,9 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                               {expandedProcesses[scenarioId] && (
                                 <div className="px-4 pb-4 space-y-2">
                                   {workflows.map((workflow) => {
-                                    // Check workflow version for demo URLs first, then fall back to evaluation
-                                    const hasDirectDemoUrls = workflow.demoProjectUrl || workflow.demoPublishedUrl;
-                                    const evaluation = !hasDirectDemoUrls && workflow.sourceEvaluationId 
-                                      ? evaluations.find(e => e.id === workflow.sourceEvaluationId)
-                                      : null;
-                                    
-                                    const projectUrl = workflow.demoProjectUrl || evaluation?.demoProjectUrl;
-                                    const publishedUrl = workflow.demoPublishedUrl || evaluation?.demoPublishedUrl;
-                                    
-                                    console.log('Dashboard2 Individual Workflow:', {
-                                      workflowTitle: workflow.versionTitle,
-                                      workflowHasDemoUrls: hasDirectDemoUrls,
-                                      workflowDemoProjectUrl: workflow.demoProjectUrl,
-                                      workflowDemoPublishedUrl: workflow.demoPublishedUrl,
-                                      sourceEvaluationId: workflow.sourceEvaluationId,
-                                      evaluationFound: !!evaluation,
-                                      evaluationDemoProjectUrl: evaluation?.demoProjectUrl,
-                                      evaluationDemoPublishedUrl: evaluation?.demoPublishedUrl,
-                                      finalProjectUrl: projectUrl,
-                                      finalPublishedUrl: publishedUrl
-                                    });
+                                    // All data is stored directly on workflow version
+                                    const projectUrl = workflow.demoProjectUrl;
+                                    const publishedUrl = workflow.demoPublishedUrl;
                                     
                                     return (
                                       <div 

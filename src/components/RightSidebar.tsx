@@ -62,13 +62,6 @@ const RightSidebar: React.FC<RightSidebarProps> = ({ user, onSelectWorkflow, isO
 
     loadWorkflows();
     loadScenarios();
-
-    // Listen for updates so the sidebar stays fresh when new scores are saved elsewhere in the app
-    const onUpdate = () => { /* leaderboard removed */ };
-    window.addEventListener('leaderboard-updated', onUpdate as EventListener);
-    return () => {
-      window.removeEventListener('leaderboard-updated', onUpdate as EventListener);
-    };
   }, [user]);
 
   return (

@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import type { User } from 'firebase/auth';
-import type { Scenario, StoredEvaluationResult } from '../types';
-import { saveUserScenario, deleteUserScenario, updateScenario, toggleFavoriteScenario, getUserFavoriteScenarioIds, getEvaluations } from '../services/firebaseService';
+import type { Scenario } from '../types';
+import { saveUserScenario, deleteUserScenario, updateScenario, toggleFavoriteScenario, getUserFavoriteScenarioIds } from '../services/firebaseService';
 import ScenarioCard from './ScenarioCard';
 import CreateScenarioForm from './CreateScenarioForm';
 import { useTranslation } from '../i18n';
@@ -18,11 +18,14 @@ interface TrainingViewProps {
 const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario, user, onScenarioCreated }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [localScenarios, setLocalScenarios] = useState<Scenario[]>(scenarios);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [domainFilter, setDomainFilter] = useState<string>('All');
+  const [subdomainFilter, setSubdomainFilter] = useState<string>('All');
+  const [industryFilter, setIndustryFilter] = useState<string>('All');
   const [showStarredOnly, setShowStarredOnly] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [favoriteBusyId, setFavoriteBusyId] = useState<string | null>(null);
-  const [scenarioEvaluations, setScenarioEvaluations] = useState<Record<string, StoredEvaluationResult[]>>({});
 
   useEffect(() => {
   setLocalScenarios(scenarios);
@@ -39,22 +42,10 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
     })();
   }, [user]);
 
+  // Reset subdomain filter when domain changes
   useEffect(() => {
-    (async () => {
-      try {
-        const evalsMap: Record<string, StoredEvaluationResult[]> = {};
-        for (const scenario of scenarios) {
-          const evals = await getEvaluations(user.uid, scenario.id);
-          if (evals.length > 0) {
-            evalsMap[scenario.id] = evals;
-          }
-        }
-        setScenarioEvaluations(evalsMap);
-      } catch (e) {
-        console.error('Failed to load evaluations:', e);
-      }
-    })();
-  }, [user, scenarios]);
+    setSubdomainFilter('All');
+  }, [domainFilter]);
 
   useEffect(() => {
     const onDelete = async (e: Event) => {
@@ -170,12 +161,37 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
     }
   };
 
-  const filteredScenarios = domainFilter === 'All' ? localScenarios : localScenarios.filter(s => (s.domain || 'General') === domainFilter);
+  // Apply filters or search independently
+  let filteredScenarios;
+  let searchResults: Scenario[] = [];
   
-  // Apply star filter
+  if (searchQuery.trim()) {
+    // If searching, ignore other filters and search across all scenarios
+    const query = searchQuery.toLowerCase();
+    searchResults = localScenarios.filter(s => 
+      s.title.toLowerCase().includes(query) || 
+      s.description.toLowerCase().includes(query) ||
+      (s.domain && s.domain.toLowerCase().includes(query)) ||
+      (s.process && s.process.toLowerCase().includes(query)) ||
+      (s.industry && s.industry.toLowerCase().includes(query))
+    );
+    filteredScenarios = searchResults;
+  } else {
+    // If not searching, apply domain/subdomain/industry filters
+    filteredScenarios = domainFilter === 'All' ? localScenarios : localScenarios.filter(s => (s.domain || 'General') === domainFilter);
+    filteredScenarios = subdomainFilter === 'All' ? filteredScenarios : filteredScenarios.filter(s => s.process === subdomainFilter);
+    filteredScenarios = industryFilter === 'All' ? filteredScenarios : filteredScenarios.filter(s => s.industry === industryFilter);
+  }
+  
+  // Apply star filter to both search and filter results
   const finalFilteredScenarios = showStarredOnly 
     ? filteredScenarios.filter(scenario => favoriteIds.has(scenario.id))
     : filteredScenarios;
+
+  // Get available subdomains for current domain filter
+  const availableSubdomains = domainFilter === 'All' 
+    ? Array.from(new Set(localScenarios.map(s => s.process).filter(Boolean))).sort()
+    : Array.from(new Set(localScenarios.filter(s => (s.domain || 'General') === domainFilter).map(s => s.process).filter(Boolean))).sort();
 
   const sortedScenarios = [...finalFilteredScenarios].sort((a,b)=>{
     const aFav = favoriteIds.has(a.id) ? 1 : 0;
@@ -219,12 +235,86 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold mb-2 text-wm-blue">{t('training.title')}</h1>
         <p className="text-lg text-wm-blue/60">{t('training.subtitle')}</p>
-        <button
-          onClick={() => setIsCreating(true)}
-          className="mt-4 inline-flex items-center justify-center px-5 py-2 border border-transparent text-base font-bold rounded-md text-white bg-wm-accent hover:bg-wm-accent/90 transition-colors"
-        >
-          {t('training.createButton')}
-        </button>
+        
+        {/* Large Search Box with Create Option */}
+        <div className="mt-6 max-w-3xl mx-auto relative">
+          <div className="relative">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowSearchDropdown(true);
+              }}
+              onFocus={() => setShowSearchDropdown(true)}
+              onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)}
+              placeholder="Search scenarios by title, description, domain, sub-domain, or industry..."
+              className="w-full px-6 py-4 text-lg border-2 border-wm-neutral/30 rounded-xl focus:outline-none focus:border-wm-accent transition-colors"
+            />
+          </div>
+          
+          {/* Search Results Dropdown */}
+          {showSearchDropdown && (
+            <div className="absolute top-full mt-2 w-full bg-white border-2 border-wm-accent/30 rounded-xl shadow-xl max-h-96 overflow-y-auto z-50">
+              {searchQuery.trim() && searchResults.length > 0 && (
+                <>
+                  {searchResults.slice(0, 10).map(scenario => (
+                    <button
+                      key={scenario.id}
+                      onClick={() => {
+                        onSelectScenario(scenario);
+                        setShowSearchDropdown(false);
+                        setSearchQuery('');
+                      }}
+                      className="w-full px-6 py-3 text-left hover:bg-wm-accent/10 transition-colors border-b border-wm-neutral/10 last:border-b-0"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1">
+                          <div className="font-bold text-wm-blue">{scenario.title}</div>
+                          <div className="text-sm text-wm-blue/60 line-clamp-1">{scenario.description}</div>
+                          <div className="flex gap-2 mt-1">
+                            {scenario.domain && (
+                              <span className="text-xs px-2 py-0.5 bg-wm-accent/10 text-wm-accent rounded-full">{scenario.domain}</span>
+                            )}
+                            {scenario.process && (
+                              <span className="text-xs px-2 py-0.5 bg-wm-blue/10 text-wm-blue rounded-full">{scenario.process}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                  {searchResults.length > 10 && (
+                    <div className="px-6 py-2 text-sm text-wm-blue/50 text-center border-b border-wm-neutral/10">
+                      Showing 10 of {searchResults.length} results
+                    </div>
+                  )}
+                </>
+              )}
+              
+              {searchQuery.trim() && searchResults.length === 0 && (
+                <div className="px-6 py-4 text-center text-wm-blue/50 border-b border-wm-neutral/10">
+                  No scenarios found matching "{searchQuery}"
+                </div>
+              )}
+              
+              {/* Create New Option - Always Visible and Sticky */}
+              <button
+                onClick={() => {
+                  setIsCreating(true);
+                  setShowSearchDropdown(false);
+                  setSearchQuery('');
+                }}
+                className="w-full px-6 py-4 text-left bg-wm-accent/5 hover:bg-wm-accent/10 transition-colors font-bold text-wm-accent flex items-center gap-2 sticky bottom-0"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Create New Scenario
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {isCreating && (
@@ -234,7 +324,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
         />
       )}
 
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-6 bg-gradient-to-r from-wm-accent/5 via-wm-blue/5 to-wm-accent/5 p-4 rounded-xl border border-wm-neutral/20 shadow-sm">
         <div />
         <div className="flex items-center space-x-4">
           {/* Star Filter Toggle */}
@@ -263,6 +353,17 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
             </button>
           </div>
           
+          {/* Industry Filter */}
+          <div className="flex items-center space-x-2">
+            <label className="text-sm text-wm-blue/70 font-bold">Industry</label>
+            <select value={industryFilter} onChange={(e) => setIndustryFilter(e.target.value)} className="bg-white border border-wm-neutral/30 rounded-md p-2 text-wm-blue">
+              <option value="All">All Industries</option>
+              {['Healthcare', 'Finance', 'Retail', 'Manufacturing', 'Technology', 'Education', 'Real Estate', 'Hospitality', 'Transportation', 'Energy', 'Telecommunications', 'Media & Entertainment', 'Government', 'Non-Profit', 'Professional Services', 'Other'].map(i => (
+                <option key={i} value={i}>{i}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Domain Filter */}
           <div className="flex items-center space-x-2">
             <label className="text-sm text-wm-blue/70 font-bold">{t('training.filter')}</label>
@@ -270,6 +371,22 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
               <option value="All">{t('filter.all')}</option>
               {['Sales','HR','Finance','Operations','Logistics','Healthcare','Manufacturing','Legal','Procurement','Marketing','IT','Customer Support','General'].map(d => (
                 <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Subdomain Filter */}
+          <div className="flex items-center space-x-2">
+            <label className="text-sm text-wm-blue/70 font-bold">Sub-domain</label>
+            <select 
+              value={subdomainFilter} 
+              onChange={(e) => setSubdomainFilter(e.target.value)} 
+              className="bg-white border border-wm-neutral/30 rounded-md p-2 text-wm-blue"
+              disabled={availableSubdomains.length === 0}
+            >
+              <option value="All">All Sub-domains</option>
+              {availableSubdomains.map(sd => (
+                <option key={sd} value={sd}>{sd}</option>
               ))}
             </select>
           </div>
@@ -286,7 +403,6 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
               isFavorited={favoriteIds.has(scenario.id)}
               onToggleFavorite={handleToggleFavorite}
               favoriteBusy={favoriteBusyId === scenario.id}
-              evaluations={scenarioEvaluations[scenario.id]}
             />
           ))}
         </div>

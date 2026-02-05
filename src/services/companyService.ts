@@ -477,15 +477,21 @@ export const deleteMeeting = async (companyId: string, meetingId: string): Promi
   }
 };
 
-// Document Operations
+// Document Operations - Updated to use correct path
 export const saveDocuments = async (
   companyId: string,
   documents: Array<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number }>
 ): Promise<void> => {
   try {
-    const documentsRef = ref(db, `companies/${companyId}/documents`);
+    // FIXED: Save to correct path under research/currentResearch
+    const documentsRef = ref(db, `companies/${companyId}/research/currentResearch/documents`);
     await set(documentsRef, documents);
     console.log('Documents saved to Firebase:', documents.length);
+    
+    // Dispatch event to notify dashboard
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('document-uploaded', { detail: { companyId } }));
+    }
   } catch (error) {
     console.error('Failed to save documents:', error);
     throw error;
@@ -494,7 +500,8 @@ export const saveDocuments = async (
 
 export const getDocuments = async (companyId: string): Promise<Array<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number }>> => {
   try {
-    const documentsRef = ref(db, `companies/${companyId}/documents`);
+    // FIXED: Read from correct path under research/currentResearch
+    const documentsRef = ref(db, `companies/${companyId}/research/currentResearch/documents`);
     const snapshot = await get(documentsRef);
     if (snapshot.exists()) {
       const docs = snapshot.val();
@@ -509,13 +516,19 @@ export const getDocuments = async (companyId: string): Promise<Array<{ id: strin
 
 export const deleteDocument = async (companyId: string, documentId: string): Promise<void> => {
   try {
-    const documentsRef = ref(db, `companies/${companyId}/documents`);
+    // FIXED: Delete from correct path under research/currentResearch
+    const documentsRef = ref(db, `companies/${companyId}/research/currentResearch/documents`);
     const snapshot = await get(documentsRef);
     if (snapshot.exists()) {
       const docs = snapshot.val();
       const filtered = Array.isArray(docs) ? docs.filter(d => d.id !== documentId) : [];
       await set(documentsRef, filtered);
       console.log('Document deleted from Firebase:', documentId);
+      
+      // Dispatch event to notify dashboard
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('document-deleted', { detail: { companyId, documentId } }));
+      }
     }
   } catch (error) {
     console.error('Failed to delete document:', error);
