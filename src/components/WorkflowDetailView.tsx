@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Icons } from '../constants';
 import { useTranslation } from '../i18n';
 import type { WorkflowVersion, Scenario, TeamRole, UserProfile, SavedPrd, SavedPitch, StoredEvaluationResult } from '../types';
 import { getWorkflowVersion, getScenarioById, updateWorkflowVersion, addTeamMember, removeTeamMember, updateTeamMemberRole, getAllUsers, getLatestPrdForScenario, getLatestPitchForScenario, getEvaluations } from '../services/firebaseService';
 import Breadcrumbs from './Breadcrumbs';
+import SidebarNav, { SidebarNavItem } from './SidebarNav';
 
 interface WorkflowDetailViewProps {
   workflowId: string;
@@ -15,6 +17,9 @@ interface WorkflowDetailViewProps {
 }
 
 const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, userId, onBack, companyName, onNavigateToDashboard, onNavigateToResearch }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [workflow, setWorkflow] = useState<WorkflowVersion | null>(null);
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,6 +43,53 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
   const [filteredUsers, setFilteredUsers] = useState<UserProfile[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const menuItems: SidebarNavItem[] = [
+    {
+      id: 'overview',
+      label: 'Dashboard',
+      icon: <Icons.Home className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard'),
+      isActive: location.pathname.startsWith('/dashboard') && !location.search.includes('section=')
+    },
+    {
+      id: 'companies',
+      label: 'Companies',
+      icon: <Icons.Building className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard?section=companies'),
+      isActive: location.pathname.startsWith('/company2') || location.pathname.startsWith('/research') || location.search.includes('section=companies')
+    },
+    {
+      id: 'processes',
+      label: 'Processes',
+      icon: <Icons.Workflow className="w-5 h-5" />,
+      onClick: () => navigate('/library'),
+      isActive: location.pathname.startsWith('/library')
+    },
+    {
+      id: 'settings',
+      label: 'Output History',
+      icon: <Icons.Document className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard?section=settings'),
+      isActive: location.search.includes('section=settings')
+    }
+  ];
+
+  const renderWithSidebar = (content: React.ReactNode) => (
+    <div className="flex h-screen bg-wm-white">
+      <SidebarNav
+        user={{ uid: userId } as any}
+        items={menuItems}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+      />
+      <main className="flex-1 overflow-auto bg-wm-neutral/5">
+        <div className="p-6">
+          {content}
+        </div>
+      </main>
+    </div>
+  );
   
   const { t } = useTranslation();
 
@@ -719,7 +771,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
   }, [workflowId, userId]);
 
   if (isLoading) {
-    return (
+    return renderWithSidebar(
       <div className="flex items-center justify-center h-64">
         <div className="text-wm-blue/70">{t('loading')}</div>
       </div>
@@ -727,7 +779,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
   }
 
   if (error || !workflow) {
-    return (
+    return renderWithSidebar(
       <div className="bg-wm-white border border-wm-neutral rounded-xl p-6 shadow-sm">
         <div className="flex items-center gap-4 mb-4">
           <button 
@@ -765,7 +817,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
     { id: 'team', label: t('workflowDetail.team'), icon: Icons.Users },
   ] as const;
 
-  return (
+  return renderWithSidebar(
     <div className="space-y-6">
       {/* Breadcrumbs */}
       <Breadcrumbs

@@ -26,6 +26,7 @@ const MeetingsList: React.FC<MeetingsListProps> = ({
   const [isExtracting, setIsExtracting] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
+    type: 'Project Kickoff' as Meeting['type'],
     date: '',
     time: '',
     participants: '',
@@ -38,7 +39,7 @@ const MeetingsList: React.FC<MeetingsListProps> = ({
 
   const handleAddClick = () => {
     setTranscriptInput('');
-    setFormData({ title: '', date: '', time: '', participants: '', transcript: '', summary: '' });
+    setFormData({ title: '', type: 'Project Kickoff' as Meeting['type'], date: '', time: '', participants: '', transcript: '', summary: '' });
     setEditingId(null);
     setStep('transcript');
     setIsAdding(true);
@@ -66,12 +67,19 @@ const MeetingsList: React.FC<MeetingsListProps> = ({
     setIsSummarizing(true);
     try {
       const mod = await import('../services/geminiService');
-      const prompt = `Create a concise bullet-point summary of this meeting transcript. Focus on key decisions, action items, and takeaways. Keep it to 3-5 main points.
+      const prompt = `You are a meeting analyst. Create a concise bullet-point summary tailored to the meeting type: ${formData.type || 'Unknown'}.
 
-TRANSCRIPT:
-${formData.transcript}
+    If the type is:
+    - Project Kickoff: summarize goals, scope, timeline, roles/owners, risks, and next steps.
+    - Functional High Level Overview: summarize processes, pain points, opportunities, systems, and success metrics.
+    - Functional Deep Dive Session: summarize detailed requirements, edge cases, data inputs/outputs, integrations, constraints, and acceptance criteria.
+    - DSU: summarize progress since last update, blockers, plans for next 24 hours, and risks.
+    - Other types: summarize key decisions, action items, and takeaways.
 
-Provide only the summary, formatted as bullet points.`;
+    TRANSCRIPT:
+    ${formData.transcript}
+
+    Provide only the summary, formatted as bullet points with clear labels when relevant.`;
 
       const response = await mod.generateText(prompt, null, { temperature: 0.3 });
       
@@ -96,15 +104,24 @@ Provide only the summary, formatted as bullet points.`;
     try {
       const mod = await import('../services/geminiService');
       const prompt = `Extract meeting details from the following transcript. Return a JSON object with these fields (be concise):
-- title: Brief meeting title (max 50 chars)
-- date: Date in YYYY-MM-DD format (estimate if not explicit)
-- time: Start time in HH:mm format (estimate if not explicit)
-- participants: Array of participant names
+    - title: Brief meeting title (max 50 chars)
+    - type: One of [Project Kickoff, Functional High Level Overview, Functional Deep Dive Session, DSU, Technical Discovery, Stakeholder Interview, Requirements Gathering, Other]
+    - date: Date in YYYY-MM-DD format (estimate if not explicit)
+    - time: Start time in HH:mm format (estimate if not explicit)
+    - participants: Array of participant names
+    - summary: Bullet-point summary tailored to the meeting type
 
-TRANSCRIPT:
-${transcriptInput}
+    Type-specific summary guidance:
+    - Project Kickoff: goals, scope, timeline, roles/owners, risks, next steps
+    - Functional High Level Overview: processes, pain points, opportunities, systems, success metrics
+    - Functional Deep Dive Session: detailed requirements, edge cases, data inputs/outputs, integrations, constraints, acceptance criteria
+    - DSU: progress, blockers, plan, risks
+    - Other types: key decisions, action items, takeaways
 
-Return ONLY the JSON object, no other text.`;
+    TRANSCRIPT:
+    ${transcriptInput}
+
+    Return ONLY the JSON object, no other text.`;
 
       const response = await mod.generateText(prompt, null, { temperature: 0.3 });
       
@@ -116,13 +133,14 @@ Return ONLY the JSON object, no other text.`;
 
       setFormData({
         title: details.title || '',
+        type: (details.type || 'Project Kickoff') as Meeting['type'],
         date: details.date || new Date().toISOString().split('T')[0],
         time: details.time || '09:00',
         participants: Array.isArray(details.participants) 
           ? details.participants.join(', ') 
           : details.participants || '',
         transcript: transcriptInput,
-        summary: '',
+        summary: details.summary || '',
       });
 
       setStep('edit');
@@ -131,6 +149,7 @@ Return ONLY the JSON object, no other text.`;
       // Fallback: let user fill it manually
       setFormData({
         title: '',
+        type: 'Project Kickoff' as Meeting['type'],
         date: new Date().toISOString().split('T')[0],
         time: '09:00',
         participants: '',
@@ -152,6 +171,7 @@ Return ONLY the JSON object, no other text.`;
     try {
       const meetingData = {
         title: formData.title,
+        type: formData.type,
         date: formData.date,
         time: formData.time,
         participants: formData.participants
@@ -170,7 +190,7 @@ Return ONLY the JSON object, no other text.`;
 
       setIsAdding(false);
       setEditingId(null);
-      setFormData({ title: '', date: '', time: '', participants: '', transcript: '', summary: '' });
+      setFormData({ title: '', type: 'Project Kickoff' as Meeting['type'], date: '', time: '', participants: '', transcript: '', summary: '' });
     } catch (error) {
       console.error('Failed to save meeting:', error);
       alert('Failed to save meeting');
@@ -181,6 +201,7 @@ Return ONLY the JSON object, no other text.`;
     setEditingId(meeting.id);
     setFormData({
       title: meeting.title,
+      type: meeting.type || 'Project Kickoff',
       date: meeting.date,
       time: meeting.time,
       participants: meeting.participants.join(', '),
@@ -215,6 +236,11 @@ Return ONLY the JSON object, no other text.`;
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-2xl font-bold text-wm-blue mb-2">{selectedMeeting.title}</h3>
+                  {selectedMeeting.type && (
+                    <span className="inline-block px-3 py-1 bg-wm-pink/10 text-wm-pink text-xs font-bold rounded-full mb-2">
+                      {selectedMeeting.type}
+                    </span>
+                  )}
                   <p className="text-sm text-wm-blue/60">
                     {new Date(`${selectedMeeting.date}T${selectedMeeting.time}`).toLocaleString()}
                   </p>
@@ -264,7 +290,7 @@ Return ONLY the JSON object, no other text.`;
                     setIsSummarizing(true);
                     try {
                       const mod = await import('../services/geminiService');
-                      const prompt = `Create a concise bullet-point summary of this meeting transcript. Focus on key decisions, action items, and takeaways. Keep it to 3-5 main points.\n\nTRANSCRIPT:\n${selectedMeeting.transcript}\n\nProvide only the summary, formatted as bullet points.`;
+                      const prompt = `You are a meeting analyst. Create a concise bullet-point summary tailored to the meeting type: ${selectedMeeting.type || 'Unknown'}.\n\nIf the type is:\n- Project Kickoff: summarize goals, scope, timeline, roles/owners, risks, and next steps.\n- Functional High Level Overview: summarize processes, pain points, opportunities, systems, and success metrics.\n- Functional Deep Dive Session: summarize detailed requirements, edge cases, data inputs/outputs, integrations, constraints, and acceptance criteria.\n- DSU: summarize progress since last update, blockers, plans for next 24 hours, and risks.\n- Other types: summarize key decisions, action items, and takeaways.\n\nTRANSCRIPT:\n${selectedMeeting.transcript}\n\nProvide only the summary, formatted as bullet points with clear labels when relevant.`;
 
                       const response = await mod.generateText(prompt, null, { temperature: 0.3 });
                       
@@ -360,6 +386,9 @@ Return ONLY the JSON object, no other text.`;
                   }`}
                 >
                   <h4 className="font-bold text-wm-blue text-sm truncate">{meeting.title}</h4>
+                  {meeting.type && (
+                    <p className="text-xs text-wm-pink font-semibold mt-1">{meeting.type}</p>
+                  )}
                   <p className="text-xs text-wm-blue/60 mt-1">
                     {new Date(`${meeting.date}T${meeting.time}`).toLocaleDateString()}
                   </p>
@@ -435,6 +464,23 @@ Return ONLY the JSON object, no other text.`;
                   className="w-full px-3 py-2 border border-wm-neutral/30 rounded-lg focus:outline-none focus:border-wm-accent"
                   placeholder="Meeting title"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-wm-blue/70 mb-1">Meeting Type</label>
+                <select
+                  value={formData.type}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value as Meeting['type'] })}
+                  className="w-full px-3 py-2 border border-wm-neutral/30 rounded-lg focus:outline-none focus:border-wm-accent bg-white"
+                >
+                  <option value="Project Kickoff">Project Kickoff</option>
+                  <option value="Functional High Level Overview">Functional High Level Overview</option>
+                  <option value="Functional Deep Dive Session">Functional Deep Dive Session</option>
+                  <option value="DSU">DSU</option>
+                  <option value="Technical Discovery">Technical Discovery</option>
+                  <option value="Stakeholder Interview">Stakeholder Interview</option>
+                  <option value="Requirements Gathering">Requirements Gathering</option>
+                  <option value="Other">Other</option>
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

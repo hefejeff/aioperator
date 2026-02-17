@@ -9,109 +9,128 @@ interface RfpAnalysisViewProps {
 const RfpAnalysisView: React.FC<RfpAnalysisViewProps> = ({ analysis }) => {
   const { t } = useTranslation();
 
+  const renderTextBlocks = (text?: string) => {
+    if (!text) {
+      return <p className="text-wm-blue/60 text-sm">No data provided.</p>;
+    }
+
+    const lines = text
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean);
+
+    if (lines.length <= 1) {
+      return <p className="text-wm-blue/80 leading-relaxed">{text}</p>;
+    }
+
+    return (
+      <ul className="list-disc pl-5 space-y-1 text-wm-blue/80">
+        {lines.map((line, idx) => (
+          <li key={idx}>{line.replace(/^[-•\d.\s]+/, '')}</li>
+        ))}
+      </ul>
+    );
+  };
+
+  const renderPreformatted = (text?: string) => (
+    <div className="bg-wm-neutral/10 p-4 rounded-lg border border-wm-neutral/30">
+      <pre className="text-wm-blue/80 whitespace-pre-wrap font-mono text-sm leading-relaxed">
+        {text || 'No data provided.'}
+      </pre>
+    </div>
+  );
+
   return (
     <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
       <h2 className="text-xl font-bold text-wm-blue mb-6">{t('research.rfpAnalysis')}</h2>
       
       <div className="space-y-6">
         {/* Project Structure */}
-        <div>
-          <h3 className="text-wm-blue font-bold mb-2">{t('research.rfpProjectStructure')}</h3>
-          <div className="bg-wm-neutral/10 p-4 rounded-lg border border-wm-neutral/30">
-            <pre className="text-wm-blue/70 whitespace-pre-wrap font-mono text-sm">
-              {analysis.projectStructure}
-            </pre>
-          </div>
+        <div className="space-y-2">
+          <h3 className="text-wm-blue font-bold">{t('research.rfpProjectStructure')}</h3>
+          {renderPreformatted(analysis.projectStructure)}
         </div>
 
         {/* Summary */}
-        <div>
-          <h3 className="text-wm-blue font-bold mb-2">{t('research.rfpSummary')}</h3>
-          <p className="text-wm-blue/70">{analysis.summary}</p>
+        <div className="space-y-2">
+          <h3 className="text-wm-blue font-bold">{t('research.rfpSummary')}</h3>
+          {renderTextBlocks(analysis.summary)}
         </div>
 
         {/* Detailed Analysis */}
-        <div>
-          <h3 className="text-wm-blue font-bold mb-2">{t('research.rfpDetailedAnalysis')}</h3>
-          <div className="bg-wm-neutral/10 p-4 rounded-lg border border-wm-neutral/30">
-            <pre className="text-wm-blue/70 whitespace-pre-wrap font-mono text-sm">
-              {analysis.detailedAnalysis}
-            </pre>
-          </div>
+        <div className="space-y-2">
+          <h3 className="text-wm-blue font-bold">{t('research.rfpDetailedAnalysis')}</h3>
+          {renderPreformatted(analysis.detailedAnalysis)}
         </div>
 
         {/* Requirements */}
-        <div>
-          <h3 className="text-wm-blue font-bold mb-2">{t('research.rfpRequirements')}</h3>
-          <div className="bg-wm-neutral/10 p-4 rounded-lg border border-wm-neutral/30">
-            <pre className="text-wm-blue/70 whitespace-pre-wrap font-mono text-sm">
-              {analysis.requirements}
-            </pre>
-          </div>
+        <div className="space-y-2">
+          <h3 className="text-wm-blue font-bold">{t('research.rfpRequirements')}</h3>
+          {renderPreformatted(analysis.requirements)}
         </div>
 
         {/* Timeline & Budget */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <h3 className="text-wm-blue font-bold mb-2">{t('research.rfpTimeline')}</h3>
+          <div className="space-y-2">
+            <h3 className="text-wm-blue font-bold">{t('research.rfpTimeline')}</h3>
             <div className="bg-wm-neutral/10 p-4 rounded-lg border border-wm-neutral/30">
-              <p className="text-wm-blue/70">{analysis.timeline}</p>
+              {renderTextBlocks(analysis.timeline)}
             </div>
           </div>
-          <div>
-            <h3 className="text-wm-blue font-bold mb-2">{t('research.rfpBudget')}</h3>
+          <div className="space-y-2">
+            <h3 className="text-wm-blue font-bold">{t('research.rfpBudget')}</h3>
             <div className="bg-wm-neutral/10 p-4 rounded-lg border border-wm-neutral/30">
-              <p className="text-wm-blue/70">{analysis.budget}</p>
+              {renderTextBlocks(analysis.budget)}
             </div>
           </div>
         </div>
 
         {/* Stakeholders & Success Criteria */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <h3 className="text-wm-blue font-bold mb-2">{t('research.rfpStakeholders')}</h3>
+          <div className="space-y-2">
+            <h3 className="text-wm-blue font-bold">{t('research.rfpStakeholders')}</h3>
             <div className="bg-wm-neutral/10 p-4 rounded-lg border border-wm-neutral/30">
-              <p className="text-wm-blue/70">{analysis.stakeholders}</p>
+              {renderTextBlocks(analysis.stakeholders)}
             </div>
           </div>
-          <div>
-            <h3 className="text-wm-blue font-bold mb-2">{t('research.rfpSuccessCriteria')}</h3>
+          <div className="space-y-2">
+            <h3 className="text-wm-blue font-bold">{t('research.rfpSuccessCriteria')}</h3>
             <div className="bg-wm-neutral/10 p-4 rounded-lg border border-wm-neutral/30">
-              <p className="text-wm-blue/70">{analysis.successCriteria}</p>
+              {renderTextBlocks(analysis.successCriteria)}
             </div>
           </div>
         </div>
 
         {/* Risks & Constraints */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <h3 className="text-wm-blue font-bold mb-2">{t('research.rfpRisks')}</h3>
+          <div className="space-y-2">
+            <h3 className="text-wm-blue font-bold">{t('research.rfpRisks')}</h3>
             <div className="bg-wm-neutral/10 p-4 rounded-lg border border-wm-neutral/30">
-              <p className="text-wm-blue/70">{analysis.risks}</p>
+              {renderTextBlocks(analysis.risks)}
             </div>
           </div>
-          <div>
-            <h3 className="text-wm-blue font-bold mb-2">{t('research.rfpConstraints')}</h3>
+          <div className="space-y-2">
+            <h3 className="text-wm-blue font-bold">{t('research.rfpConstraints')}</h3>
             <div className="bg-wm-neutral/10 p-4 rounded-lg border border-wm-neutral/30">
-              <p className="text-wm-blue/70">{analysis.constraints}</p>
+              {renderTextBlocks(analysis.constraints)}
             </div>
           </div>
         </div>
 
         {/* AI Analysis */}
-        <div>
-          <h3 className="text-wm-blue font-bold mb-2">{t('research.rfpAiAnalysis')}</h3>
-          <div className="space-y-4">
-            <div>
-              <h4 className="text-wm-blue/80 font-bold mb-2">{t('research.rfpAiRecommendations')}</h4>
+        <div className="space-y-3">
+          <h3 className="text-wm-blue font-bold">{t('research.rfpAiAnalysis')}</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <h4 className="text-wm-blue/80 font-bold">{t('research.rfpAiRecommendations')}</h4>
               <div className="bg-wm-neutral/10 p-4 rounded-lg border border-wm-neutral/30">
-                <p className="text-wm-blue/70">{analysis.aiRecommendations}</p>
+                {renderTextBlocks(analysis.aiRecommendations)}
               </div>
             </div>
-            <div>
-              <h4 className="text-wm-blue/80 font-bold mb-2">{t('research.rfpAiCapabilities')}</h4>
+            <div className="space-y-2">
+              <h4 className="text-wm-blue/80 font-bold">{t('research.rfpAiCapabilities')}</h4>
               <div className="bg-wm-neutral/10 p-4 rounded-lg border border-wm-neutral/30">
-                <p className="text-wm-blue/70">{analysis.aiCapabilities}</p>
+                {renderTextBlocks(analysis.aiCapabilities)}
               </div>
             </div>
           </div>
@@ -119,12 +138,10 @@ const RfpAnalysisView: React.FC<RfpAnalysisViewProps> = ({ analysis }) => {
 
         {/* Clarification Needed */}
         {analysis.clarificationNeeded && (
-          <div className="border-t border-wm-neutral pt-6">
-            <h3 className="text-wm-blue font-bold mb-2">{t('research.rfpClarificationNeeded')}</h3>
+          <div className="border-t border-wm-neutral pt-6 space-y-2">
+            <h3 className="text-wm-blue font-bold">{t('research.rfpClarificationNeeded')}</h3>
             <div className="bg-wm-yellow/20 border-l-4 border-wm-yellow p-4 rounded-r-lg">
-              <pre className="text-wm-blue/80 whitespace-pre-wrap font-mono text-sm">
-                {analysis.clarificationNeeded}
-              </pre>
+              {renderTextBlocks(analysis.clarificationNeeded)}
             </div>
           </div>
         )}

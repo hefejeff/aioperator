@@ -1,6 +1,67 @@
 import { ref, get, push, set, update, remove, query, orderByChild, equalTo } from 'firebase/database';
 import { db } from './firebaseInit';
-import type { Company, CompanyResearch, Meeting } from '../types';
+import type { Company, CompanyResearch, Meeting, DocumentAnalysis, RfpAnalysis, UploadedDocument, FunctionalHighLevelMeeting, CustomJourneyStep } from '../types';
+
+export const updateCompanyJourneyStatus = async (
+  companyId: string,
+  userId: string,
+  journeyUpdate: {
+    companyResearchComplete?: boolean;
+    documentsUploaded?: boolean;
+    transcriptsUploaded?: boolean;
+    kickoffPresentationUrl?: string;
+    kickoffMeetingNotes?: UploadedDocument[];
+    phase2SelectedDomains?: string[];
+    phase2SelectedUseCases?: string[];
+    functionalHighLevelMeetings?: FunctionalHighLevelMeeting[];
+    functionalDeepDiveMeetings?: FunctionalHighLevelMeeting[];
+    deepDiveSelectedDomains?: string[];
+    deepDiveSelectedUseCases?: string[];
+    customSteps?: CustomJourneyStep[];
+  },
+  journeyId?: string
+): Promise<void> => {
+  try {
+    const currentTime = Date.now();
+    const companyRef = ref(db, `companies/${companyId}`);
+    const snapshot = await get(companyRef);
+
+    if (!snapshot.exists()) {
+      console.error('Company not found:', companyId);
+      throw new Error('Company not found');
+    }
+
+    const company = snapshot.val() as Company;
+    if (company.createdBy !== userId) {
+      console.error('Authorization failed for updateCompanyJourneyStatus');
+      throw new Error('Not authorized to update this company');
+    }
+
+    const resolvedJourneyId = journeyId || company.currentJourneyId || `journey-${currentTime}`;
+    const existingJourneys = company.journeys || {};
+    const existingJourney = existingJourneys[resolvedJourneyId] || company.journey || {};
+    const nextJourney = {
+      ...existingJourney,
+      ...journeyUpdate,
+      id: resolvedJourneyId,
+      createdAt: existingJourney.createdAt || currentTime,
+      updatedAt: currentTime
+    };
+
+    await update(companyRef, {
+      journey: nextJourney,
+      journeys: {
+        ...existingJourneys,
+        [resolvedJourneyId]: nextJourney
+      },
+      currentJourneyId: resolvedJourneyId,
+      lastUpdated: currentTime
+    });
+  } catch (error) {
+    console.error('Failed to update company journey status:', error);
+    throw error;
+  }
+};
 
 // Company Operations
 export const saveCompany = async (
@@ -244,7 +305,10 @@ export const getCompany = async (companyIdOrName: string, userId?: string): Prom
       lastUpdated: companyData.lastUpdated,
       selectedScenarios: companyData.selectedScenarios || [],
       selectedDomains: companyData.selectedDomains || [],
-      research: companyData.research || null
+      research: companyData.research || null,
+      journey: companyData.journey,
+      journeys: companyData.journeys,
+      currentJourneyId: companyData.currentJourneyId
     } as Company;
 
     console.log('Returning company:', company);
@@ -362,6 +426,46 @@ export const updateCompanySelectedDomains = async (
   }
 };
 
+export const updateCompanyPhaseWorkflows = async (
+  companyId: string,
+  userId: string,
+  phase1Workflows: string[],
+  phase2Workflows: string[]
+): Promise<void> => {
+  try {
+    const currentTime = Date.now();
+    
+    // Get company to verify ownership
+    const companyRef = ref(db, `companies/${companyId}`);
+    const snapshot = await get(companyRef);
+    
+    if (!snapshot.exists()) {
+      console.error('Company not found:', companyId);
+      throw new Error('Company not found');
+    }
+    
+    const company = snapshot.val();
+    
+    if (company.createdBy !== userId) {
+      console.error('Authorization failed for updateCompanyPhaseWorkflows');
+      throw new Error('Not authorized to update this company');
+    }
+
+    // Update phase workflow selections
+    await update(companyRef, {
+      phase1Workflows,
+      phase2Workflows,
+      lastUpdated: currentTime
+    });
+    
+    console.log('Successfully updated phase workflows for company:', companyId);
+
+  } catch (error) {
+    console.error('Failed to update company phase workflows:', error);
+    throw error;
+  }
+};
+
 export const deleteCompany = async (companyId: string, userId: string): Promise<void> => {
   try {
     // First verify user owns the company
@@ -374,7 +478,12 @@ export const deleteCompany = async (companyId: string, userId: string): Promise<
     
     const company = snapshot.val() as Company;
     if (company.createdBy !== userId) {
-      throw new Error('Not authorized to delete this company');
+      const userRef = ref(db, `users/${userId}`);
+      const userSnap = await get(userRef);
+      const role = userSnap.exists() ? userSnap.val()?.role : 'USER';
+      if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
+        throw new Error('Not authorized to delete this company');
+      }
     }
     
     // Delete the company
@@ -480,7 +589,7 @@ export const deleteMeeting = async (companyId: string, meetingId: string): Promi
 // Document Operations - Updated to use correct path
 export const saveDocuments = async (
   companyId: string,
-  documents: Array<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number }>
+  documents: Array<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number; fileName?: string; content?: string; url?: string; path?: string; documentAnalysis?: DocumentAnalysis; analysis?: RfpAnalysis }>
 ): Promise<void> => {
   try {
     // FIXED: Save to correct path under research/currentResearch
@@ -498,7 +607,7 @@ export const saveDocuments = async (
   }
 };
 
-export const getDocuments = async (companyId: string): Promise<Array<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number }>> => {
+export const getDocuments = async (companyId: string): Promise<Array<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number; fileName?: string; content?: string; url?: string; path?: string; documentAnalysis?: DocumentAnalysis; analysis?: RfpAnalysis }>> => {
   try {
     // FIXED: Read from correct path under research/currentResearch
     const documentsRef = ref(db, `companies/${companyId}/research/currentResearch/documents`);

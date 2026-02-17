@@ -19,7 +19,7 @@ export const resources: Record<string, Record<string, string>> = {
     'profile.save': 'Save',
 
     // App
-    'app.title': 'AI Operator',
+    'app.title': 'Intellio Agent',
     'dashboard.training': 'Training',
     'dashboard.workflowHistory': 'Workflow History',
   'dashboard.workflows': 'AI Workflows',
@@ -503,7 +503,7 @@ export const resources: Record<string, Record<string, string>> = {
     'profile.save': 'Guardar',
 
     // App
-    'app.title': 'Operador IA',
+    'app.title': 'Intellio Agent',
     'dashboard.training': 'Entrenamiento',
     'dashboard.workflowHistory': 'Historial de Flujos de Trabajo',
   'dashboard.workflows': 'Flujos de Trabajo de IA',

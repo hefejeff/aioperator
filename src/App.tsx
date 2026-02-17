@@ -1,7 +1,7 @@
 
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { User } from 'firebase/auth';
 import { getWorkflowVersion, saveUserScenario } from './services/firebaseService';
 import { getCompany, updateCompanySelectedScenarios } from './services/companyService';
@@ -13,19 +13,19 @@ import { getScenarios, seedScenarios, seedExampleCompany, updateUserProfile, get
 import Header from './components/Header';
 import TrainingView from './components/TrainingView';
 import OperatorConsole from './components/OperatorConsole';
-import RightSidebar from './components/RightSidebar';
 // import LoginView from './components/LoginView';
 import PublicLanding from './components/PublicLanding';
 import LoadingScreen from './components/LoadingScreen';
 import AdminDashboard from './components/AdminDashboard';
 import WorkflowDetailView from './components/WorkflowDetailView';
 import CompanyResearch from './components/CompanyResearch';
+import CompanyResearchV2 from './components/CompanyResearchV2';
 import ChatInterface from './components/ChatInterface';
 import Dashboard2 from './components/Dashboard2';
 import { ALL_SCENARIOS } from './constants';
 import { I18nProvider } from './i18n';
 
-type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'ADMIN' | 'WORKFLOW_DETAIL' | 'RESEARCH';
+type View = 'DASHBOARD' | 'TRAINING' | 'SCENARIO' | 'ADMIN' | 'WORKFLOW_DETAIL' | 'RESEARCH' | 'COMPANY_V2';
 
 type ScenarioCreationContext = {
   source: 'RESEARCH' | 'DEFAULT';
@@ -44,6 +44,7 @@ const pathToView: Record<string, View> = {
   '/admin': 'ADMIN',
   '/workflow': 'WORKFLOW_DETAIL',
   '/research': 'RESEARCH',
+  '/company2': 'COMPANY_V2',
 };
 
 const viewToPath: Record<View, string> = {
@@ -53,6 +54,7 @@ const viewToPath: Record<View, string> = {
   'ADMIN': '/admin',
   'WORKFLOW_DETAIL': '/workflow',
   'RESEARCH': '/research',
+  'COMPANY_V2': '/company2',
 };
 
 const App: React.FC = () => {
@@ -75,7 +77,6 @@ const App: React.FC = () => {
   const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [isWorkflowDrawerOpen, setIsWorkflowDrawerOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -201,6 +202,9 @@ const App: React.FC = () => {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [activeCompanyName, setActiveCompanyName] = useState<string | null>(null);
   const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
+  void highScores;
+  void averageScores;
+  void selectedCompanyId;
 
   // Sync view state with URL changes and redirect root to dashboard for logged-in users
   useEffect(() => {
@@ -357,6 +361,9 @@ const App: React.FC = () => {
     goal_es?: string;
     domain?: string;
     industry?: string;
+    process?: string;
+    valueDrivers?: string;
+    painPoints?: string;
     currentWorkflowImage?: File;
   }) => {
     if (!user) return;
@@ -507,6 +514,7 @@ const App: React.FC = () => {
           const initialCompanyId = companyIdFromUrl || lastViewedCompany;
           
           return <CompanyResearch 
+                    user={user}
                     userId={user.uid} 
                     initialCompany={initialCompanyId || undefined}
                     initialTab={tabFromUrl || undefined}
@@ -533,6 +541,11 @@ const App: React.FC = () => {
                   />;
         }
         return null;
+      case 'COMPANY_V2':
+        if (user) {
+          return <CompanyResearchV2 user={user} />;
+        }
+        return null;
     }
   };
 
@@ -547,7 +560,6 @@ const App: React.FC = () => {
         onNavigate={setView}
         user={user} 
         userRole={role} 
-        onOpenWorkflowDrawer={() => setIsWorkflowDrawerOpen(true)}
       />
       {error && (
         <div className="bg-wm-yellow/20 border-l-4 border-wm-yellow text-wm-blue p-4 mx-4 my-6 sm:mx-6 md:mx-8 rounded-r-lg shadow-lg animate-fade-in" role="alert">
@@ -583,12 +595,6 @@ const App: React.FC = () => {
               )}
             </main>
             <div className="w-full lg:w-auto lg:shrink-0">
-              <RightSidebar 
-                user={user} 
-                onSelectWorkflow={handleSelectWorkflow}
-                isOpen={isWorkflowDrawerOpen}
-                onClose={() => setIsWorkflowDrawerOpen(false)}
-              />
             </div>
           </div>
         ) : (

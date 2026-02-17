@@ -45,6 +45,8 @@ export interface StoredEvaluationResult extends EvaluationResult {
   id: string; // The evaluation's own push ID
   userId: string;
   scenarioId: string;
+  companyId?: string | null;
+  companyName?: string | null;
   timestamp: number;
   workflowExplanation: string;
   imageUrl: string | null;
@@ -60,11 +62,44 @@ export interface AggregatedEvaluationResult extends StoredEvaluationResult {
 
 export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER';
 
+export type JourneyStepKey =
+  | 'companyResearch'
+  | 'targetDomains'
+  | 'kickoffMeeting'
+  | 'makeHypothesesHighLevel'
+  | 'functionalHighLevel'
+  | 'makeHypothesesDeepDive'
+  | 'functionalDeepDive'
+  | 'designIntegrationStrategy'
+  | 'createDevelopmentDocumentation';
+
+export type JourneyStepSettings = Record<JourneyStepKey, boolean>;
+
+export interface CustomJourneyStep {
+  id: string;
+  title: string;
+  description?: string;
+  phase?: string;
+  aiModelId?: string;
+  prompt?: string;
+  selectedDocumentIds?: string[];
+  selectedTranscriptIds?: string[];
+  outputType?: 'CHAT_INTERFACE' | 'EXCEL_DOC' | 'PRESENTATION';
+  excelTemplate?: {
+    fileName: string;
+    dataUrl: string;
+    uploadedAt: number;
+  };
+  createdAt: number;
+  updatedAt: number;
+}
+
 // Meeting types
 export interface Meeting {
   id: string;
   companyId: string;
   title: string;
+  type?: 'Project Kickoff' | 'Functional High Level Overview' | 'Functional Deep Dive Session' | 'DSU' | 'Technical Discovery' | 'Stakeholder Interview' | 'Requirements Gathering' | 'Other'; // Meeting classification
   date: string; // ISO date string
   time: string; // HH:mm format
   participants: string[]; // Array of participant names/emails
@@ -83,8 +118,55 @@ export interface Company {
   lastUpdated: number;
   selectedScenarios: string[]; // Array of scenario IDs selected for this company
   selectedDomains?: string[]; // Array of domain names user has selected/toggled on
+  phase1Workflows?: string[]; // Workflow IDs to include in Phase 1 presentations
+  phase2Workflows?: string[]; // Workflow IDs to include in Phase 2 presentations
+  currentJourneyId?: string;
+  journeys?: Record<string, CompanyJourney>;
+  journey?: {
+    companyResearchComplete?: boolean;
+    documentsUploaded?: boolean;
+    transcriptsUploaded?: boolean;
+    kickoffPresentationUrl?: string;
+    kickoffMeetingNotes?: UploadedDocument[];
+    phase2SelectedDomains?: string[];
+    phase2SelectedUseCases?: string[];
+    functionalHighLevelMeetings?: FunctionalHighLevelMeeting[];
+    functionalDeepDiveMeetings?: FunctionalHighLevelMeeting[];
+    deepDiveSelectedDomains?: string[];
+    deepDiveSelectedUseCases?: string[];
+    customSteps?: CustomJourneyStep[];
+    updatedAt?: number;
+  };
   meetings?: Meeting[]; // Array of meetings for this company
   research: CompanyResearch;
+}
+
+export interface CompanyJourney {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
+  companyResearchComplete?: boolean;
+  documentsUploaded?: boolean;
+  transcriptsUploaded?: boolean;
+  kickoffPresentationUrl?: string;
+  kickoffMeetingNotes?: UploadedDocument[];
+  phase2SelectedDomains?: string[];
+  phase2SelectedUseCases?: string[];
+  functionalHighLevelMeetings?: FunctionalHighLevelMeeting[];
+  functionalDeepDiveMeetings?: FunctionalHighLevelMeeting[];
+  deepDiveSelectedDomains?: string[];
+  deepDiveSelectedUseCases?: string[];
+  customSteps?: CustomJourneyStep[];
+}
+
+export interface FunctionalHighLevelMeeting {
+  id: string;
+  domain: string;
+  functionName: string;
+  presentationUrl?: string;
+  notes: UploadedDocument[];
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface RfpAnalysis {
@@ -238,6 +320,8 @@ export interface WorkflowVersion {
   id: string;
   userId: string;
   scenarioId: string;
+  companyId?: string | null;
+  companyName?: string | null;
   workflowExplanation: string;
   prdMarkdown: string | null;
   pitchMarkdown: string | null;
@@ -252,6 +336,7 @@ export interface WorkflowVersion {
   demoProjectUrl?: string | null; // Google AI Studio project URL
   demoPublishedUrl?: string | null; // Published demo URL
   demoPrompt?: string | null; // Generated demo prompt text
+  gammaDownloadUrl?: string | null; // Gamma presentation download URL
   leanCanvas?: any; // Optional saved Lean Canvas data
   lastModified?: number; // Timestamp of last modification
   team?: WorkflowTeam; // Optional team collaboration data

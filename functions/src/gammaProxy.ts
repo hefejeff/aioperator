@@ -11,7 +11,7 @@ const GAMMA_API_URL = 'https://public-api.gamma.app/v1.0';
 
 interface GammaGenerateRequest {
   text: string;
-  format?: 'pptx' | 'pdf' | 'webpage';
+  format?: 'pptx' | 'pdf' | 'web' | 'webpage';
   apiKey: string;
   gammaId?: string;
   themeId?: string;
@@ -38,19 +38,23 @@ export const generateGammaPresentation = onRequest({
   try {
     // Gamma API uses /generations/from-template endpoint
     // Authentication uses x-api-key header
-    const requestBody = {
+    const exportAs = format === 'pptx' || format === 'pdf' ? format : undefined;
+    const requestBody: Record<string, unknown> = {
       prompt: text,
-      exportAs: format,
       gammaId: gammaId,
       themeId: themeId,
     };
+
+    if (exportAs) {
+      requestBody.exportAs = exportAs;
+    }
 
     console.log('Calling Gamma API:', {
       url: `${GAMMA_API_URL}/generations/from-template`,
       hasApiKey: !!apiKey,
       apiKeyPrefix: apiKey.substring(0, 15) + '...',
       promptLength: text.length,
-      exportAs: format,
+      exportAs: exportAs || 'none',
       gammaId: gammaId,
       themeId: themeId,
     });

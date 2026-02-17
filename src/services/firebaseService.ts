@@ -19,10 +19,53 @@ import type {
   Role,
   CompanyResearch,
   CompanyResearchEntry,
+  Company,
   RelatedScenario,
   RfpAnalysis
+  ,JourneyStepSettings
 } from '../types';
 import { ALL_SCENARIOS } from '../constants';
+
+export const DEFAULT_JOURNEY_STEP_SETTINGS: JourneyStepSettings = {
+  companyResearch: true,
+  targetDomains: true,
+  kickoffMeeting: true,
+  makeHypothesesHighLevel: true,
+  functionalHighLevel: true,
+  makeHypothesesDeepDive: true,
+  functionalDeepDive: true,
+  designIntegrationStrategy: true,
+  createDevelopmentDocumentation: true
+};
+
+export const getJourneyStepSettings = async (): Promise<JourneyStepSettings> => {
+  try {
+    const settingsRef = ref(db, 'users/system/journeyStepSettings');
+    const snapshot = await get(settingsRef);
+    if (!snapshot.exists()) {
+      return DEFAULT_JOURNEY_STEP_SETTINGS;
+    }
+
+    const raw = snapshot.val() as Partial<JourneyStepSettings>;
+    return {
+      ...DEFAULT_JOURNEY_STEP_SETTINGS,
+      ...raw,
+      companyResearch: true
+    };
+  } catch (error) {
+    console.error('Failed to load journey step settings:', error);
+    return DEFAULT_JOURNEY_STEP_SETTINGS;
+  }
+};
+
+export const saveJourneyStepSettings = async (settings: JourneyStepSettings): Promise<void> => {
+  const settingsRef = ref(db, 'users/system/journeyStepSettings');
+  await set(settingsRef, {
+    ...settings,
+    companyResearch: true,
+    updatedAt: Date.now()
+  });
+};
 
 // Get evaluations for a specific user and scenario
 // Get all evaluations for a user across all scenarios
@@ -67,8 +110,8 @@ export const saveEvaluation = async (
   evaluation: EvaluationResult,
   workflowExplanation: string,
   imageUrl: string | null,
-  displayName: string | null,
-  companyId?: string
+  companyId?: string,
+  companyName?: string
 ): Promise<string> => {
   try {
     // First save the workflow version to get its ID
@@ -76,7 +119,9 @@ export const saveEvaluation = async (
       evaluationScore: evaluation.score,
       evaluationFeedback: evaluation.feedback,
       imageBase64: imageUrl ? imageUrl.split(',')[1] : null,
-      imageMimeType: imageUrl ? imageUrl.split(';')[0].split(':')[1] : null
+      imageMimeType: imageUrl ? imageUrl.split(';')[0].split(':')[1] : null,
+      companyId: companyId || null,
+      companyName: companyName || null
     });
 
     // Now save the evaluation with a reference to the workflow version
@@ -84,6 +129,8 @@ export const saveEvaluation = async (
       ...evaluation,
       userId,
       scenarioId,
+      companyId: companyId || null,
+      companyName: companyName || null,
       workflowExplanation,
       imageUrl,
       workflowVersionId,
@@ -333,6 +380,9 @@ export const saveWorkflowVersion = async (
     demoProjectUrl?: string | null;
     demoPublishedUrl?: string | null;
     demoPrompt?: string | null;
+    companyId?: string | null;
+    companyName?: string | null;
+    gammaDownloadUrl?: string | null;
   }
 ): Promise<string> => {
   try {
@@ -342,6 +392,8 @@ export const saveWorkflowVersion = async (
     const payload = {
       userId,
       scenarioId,
+      companyId: options?.companyId ?? null,
+      companyName: options?.companyName ?? null,
       workflowExplanation,
       sourceEvaluationId: sourceEvaluationId || null,
       prdMarkdown: options?.prdMarkdown ?? null,
@@ -356,6 +408,7 @@ export const saveWorkflowVersion = async (
       demoProjectUrl: options?.demoProjectUrl ?? null,
       demoPublishedUrl: options?.demoPublishedUrl ?? null,
       demoPrompt: options?.demoPrompt ?? null,
+      gammaDownloadUrl: options?.gammaDownloadUrl ?? null,
       timestamp: Date.now(),
     };
     console.log('Workflow Version payload:', payload);
@@ -902,12 +955,29 @@ async function analyzeAndUpdateDocument(
       }
       return doc;
     });
-    
-    const currentResearchRef = ref(db, `companies/${companyId}/research/currentResearch`);
-    await set(currentResearchRef, {
+
+    const isRfpLike = documentAnalysis.category === 'RFP' || documentAnalysis.category === 'SOW';
+    const analyzedDoc = updatedDocuments.find((doc: any) => doc.id === documentId);
+
+    const updatedCurrentResearch = {
       ...company.research?.currentResearch,
-      documents: updatedDocuments
-    });
+      documents: updatedDocuments,
+      ...(isRfpLike && analyzedDoc
+        ? {
+            rfpDocument: {
+              content: analyzedDoc.content || content,
+              fileName: analyzedDoc.fileName || fileName,
+              uploadedAt: analyzedDoc.uploadedAt || Date.now(),
+              ...(analyzedDoc.url ? { url: analyzedDoc.url } : {}),
+              ...(analyzedDoc.path ? { path: analyzedDoc.path } : {}),
+              ...(analysis ? { analysis } : {})
+            }
+          }
+        : {})
+    };
+
+    const currentResearchRef = ref(db, `companies/${companyId}/research/currentResearch`);
+    await set(currentResearchRef, updatedCurrentResearch);
   } catch (error) {
     console.error('Failed to analyze document:', error);
     // Mark analysis as complete even if it failed
@@ -1081,6 +1151,7 @@ export const saveCompanyResearch = async (
 ): Promise<string> => {
   try {
     const timestamp = Date.now();
+    const journeyId = `journey-${timestamp}`;
     const entry: CompanyResearchEntry = {
       ...researchEntry,
       timestamp
@@ -1112,12 +1183,28 @@ export const saveCompanyResearch = async (
       lastUpdated: timestamp
     };
 
+    const nextJourney = {
+      id: journeyId,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      companyResearchComplete: true,
+      documentsUploaded: (researchEntry as any)?.documents?.length > 0,
+      transcriptsUploaded: false
+    };
+
+    const existingJourneys = existingCompany?.journeys || {};
     if (companyId && existingCompany) {
       // Update existing company
       const companyRef = ref(db, `companies/${companyId}`);
       await update(companyRef, {
         research: researchData,
-        lastUpdated: timestamp
+        lastUpdated: timestamp,
+        journey: nextJourney,
+        journeys: {
+          ...existingJourneys,
+          [journeyId]: nextJourney
+        },
+        currentJourneyId: journeyId
       });
     } else {
       // Create new company
@@ -1130,7 +1217,12 @@ export const saveCompanyResearch = async (
         createdAt: timestamp,
         lastUpdated: timestamp,
         selectedScenarios: [],
-        research: researchData
+        research: researchData,
+        journey: nextJourney,
+        journeys: {
+          [journeyId]: nextJourney
+        },
+        currentJourneyId: journeyId
       });
     }
 
@@ -1160,7 +1252,7 @@ export const getCompanyResearch = async (
   }
 };
 
-export const listCompanyResearch = async (userId: string): Promise<CompanyResearch[]> => {
+export const listCompanyResearch = async (userId: string): Promise<Company[]> => {
   try {
     const companiesRef = ref(db, 'companies');
     const companiesQuery = query(companiesRef, orderByChild('createdBy'), equalTo(userId));
@@ -1170,28 +1262,24 @@ export const listCompanyResearch = async (userId: string): Promise<CompanyResear
       return [];
     }
     
-    const companies = Object.values<any>(snapshot.val());
-    console.log('=== listCompanyResearch DEBUG ===');
-    console.log('Total companies found:', companies.length);
-    
-    const result = companies
-      .filter(company => company.research) // Only include companies with research data
-      .map(company => {
-        console.log('Company:', company.name);
-        console.log('Has research:', !!company.research);
-        console.log('Has currentResearch:', !!company.research?.currentResearch);
-        console.log('Has documents:', !!company.research?.currentResearch?.documents);
-        console.log('Documents count:', company.research?.currentResearch?.documents?.length || 0);
-        console.log('Documents:', company.research?.currentResearch?.documents);
-        
-        return {
-          ...company.research,
-          selectedScenarios: company.selectedScenarios || [] // Include selectedScenarios from Company level
-        };
-      });
-    
-    console.log('Returning research data:', result);
-    return result;
+    const companies = snapshot.val();
+    return Object.entries<any>(companies)
+      .filter(([, company]) => company.research)
+      .map(([id, company]) => ({
+        id,
+        name: company.name,
+        createdBy: company.createdBy,
+        createdAt: company.createdAt,
+        lastUpdated: company.lastUpdated,
+        selectedScenarios: company.selectedScenarios || [],
+        selectedDomains: company.selectedDomains || [],
+        phase1Workflows: company.phase1Workflows || [],
+        phase2Workflows: company.phase2Workflows || [],
+        journey: company.journey,
+        journeys: company.journeys,
+        currentJourneyId: company.currentJourneyId,
+        research: company.research || null
+      }));
   } catch (error) {
     console.error('Failed to list company research:', error);
     throw error;
@@ -1217,7 +1305,7 @@ export const searchOtherUsersCompanies = async (
     
     const searchLower = searchQuery.toLowerCase();
     return Object.entries<any>(snapshot.val())
-      .filter(([id, company]) => 
+      .filter(([, company]) => 
         company.createdBy !== currentUserId && // Exclude current user's companies
         company.name?.toLowerCase().includes(searchLower) // Match search query
       )
@@ -1269,6 +1357,235 @@ export const getRelatedScenarios = async (
   _companyId: string
 ): Promise<RelatedScenario[]> => {
   return []; // Related scenarios are no longer stored in the database
+};
+
+// Migrate existing runs to include company info from evaluations/companies
+export const migrateCompanyInfoForUserRuns = async (userId: string): Promise<{ workflowUpdates: number; evaluationUpdates: number }> => {
+  try {
+    const companiesRef = ref(db, 'companies');
+    const companiesQuery = query(companiesRef, orderByChild('createdBy'), equalTo(userId));
+    const [companiesSnap, evaluationsSnap, workflowsSnap] = await Promise.all([
+      get(companiesQuery),
+      get(ref(db, `evaluations/${userId}`)),
+      get(ref(db, `workflowVersions/${userId}`))
+    ]);
+
+    const companyNameById: Record<string, string> = {};
+    const companyIdByName: Record<string, string> = {};
+    const scenarioCompanyCandidates: Record<string, string[]> = {};
+
+    if (companiesSnap.exists()) {
+      for (const [id, company] of Object.entries<any>(companiesSnap.val())) {
+        if (company?.name) {
+          companyNameById[id] = company.name;
+          companyIdByName[company.name.toLowerCase()] = id;
+          const selected = Array.isArray(company.selectedScenarios) ? company.selectedScenarios : [];
+          selected.forEach((scenarioId: string) => {
+            if (!scenarioCompanyCandidates[scenarioId]) {
+              scenarioCompanyCandidates[scenarioId] = [];
+            }
+            scenarioCompanyCandidates[scenarioId].push(id);
+          });
+        }
+      }
+    }
+
+    const scenarioCompanyLookup: Record<string, { companyId: string; companyName: string }> = {};
+    Object.entries(scenarioCompanyCandidates).forEach(([scenarioId, companyIds]) => {
+      const uniqueIds = Array.from(new Set(companyIds));
+      if (uniqueIds.length === 1) {
+        const companyId = uniqueIds[0];
+        const companyName = companyNameById[companyId];
+        if (companyName) {
+          scenarioCompanyLookup[scenarioId] = { companyId, companyName };
+        }
+      }
+    });
+
+    const workflowCompanyById = new Map<string, { companyId?: string | null; companyName?: string | null }>();
+    if (workflowsSnap.exists()) {
+      const workflowsData = workflowsSnap.val();
+      for (const scenarioId of Object.keys(workflowsData)) {
+        const scenarioWorkflows = workflowsData[scenarioId] || {};
+        for (const [workflowId, workflow] of Object.entries<any>(scenarioWorkflows)) {
+          if (workflow?.companyId || workflow?.companyName) {
+            workflowCompanyById.set(workflowId, {
+              companyId: workflow.companyId ?? null,
+              companyName: workflow.companyName ?? null
+            });
+          }
+        }
+      }
+    }
+
+    const evaluationCompanyByWorkflowId = new Map<string, { companyId?: string | null; companyName?: string | null }>();
+    if (evaluationsSnap.exists()) {
+      const evaluationsData = evaluationsSnap.val();
+      for (const evalId of Object.keys(evaluationsData)) {
+        const evaluation = evaluationsData[evalId];
+        if (evaluation?.workflowVersionId) {
+          evaluationCompanyByWorkflowId.set(evaluation.workflowVersionId, {
+            companyId: evaluation.companyId ?? null,
+            companyName: evaluation.companyName ?? null
+          });
+        }
+      }
+    }
+
+    let workflowUpdates = 0;
+    if (workflowsSnap.exists()) {
+      const workflowsData = workflowsSnap.val();
+      for (const scenarioId of Object.keys(workflowsData)) {
+        const scenarioWorkflows = workflowsData[scenarioId] || {};
+        for (const [workflowId, workflow] of Object.entries<any>(scenarioWorkflows)) {
+          let companyId = workflow.companyId ?? null;
+          let companyName = workflow.companyName ?? null;
+
+          if ((!companyId && !companyName) || !companyName || !companyId) {
+            const evalCompany = evaluationCompanyByWorkflowId.get(workflowId);
+            if (evalCompany) {
+              companyId = companyId || evalCompany.companyId || null;
+              companyName = companyName || evalCompany.companyName || null;
+            }
+          }
+
+          if (!companyName && companyId) {
+            companyName = companyNameById[companyId] || null;
+          }
+          if (!companyId && companyName) {
+            companyId = companyIdByName[companyName.toLowerCase()] || null;
+          }
+
+          if ((!companyId || !companyName) && scenarioCompanyLookup[scenarioId]) {
+            companyId = companyId || scenarioCompanyLookup[scenarioId].companyId;
+            companyName = companyName || scenarioCompanyLookup[scenarioId].companyName;
+          }
+
+          const needsUpdate = companyId !== (workflow.companyId ?? null) || companyName !== (workflow.companyName ?? null);
+          if (needsUpdate) {
+            await update(ref(db, `workflowVersions/${userId}/${scenarioId}/${workflowId}`), {
+              companyId: companyId || null,
+              companyName: companyName || null
+            });
+            workflowUpdates += 1;
+          }
+
+          if (companyId || companyName) {
+            workflowCompanyById.set(workflowId, { companyId, companyName });
+          }
+        }
+      }
+    }
+
+    let evaluationUpdates = 0;
+    if (evaluationsSnap.exists()) {
+      const evaluationsData = evaluationsSnap.val();
+      for (const evalId of Object.keys(evaluationsData)) {
+        const evaluation = evaluationsData[evalId];
+        let companyId = evaluation.companyId ?? null;
+        let companyName = evaluation.companyName ?? null;
+
+        if ((!companyId && !companyName) || !companyName || !companyId) {
+          const workflowCompany = evaluation?.workflowVersionId ? workflowCompanyById.get(evaluation.workflowVersionId) : undefined;
+          if (workflowCompany) {
+            companyId = companyId || workflowCompany.companyId || null;
+            companyName = companyName || workflowCompany.companyName || null;
+          }
+        }
+
+        if (!companyName && companyId) {
+          companyName = companyNameById[companyId] || null;
+        }
+        if (!companyId && companyName) {
+          companyId = companyIdByName[companyName.toLowerCase()] || null;
+        }
+
+        if ((!companyId || !companyName) && evaluation?.scenarioId && scenarioCompanyLookup[evaluation.scenarioId]) {
+          companyId = companyId || scenarioCompanyLookup[evaluation.scenarioId].companyId;
+          companyName = companyName || scenarioCompanyLookup[evaluation.scenarioId].companyName;
+        }
+
+        const needsUpdate = companyId !== (evaluation.companyId ?? null) || companyName !== (evaluation.companyName ?? null);
+        if (needsUpdate) {
+          await update(ref(db, `evaluations/${userId}/${evalId}`), {
+            companyId: companyId || null,
+            companyName: companyName || null
+          });
+          evaluationUpdates += 1;
+        }
+      }
+    }
+
+    return { workflowUpdates, evaluationUpdates };
+  } catch (error) {
+    console.error('Failed to migrate company info for runs:', error);
+    throw error;
+  }
+};
+
+// One-time backfill for unknown company runs
+export const backfillUnknownCompanyForUserRuns = async (
+  userId: string,
+  companyName: string
+): Promise<{ workflowUpdates: number; evaluationUpdates: number; companyId: string | null }> => {
+  try {
+    const companiesRef = ref(db, 'companies');
+    const companiesQuery = query(companiesRef, orderByChild('createdBy'), equalTo(userId));
+    const companiesSnap = await get(companiesQuery);
+
+    let companyId: string | null = null;
+    if (companiesSnap.exists()) {
+      for (const [id, company] of Object.entries<any>(companiesSnap.val())) {
+        if (company?.name && company.name.toLowerCase() === companyName.toLowerCase()) {
+          companyId = id;
+          break;
+        }
+      }
+    }
+
+    const evaluationsSnap = await get(ref(db, `evaluations/${userId}`));
+    const workflowsSnap = await get(ref(db, `workflowVersions/${userId}`));
+
+    let workflowUpdates = 0;
+    if (workflowsSnap.exists()) {
+      const workflowsData = workflowsSnap.val();
+      for (const scenarioId of Object.keys(workflowsData)) {
+        const scenarioWorkflows = workflowsData[scenarioId] || {};
+        for (const [workflowId, workflow] of Object.entries<any>(scenarioWorkflows)) {
+          const currentName = workflow?.companyName ?? null;
+          const isUnknown = !currentName || currentName.toLowerCase() === 'unknown company';
+          if (isUnknown) {
+            await update(ref(db, `workflowVersions/${userId}/${scenarioId}/${workflowId}`), {
+              companyId: companyId || null,
+              companyName
+            });
+            workflowUpdates += 1;
+          }
+        }
+      }
+    }
+
+    let evaluationUpdates = 0;
+    if (evaluationsSnap.exists()) {
+      const evaluationsData = evaluationsSnap.val();
+      for (const [evalId, evaluation] of Object.entries<any>(evaluationsData)) {
+        const currentName = evaluation?.companyName ?? null;
+        const isUnknown = !currentName || currentName.toLowerCase() === 'unknown company';
+        if (isUnknown) {
+          await update(ref(db, `evaluations/${userId}/${evalId}`), {
+            companyId: companyId || null,
+            companyName
+          });
+          evaluationUpdates += 1;
+        }
+      }
+    }
+
+    return { workflowUpdates, evaluationUpdates, companyId };
+  } catch (error) {
+    console.error('Failed to backfill unknown company runs:', error);
+    throw error;
+  }
 };
 
 export const deleteUser = async (adminUserId: string, targetUserId: string): Promise<boolean> => {

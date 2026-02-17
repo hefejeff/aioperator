@@ -20,6 +20,7 @@
     "dotenv": "^17.2.3",
     "firebase": "^10.12.3",
     "firebase-admin": "^13.6.0",
+    "mammoth": "^1.11.0",
     "mermaid": "^11.3.0",
     "openai": "^6.8.1",
     "pdfjs-dist": "^4.8.69",

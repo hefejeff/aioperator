@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../i18n';
 import type { CompanyResearch, Scenario, StoredEvaluationResult, Meeting } from '../types';
 import MeetingsList from './MeetingsList';
-import { saveMeeting, getMeetings, updateMeeting, deleteMeeting, updateCompanySelectedDomains, updateCompanySelectedScenarios, saveDocuments, getDocuments, deleteDocument } from '../services/companyService';
-import { analyzeDocumentWithGemini } from '../services/geminiService';
+import { saveMeeting, getMeetings, updateMeeting, deleteMeeting, updateCompanySelectedDomains, updateCompanySelectedScenarios, updateCompanyPhaseWorkflows, saveDocuments, getDocuments, deleteDocument } from '../services/companyService';
+import { analyzeDocumentCategory, analyzeRfpDocument } from '../services/geminiService';
 import { extractTextFromPDF } from '../services/pdfExtractor';
-import { generateGammaPresentation, getGammaApiKey, setGammaApiKey, pollGammaCompletion } from '../services/gammaService';
 import { db } from '../services/firebaseInit';
 import { ref, set, query, orderByChild, equalTo, onValue, remove } from 'firebase/database';
 
@@ -33,48 +32,229 @@ interface CompanyResearchContentProps {
   onSelectedScenariosChange?: (scenarios: string[]) => void;
   onActiveTabChange?: (tab: 'info' | 'domains' | 'documents' | 'meetings') => void;
   onCreateScenario?: (context?: { companyId?: string; companyName?: string; domain?: string }) => void;
+  initialActiveTab?: 'info' | 'domains' | 'documents' | 'meetings';
+  showTabs?: boolean;
 }
 
 const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
   companyInfo,
   scenarioRuns = {},
   scenariosById = {},
-  isScenarioRunsLoading = false,
-  onViewWorkflow,
   companyId,
   userId,
-  selectedRunIds = [],
-  onToggleRunId,
-  onGenerateDiviPrompt,
-  isCreatingWordPressPage = false,
-  wordPressPageUrl = null,
-  onCreatePresentation,
-  onDeleteRun,
-  documentUploadSection,
   allScenarios = [],
   onSelectScenario,
   initialSelectedDomains = [],
   onSelectedDomainsChange,
   selectedScenarios = [],
-  onSelectedScenariosChange,
   onActiveTabChange,
   onCreateScenario,
+  initialActiveTab,
+  showTabs = true,
 }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'info' | 'domains' | 'documents' | 'meetings'>('info');
+  const renderInlineBold = (text: string) => {
+    const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+    return parts.map((part, idx) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return (
+          <strong key={idx} className="font-semibold text-slate-900">
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+      return <span key={idx}>{part}</span>;
+    });
+  };
+
+  const renderMarkdown = (text?: string) => {
+    if (!text) {
+      return <p className="text-slate-500 text-sm">No data provided.</p>;
+    }
+
+    const lines = text.split('\n');
+    const blocks: React.ReactNode[] = [];
+    let listItems: Array<{ text: string; indent: number }> = [];
+    let listType: 'ol' | 'ul' | null = null;
+
+    const flushList = () => {
+      if (!listType || listItems.length === 0) return;
+      const listClass = listType === 'ol' ? 'list-decimal' : 'list-disc';
+      const ListTag = listType === 'ol' ? 'ol' : 'ul';
+      blocks.push(
+        <ListTag key={`list-${blocks.length}`} className={`list-inside space-y-1 text-sm text-slate-800 ${listClass}`}>
+          {listItems.map((item, idx) => (
+            <li key={idx} style={{ marginLeft: `${item.indent * 1.25}rem` }}>
+              {renderInlineBold(item.text)}
+            </li>
+          ))}
+        </ListTag>
+      );
+      listItems = [];
+      listType = null;
+    };
+
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        flushList();
+        return;
+      }
+
+      const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
+      if (headingMatch) {
+        flushList();
+        const headingText = headingMatch[2];
+        blocks.push(
+          <h5 key={`heading-${blocks.length}`} className="text-sm font-bold text-slate-900 mt-2">
+            {renderInlineBold(headingText)}
+          </h5>
+        );
+        return;
+      }
+
+      const leadingSpaces = line.match(/^\s*/)?.[0]?.length || 0;
+      const indentLevel = Math.floor(leadingSpaces / 2);
+      const orderedMatch = trimmed.match(/^\d+\.\s+(.*)$/);
+      const unorderedMatch = trimmed.match(/^[-*•]\s+(.*)$/);
+
+      if (orderedMatch) {
+        if (listType !== 'ol') {
+          flushList();
+          listType = 'ol';
+        }
+        listItems.push({ text: orderedMatch[1], indent: indentLevel });
+        return;
+      }
+
+      if (unorderedMatch) {
+        if (listType !== 'ul') {
+          flushList();
+          listType = 'ul';
+        }
+        listItems.push({ text: unorderedMatch[1], indent: indentLevel });
+        return;
+      }
+
+      flushList();
+      blocks.push(
+        <p key={`p-${blocks.length}`} className="text-sm text-slate-800 leading-relaxed">
+          {renderInlineBold(trimmed)}
+        </p>
+      );
+    });
+
+    flushList();
+
+    return <div className="space-y-2">{blocks}</div>;
+  };
+
+  const buildModalCopyText = (doc: typeof selectedDocument) => {
+    if (!doc) return '';
+    const lines: string[] = [];
+    const title = doc.title || 'Document';
+    const type = doc.documentAnalysis?.category || doc.type || 'Document';
+    const date = new Date(doc.uploadedAt).toLocaleString('en-US');
+
+    lines.push(`# ${title}`);
+    lines.push(`Type: ${type}`);
+    lines.push(`Uploaded: ${date}`);
+    lines.push('');
+
+    const summary = doc.documentAnalysis?.summary || doc.context;
+    if (summary) {
+      lines.push('## Summary');
+      lines.push(summary);
+      lines.push('');
+    }
+
+    if (doc.documentAnalysis?.keyPoints?.length) {
+      lines.push('## Key Points');
+      doc.documentAnalysis.keyPoints.forEach((point) => {
+        lines.push(`- ${point}`);
+      });
+      lines.push('');
+    }
+
+    if (doc.analysis) {
+      lines.push('## RFP Analysis');
+      lines.push('### Project Structure');
+      lines.push(doc.analysis.projectStructure || '');
+      lines.push('');
+      lines.push('### Detailed Analysis');
+      lines.push(doc.analysis.detailedAnalysis || '');
+      lines.push('');
+      lines.push('### Requirements');
+      lines.push(doc.analysis.requirements || '');
+      lines.push('');
+      lines.push('### Timeline');
+      lines.push(doc.analysis.timeline || '');
+      lines.push('');
+      lines.push('### Budget');
+      lines.push(doc.analysis.budget || '');
+      lines.push('');
+      lines.push('### Stakeholders');
+      lines.push(doc.analysis.stakeholders || '');
+      lines.push('');
+      lines.push('### Success Criteria');
+      lines.push(doc.analysis.successCriteria || '');
+      lines.push('');
+      lines.push('### Risks');
+      lines.push(doc.analysis.risks || '');
+      lines.push('');
+      lines.push('### Constraints');
+      lines.push(doc.analysis.constraints || '');
+      lines.push('');
+      lines.push('### AI Recommendations');
+      lines.push(doc.analysis.aiRecommendations || '');
+      lines.push('');
+      lines.push('### AI Capabilities');
+      lines.push(doc.analysis.aiCapabilities || '');
+      lines.push('');
+      if (doc.analysis.clarificationNeeded) {
+        lines.push('### Clarification Needed');
+        lines.push(doc.analysis.clarificationNeeded);
+        lines.push('');
+      }
+    }
+
+    if (doc.fullText) {
+      lines.push('## Full Document Text');
+      lines.push(doc.fullText);
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  };
+
+  const handleCopyModalContent = async () => {
+    if (!selectedDocument) return;
+    const text = buildModalCopyText(selectedDocument);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      console.error('Failed to copy content:', error);
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+  };
+  const [activeTab, setActiveTab] = useState<'info' | 'domains' | 'documents' | 'meetings'>(initialActiveTab || 'info');
   const [selectedDomains, setSelectedDomains] = useState<Set<string>>(new Set(initialSelectedDomains));
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [isLoadingMeetings, setIsLoadingMeetings] = useState(false);
-  const [showOpportunityModal, setShowOpportunityModal] = useState(false);
-  const [opportunitySelectedDomain, setOpportunitySelectedDomain] = useState<string>('');
-  const [opportunitySearchType, setOpportunitySearchType] = useState<'library' | 'new'>('library');
   const [isAnalyzingDocument, setIsAnalyzingDocument] = useState(false);
-  const [documents, setDocuments] = useState<Array<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number }>>([]);
-  const [selectedDocument, setSelectedDocument] = useState<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number } | null>(null);
+  const [documents, setDocuments] = useState<Array<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number; fileName?: string; content?: string; url?: string; path?: string; documentAnalysis?: import('../types').DocumentAnalysis; analysis?: import('../types').RfpAnalysis }>>([]);
+  const [selectedDocument, setSelectedDocument] = useState<{ id: string; title: string; type: string; context: string; fullText: string; uploadedAt: number; fileName?: string; content?: string; url?: string; path?: string; documentAnalysis?: import('../types').DocumentAnalysis; analysis?: import('../types').RfpAnalysis } | null>(null);
   const [isGeneratingPresentation, setIsGeneratingPresentation] = useState(false);
   const [presentationUrl, setPresentationUrl] = useState<string | null>(null);
-  const [gammaApiKeyInput, setGammaApiKeyInput] = useState('');
-  const [showGammaKeyModal, setShowGammaKeyModal] = useState(false);
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [presentationPrompt, setPresentationPrompt] = useState('');
   const [presentations, setPresentations] = useState<Array<{
     generationId: string;
     status: string;
@@ -82,12 +262,34 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
     downloadUrl?: string;
     publicUrl?: string;
     devUrl?: string;
+    companyName?: string;
+    phase?: string;
   }>>([]);
-  const [presentationPhase, setPresentationPhase] = useState<'phase1' | 'phase2'>('phase1');
+  const [presentationPhase, setPresentationPhase] = useState<'phase1' | 'phase2' | ''>('');
+  const [phase1Workflows, setPhase1Workflows] = useState<string[]>([]);
+  const [phase2Workflows, setPhase2Workflows] = useState<string[]>([]);
+  const isHydratingPhaseWorkflows = useRef(false);
   const [showUrlModal, setShowUrlModal] = useState(false);
   const [currentGenerationId, setCurrentGenerationId] = useState<string | null>(null);
   const [urlModalPublicUrl, setUrlModalPublicUrl] = useState('');
   const [urlModalDevUrl, setUrlModalDevUrl] = useState('');
+  
+  // Initialize phase workflows from company data when available
+  useEffect(() => {
+    if (companyInfo) {
+      // Type assertion to access the new fields
+      const company = companyInfo as any;
+      const nextPhase1 = Array.isArray(company.phase1Workflows) ? company.phase1Workflows : [];
+      const nextPhase2 = Array.isArray(company.phase2Workflows) ? company.phase2Workflows : [];
+      const phase1Changed = nextPhase1.join('|') !== phase1Workflows.join('|');
+      const phase2Changed = nextPhase2.join('|') !== phase2Workflows.join('|');
+      if (phase1Changed || phase2Changed) {
+        isHydratingPhaseWorkflows.current = true;
+        setPhase1Workflows(nextPhase1);
+        setPhase2Workflows(nextPhase2);
+      }
+    }
+  }, [companyInfo, phase1Workflows, phase2Workflows]);
   
   // Delete presentation handler
   const handleDeletePresentation = async (generationId: string) => {
@@ -143,6 +345,26 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
     saveScenariosToFirebase();
   }, [selectedScenarios, companyId, userId]);
   
+  // Real-time save phase workflow selections to Firebase when they change
+  useEffect(() => {
+    const savePhaseWorkflowsToFirebase = async () => {
+      if (isHydratingPhaseWorkflows.current) {
+        isHydratingPhaseWorkflows.current = false;
+        return;
+      }
+      if (companyId && userId && (phase1Workflows.length > 0 || phase2Workflows.length > 0)) {
+        try {
+          await updateCompanyPhaseWorkflows(companyId, userId, phase1Workflows, phase2Workflows);
+          console.log('Phase workflows saved to Firebase:', { phase1Workflows, phase2Workflows });
+        } catch (error) {
+          console.error('Failed to save phase workflows to Firebase:', error);
+        }
+      }
+    };
+    
+    savePhaseWorkflowsToFirebase();
+  }, [phase1Workflows, phase2Workflows, companyId, userId]);
+  
   // Load meetings
   useEffect(() => {
     if (companyId) {
@@ -181,6 +403,8 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
             downloadUrl: value.downloadUrl,
             publicUrl: value.publicUrl,
             devUrl: value.devUrl,
+            companyName: value.companyName,
+            phase: value.phase,
           }));
           // Sort by most recent first
           presentationsList.sort((a, b) => b.createdAt - a.createdAt);
@@ -200,7 +424,18 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
       (async () => {
         try {
           const fetchedDocuments = await getDocuments(companyId);
-          setDocuments(fetchedDocuments);
+          const normalizedDocuments = fetchedDocuments.map((doc) => {
+            const fallbackTitle = doc.fileName ? doc.fileName.replace(/\.[^/.]+$/, '') : 'Document';
+            const normalizedContext = doc.context || doc.documentAnalysis?.summary || doc.content?.substring(0, 500) || '';
+            return {
+              ...doc,
+              title: doc.title || doc.documentAnalysis?.title || fallbackTitle,
+              type: doc.type || doc.documentAnalysis?.category || 'Document',
+              context: normalizedContext,
+              fullText: doc.fullText || doc.content || ''
+            };
+          });
+          setDocuments(normalizedDocuments);
         } catch (error) {
           console.error('Failed to load documents:', error);
         }
@@ -297,19 +532,26 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
       console.log('First 500 chars of content:', text.substring(0, 500));
       
       // Call Gemini to analyze the document
-      console.log('Calling Gemini...');
-      const analysis = await analyzeDocumentWithGemini(text, file.name);
+      console.log('Calling Gemini for document analysis...');
+      const documentAnalysis = await analyzeDocumentCategory(text, file.name);
+      let rfpAnalysis: import('../types').RfpAnalysis | undefined;
+      if (documentAnalysis.category === 'RFP' || documentAnalysis.category === 'SOW') {
+        console.log('Calling Gemini for RFP analysis...');
+        rfpAnalysis = await analyzeRfpDocument(text);
+      }
       
-      console.log('Document analysis result:', analysis);
+      console.log('Document analysis result:', documentAnalysis);
       
       // Create document with analysis results and full text
       const newDocument = {
         id: Date.now().toString(),
-        title: analysis.title || file.name.replace(/\.[^/.]+$/, ''),
-        type: analysis.type || 'General',
-        context: analysis.context || text.substring(0, 500),
+        title: documentAnalysis.title || file.name.replace(/\.[^/.]+$/, ''),
+        type: documentAnalysis.category || 'General',
+        context: documentAnalysis.summary || text.substring(0, 500),
         fullText: text,
-        uploadedAt: Date.now()
+        uploadedAt: Date.now(),
+        documentAnalysis,
+        ...(rfpAnalysis ? { analysis: rfpAnalysis } : {})
       };
       
       // Save to state (and eventually Firebase)
@@ -325,14 +567,20 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
     }
   };
   
-  // Generate Gamma presentation based on completed workflows and domains
+  // Generate presentation prompt based on completed workflows and domains
   const handleGeneratePresentation = async () => {
     if (!companyInfo || !userId) return;
     
-    // Check if user has Gamma API key (from env or localStorage)
-    let apiKey = getGammaApiKey();
-    if (!apiKey) {
-      setShowGammaKeyModal(true);
+    // Validate phase selection
+    if (!presentationPhase) {
+      alert('Please select a report type (Phase 1 or Phase 2)');
+      return;
+    }
+    
+    // Validate workflow selection for the chosen phase
+    const selectedWorkflowIds = presentationPhase === 'phase1' ? phase1Workflows : phase2Workflows;
+    if (selectedWorkflowIds.length === 0) {
+      alert(`Please select at least one workflow for ${presentationPhase === 'phase1' ? 'Phase 1' : 'Phase 2'} by checking the boxes on the workflow cards`);
       return;
     }
     
@@ -342,9 +590,14 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
       
       console.log('Starting presentation generation...');
       
-      // Gather data about completed workflows
+      // Determine which workflows to include based on selected phase
+      const selectedWorkflowIds = presentationPhase === 'phase1' ? phase1Workflows : phase2Workflows;
+      
+      console.log(`Including ${selectedWorkflowIds.length} workflows for ${presentationPhase}:`, selectedWorkflowIds);
+      
+      // Gather data about completed workflows, filtered by phase selection
       const completedWorkflows = Object.entries(scenarioRuns)
-        .filter(([, runs]) => runs.length > 0)
+        .filter(([scenarioId, runs]) => runs.length > 0 && selectedWorkflowIds.includes(scenarioId))
         .map(([scenarioId, runs]) => {
           const scenario = scenariosById?.[scenarioId];
           // Get the latest run's demo URL
@@ -380,10 +633,10 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
         return `
 ## ${domain}
 
-| Priority | Core Process | Potential Agentic AI Use Cases | Detailed Use Case Description | Demo Published URL |
+| Priority | Core Process | Potential Agentic AI Use Cases | Detailed Use Case Description | Demo Link |
 |----------|--------------|--------------------------------|-------------------------------|--------------------|
 ${domainWorkflows.map((workflow, idx) => 
-  `| ${idx + 1} | ${workflow.title} | ${workflow.description.substring(0, 100)}... | Completed ${workflow.completedCount} time${workflow.completedCount !== 1 ? 's' : ''} with ${workflow.latestScore}% success rate | ${workflow.demoUrl ? workflow.demoUrl : 'Not published'} |`
+  `| ${idx + 1} | ${workflow.title} | ${workflow.description.substring(0, 100)}... | Completed ${workflow.completedCount} time${workflow.completedCount !== 1 ? 's' : ''} with ${workflow.latestScore}% success rate | ${workflow.demoUrl ? `[Open demo](${workflow.demoUrl})` : 'Not published'} |`
 ).join('\n')}
 
 ### Value
@@ -409,11 +662,9 @@ Readiness is ${domainWorkflows.length > 2 ? 'high' : 'moderate'}, with demonstra
 This presentation showcases AI automation opportunities and workflow implementations for ${companyInfo.name}.
 
 **Company Overview:**
-- Industry: ${companyInfo.industry || 'Not specified'}
-- Employee Count: ${companyInfo.employeeCount || 'Not specified'}
-- Website: ${companyInfo.website || 'Not specified'}
-
-**AI Readiness Score:** ${companyInfo.currentResearch?.aiRelevance?.relevanceScore || 'Pending'}/10
+- Industry: ${companyInfo.currentResearch?.industry || 'Not specified'}
+- Market Position: ${companyInfo.currentResearch?.marketPosition || 'Not specified'}
+- AI Relevance: ${companyInfo.currentResearch?.aiRelevance?.current || 'Pending'}
 
 ---
 
@@ -534,16 +785,17 @@ ${companyInfo.currentResearch?.description || 'Leading organization ready for AI
 ## Selected Workflows for Analysis
 
 ${availableDomains.map((domain) => {
-  const domainWorkflows = allScenarios.filter(s => s.domain === domain && s.type === 'TRAINING');
+  const domainWorkflows = allScenarios.filter(s => getScenarioDomain(s) === domain && s.type === 'TRAINING');
   const workflowsWithRuns = domainWorkflows.filter(w => scenarioRuns[w.id]?.length > 0);
   
   if (workflowsWithRuns.length === 0) return '';
   
   return `### ${domain} Deep Dive\n${workflowsWithRuns.slice(0, 3).map((w, idx) => {
     const runs = scenarioRuns[w.id] || [];
-    const avgFeasibility = runs.length > 0 ? (runs.reduce((sum, r) => sum + (r.technicalFeasibility || 0), 0) / runs.length).toFixed(1) : 'N/A';
-    const avgValue = runs.length > 0 ? (runs.reduce((sum, r) => sum + (r.businessValue || 0), 0) / runs.length).toFixed(1) : 'N/A';
-    return `**${idx + 1}. ${w.title}**\n- Description: ${w.description || 'Workflow analysis'}\n- Technical Feasibility: ${avgFeasibility}/10\n- Business Value: ${avgValue}/10\n- Evaluation Count: ${runs.length}`;
+    const avgScore = runs.length > 0
+      ? (runs.reduce((sum, r) => sum + (r.score || 0), 0) / runs.length).toFixed(1)
+      : 'N/A';
+    return `**${idx + 1}. ${w.title}**\n- Description: ${w.description || 'Workflow analysis'}\n- Average Score: ${avgScore}/100\n- Evaluation Count: ${runs.length}`;
   }).join('\\n\\n')}`;
 }).filter(Boolean).join('\\n\\n---\\n\\n')}
 
@@ -552,7 +804,7 @@ ${availableDomains.map((domain) => {
 ## Domain Analysis Summary
 
 ${availableDomains.map((domain) => {
-  const domainWorkflows = allScenarios.filter(s => s.domain === domain && s.type === 'TRAINING');
+  const domainWorkflows = allScenarios.filter(s => getScenarioDomain(s) === domain && s.type === 'TRAINING');
   return `### ${domain}\n- Total Workflows: ${domainWorkflows.length}\n- Completed Runs: ${domainWorkflows.reduce((sum, w) => sum + (scenarioRuns[w.id]?.length || 0), 0)}\n- Readiness: ${domainWorkflows.length > 2 ? 'High' : 'Moderate'}`;
 }).join('\\n\\n')}
 
@@ -736,42 +988,12 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
       `.trim();
       
       console.log('Presentation text generated, length:', presentationText.length);
-      console.log('Calling Gamma API...');
-      
-      // Generate presentation via Gamma API (always webpage format)
-      const result = await generateGammaPresentation(presentationText, apiKey, 'webpage');
-      
-      console.log('Gamma API result:', JSON.stringify(result, null, 2));
-      
-      // Save generationId to database immediately
-      if ((result.generationId || result.id) && userId && companyId) {
-        const generationId = result.generationId || result.id;
-        const presentationData = {
-          generationId,
-          userId: userId,
-          companyId: companyId,
-          companyName: companyInfo.name,
-          phase: presentationPhase === 'phase1' ? 'Phase 1 - Art of the Possible' : 'Phase 2 - Deep Dive',
-          status: result.status || 'processing',
-          createdAt: Date.now(),
-          presentationText,
-        };
-        
-        await set(ref(db, `presentations/${generationId}`), presentationData);
-        console.log('Saved presentation to database:', generationId);
-        
-        // Show URL modal immediately so user can add URLs when ready
-        setCurrentGenerationId(generationId);
-        setShowUrlModal(true);
-        alert('Presentation generation started! Add the URLs after checking your Gamma dashboard.');
-      } else {
-        console.error('No generationId in response. Full response:', result);
-        throw new Error('Presentation generation did not return a generationId');
-      }
+      setPresentationPrompt(presentationText);
+      setShowPromptModal(true);
       
     } catch (error) {
       console.error('Failed to generate presentation:', error);
-      alert(`Failed to generate presentation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(`Failed to generate presentation prompt: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsGeneratingPresentation(false);
     }
@@ -807,16 +1029,6 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
     }
   };
   
-  const handleSaveGammaKey = () => {
-    if (gammaApiKeyInput.trim()) {
-      setGammaApiKey(gammaApiKeyInput.trim());
-      setShowGammaKeyModal(false);
-      setGammaApiKeyInput('');
-      // Retry generation
-      handleGeneratePresentation();
-    }
-  };
-  
   // Debug logging
   console.log('CompanyResearchContent render:', {
     scenarioRunsKeys: Object.keys(scenarioRuns),
@@ -826,44 +1038,16 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
   });
   
   // Available business domains
-  const availableDomains = [
-    'Sales',
-    'HR',
-    'Finance',
-    'Operations',
-    'Marketing',
-    'Customer Service',
-    'IT',
-    'Legal',
-    'Supply Chain',
-    'Product',
-    'Engineering',
-    'Healthcare'
-  ];
-  
-  const scenarioEntries = Object.entries(scenarioRuns)
-    .filter(([, runs]) => Array.isArray(runs) && runs.length > 0)
-    .sort(([, runsA], [, runsB]) => {
-      const latestA = runsA[0]?.timestamp ?? 0;
-      const latestB = runsB[0]?.timestamp ?? 0;
-      return latestB - latestA;
-    });
-
-  // Get domains that actually have scenario runs
-  const domainsWithRuns = new Set(
-    scenarioEntries
-      .map(([scenarioId]) => scenariosById?.[scenarioId]?.domain)
-      .filter(Boolean)
+  const getScenarioDomain = (scenario: Scenario) => scenario.domain || 'General';
+  const availableDomains = Array.from(
+    new Set(
+      allScenarios
+        .filter((scenario) => scenario.type === 'TRAINING')
+        .map((scenario) => getScenarioDomain(scenario))
+    )
   );
-
+  
   // Filter scenario entries by selected domains
-  const filteredScenarioEntries = selectedDomains.size === 0
-    ? scenarioEntries
-    : scenarioEntries.filter(([scenarioId]) => {
-        const domain = scenariosById?.[scenarioId]?.domain;
-        return domain && selectedDomains.has(domain);
-      });
-
   const toggleDomain = (domain: string) => {
     setSelectedDomains(prev => {
       const next = new Set(prev);
@@ -891,52 +1075,60 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
     onActiveTabChange?.(tab);
   };
 
+  useEffect(() => {
+    if (initialActiveTab) {
+      setActiveTab(initialActiveTab);
+    }
+  }, [initialActiveTab]);
+
   return (
     <>
       <div className="bg-wm-white border border-wm-neutral rounded-xl">
         {/* Tabs */}
-        <div className="flex border-b border-wm-neutral/30">
-        <button
-          onClick={() => handleTabChange('info')}
-          className={`flex-1 px-6 py-4 font-bold transition-all ${
-            activeTab === 'info'
-              ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
-              : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
-          }`}
-        >
-          Company Information
-        </button>
-        <button
-          onClick={() => handleTabChange('domains')}
-          className={`flex-1 px-6 py-4 font-bold transition-all ${
-            activeTab === 'domains'
-              ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
-              : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
-          }`}
-        >
-          Target Domains
-        </button>
-        <button
-          onClick={() => handleTabChange('documents')}
-          className={`flex-1 px-6 py-4 font-bold transition-all ${
-            activeTab === 'documents'
-              ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
-              : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
-          }`}
-        >
-          Documents
-        </button>
-        <button
-          onClick={() => handleTabChange('meetings')}
-          className={`flex-1 px-6 py-4 font-bold transition-all ${
-            activeTab === 'meetings'
-              ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
-              : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
-          }`}
-        >
-          Meetings
-        </button>
-      </div>
+        {showTabs && (
+          <div className="flex border-b border-wm-neutral/30">
+            <button
+              onClick={() => handleTabChange('info')}
+              className={`flex-1 px-6 py-4 font-bold transition-all ${
+                activeTab === 'info'
+                  ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
+                  : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
+              }`}
+            >
+              Company Information
+            </button>
+            <button
+              onClick={() => handleTabChange('domains')}
+              className={`flex-1 px-6 py-4 font-bold transition-all ${
+                activeTab === 'domains'
+                  ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
+                  : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
+              }`}
+            >
+              Target Domains
+            </button>
+            <button
+              onClick={() => handleTabChange('documents')}
+              className={`flex-1 px-6 py-4 font-bold transition-all ${
+                activeTab === 'documents'
+                  ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
+                  : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
+              }`}
+            >
+              Documents
+            </button>
+            <button
+              onClick={() => handleTabChange('meetings')}
+              className={`flex-1 px-6 py-4 font-bold transition-all ${
+                activeTab === 'meetings'
+                  ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
+                  : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
+              }`}
+            >
+              Meetings
+            </button>
+          </div>
+        )}
       
       <div className="p-6">
         {/* Company Information Tab */}
@@ -1023,14 +1215,77 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
         {/* Target Domains Tab */}
         {activeTab === 'domains' && (
           <div>
+            {(() => {
+              const visibleWorkflows = selectedDomains.size > 0
+                ? allScenarios.filter(
+                    (scenario) => scenario.type === 'TRAINING' && scenario.domain && selectedDomains.has(scenario.domain)
+                  )
+                : [];
+              const visibleWorkflowIds = visibleWorkflows.map((workflow) => workflow.id);
+              const hasVisible = visibleWorkflowIds.length > 0;
+
+              return (
+                <div className="mb-6 bg-white border border-wm-neutral/30 rounded-xl p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <h3 className="text-sm font-bold text-wm-blue">Phase Workflow Selection</h3>
+                      <p className="text-xs text-wm-blue/60 mt-1">
+                        Step 1: Choose target domains. Step 2: Use the Phase 1 / Phase 2 checkboxes on each workflow card below.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-wm-blue/60">
+                      <span className="px-2 py-1 rounded-full bg-wm-pink/10 text-wm-pink font-semibold border border-wm-pink/20">
+                        Phase 1: {phase1Workflows.length}
+                      </span>
+                      <span className="px-2 py-1 rounded-full bg-wm-accent/10 text-wm-accent font-semibold border border-wm-accent/20">
+                        Phase 2: {phase2Workflows.length}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={!hasVisible}
+                      onClick={() => {
+                        setPhase1Workflows((prev) => Array.from(new Set([...prev, ...visibleWorkflowIds])));
+                      }}
+                      className="px-3 py-2 text-xs font-bold rounded-lg bg-wm-pink/10 text-wm-pink border border-wm-pink/20 hover:bg-wm-pink/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Add visible to Phase 1
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!hasVisible}
+                      onClick={() => {
+                        setPhase2Workflows((prev) => Array.from(new Set([...prev, ...visibleWorkflowIds])));
+                      }}
+                      className="px-3 py-2 text-xs font-bold rounded-lg bg-wm-accent/10 text-wm-accent border border-wm-accent/20 hover:bg-wm-accent/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Add visible to Phase 2
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!hasVisible}
+                      onClick={() => {
+                        setPhase1Workflows((prev) => prev.filter((id) => !visibleWorkflowIds.includes(id)));
+                        setPhase2Workflows((prev) => prev.filter((id) => !visibleWorkflowIds.includes(id)));
+                      }}
+                      className="px-3 py-2 text-xs font-bold rounded-lg bg-wm-neutral/10 text-wm-blue/70 border border-wm-neutral/20 hover:bg-wm-neutral/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Clear visible selections
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Target Domain Pills */}
             <div className="mb-6">
               <h3 className="text-sm font-bold text-wm-blue mb-3">Target Domains:</h3>
               <div className="flex flex-wrap gap-2">
                 {availableDomains.map((domain) => {
-                  const hasRuns = domainsWithRuns.has(domain);
                   const isSelected = selectedDomains.has(domain);
-                  const workflowCount = allScenarios.filter(s => s.domain === domain && s.type === 'TRAINING').length;
+                  const workflowCount = allScenarios.filter(s => getScenarioDomain(s) === domain && s.type === 'TRAINING').length;
                   
                   return (
                     <button
@@ -1073,8 +1328,9 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                 {selectedDomains.size > 0 && (
                   <div className="space-y-6">
                   {Array.from(selectedDomains).map((domain) => {
+                    const userKey = userId ?? '';
                     const domainWorkflows = allScenarios.filter(
-                      (scenario) => scenario.domain === domain && scenario.type === 'TRAINING'
+                      (scenario) => getScenarioDomain(scenario) === domain && scenario.type === 'TRAINING'
                     );
                     
                     if (domainWorkflows.length === 0) return null;
@@ -1085,8 +1341,8 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                       const bSelected = selectedScenarios?.includes(b.id);
                       const aHasRuns = scenarioRuns[a.id]?.length > 0;
                       const bHasRuns = scenarioRuns[b.id]?.length > 0;
-                      const aStarred = !!a.favoritedBy?.[userId];
-                      const bStarred = !!b.favoritedBy?.[userId];
+                      const aStarred = userKey ? !!a.favoritedBy?.[userKey] : false;
+                      const bStarred = userKey ? !!b.favoritedBy?.[userKey] : false;
                       
                       // 1. Prioritize selected scenarios (including newly created)
                       if (aSelected && !bSelected) return -1;
@@ -1136,21 +1392,68 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                             });
                             
                             return (
-                              <button
+                              <div
                                 key={workflow.id}
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => onSelectScenario?.(workflow.id)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    onSelectScenario?.(workflow.id);
+                                  }
+                                }}
                                 className={`flex-shrink-0 w-80 text-left p-3 border rounded-lg hover:shadow-md transition-all ${
                                   shouldHighlight
                                     ? 'border-wm-accent bg-wm-accent/10 hover:bg-wm-accent/20 ring-2 ring-wm-accent/30'
                                     : 'border-wm-neutral/30 bg-wm-neutral/5 hover:bg-wm-accent/5 hover:border-wm-accent'
                                 }`}
                               >
+                              {/* Phase Selection Checkboxes */}
+                              <div className="flex items-center gap-3 mb-2 pb-2 border-b border-wm-neutral/20">
+                                <label 
+                                  className="flex items-center gap-1.5 text-xs font-medium cursor-pointer hover:text-wm-pink"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={phase1Workflows.includes(workflow.id)}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      const newPhase1 = e.target.checked
+                                        ? [...phase1Workflows, workflow.id]
+                                        : phase1Workflows.filter(id => id !== workflow.id);
+                                      setPhase1Workflows(newPhase1);
+                                    }}
+                                    className="rounded border-wm-neutral/30 text-wm-pink focus:ring-wm-pink"
+                                  />
+                                  <span>Phase 1</span>
+                                </label>
+                                <label 
+                                  className="flex items-center gap-1.5 text-xs font-medium cursor-pointer hover:text-wm-accent"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={phase2Workflows.includes(workflow.id)}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      const newPhase2 = e.target.checked
+                                        ? [...phase2Workflows, workflow.id]
+                                        : phase2Workflows.filter(id => id !== workflow.id);
+                                      setPhase2Workflows(newPhase2);
+                                    }}
+                                    className="rounded border-wm-neutral/30 text-wm-accent focus:ring-wm-accent"
+                                  />
+                                  <span>Phase 2</span>
+                                </label>
+                              </div>
                               <div className="flex items-center justify-between mb-1">
                                 <div className="font-bold text-wm-blue text-sm flex-1">
                                   {workflow.title}
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                                  {workflow.favoritedBy?.[userId] && (
+                                  {userKey && workflow.favoritedBy?.[userKey] && (
                                     <svg className="w-4 h-4 text-wm-yellow fill-current" viewBox="0 0 24 24">
                                       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                                     </svg>
@@ -1175,7 +1478,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                               {/* Demo URLs from evaluations */}
                               {scenarioRuns[workflow.id] && scenarioRuns[workflow.id].length > 0 && (
                                 <div className="mt-3 pt-3 border-t border-wm-neutral/20 space-y-1.5">
-                                  {scenarioRuns[workflow.id].slice(0, 2).map((evaluation, idx) => (
+                                  {scenarioRuns[workflow.id].slice(0, 2).map((evaluation) => (
                                     <div key={evaluation.id} className="flex items-center gap-2 text-xs flex-wrap">
                                       {evaluation.demoProjectUrl && (
                                         <a
@@ -1210,7 +1513,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                                   ))}
                                 </div>
                               )}
-                              </button>
+                              </div>
                             );
                           })}
                         </div>
@@ -1232,9 +1535,10 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                     </label>
                     <select
                       value={presentationPhase}
-                      onChange={(e) => setPresentationPhase(e.target.value as 'phase1' | 'phase2')}
+                      onChange={(e) => setPresentationPhase(e.target.value as 'phase1' | 'phase2' | '')}
                       className="w-full px-3 py-2 border border-wm-neutral/30 rounded-lg bg-white text-wm-blue focus:outline-none focus:ring-2 focus:ring-wm-accent"
                     >
+                      <option value="">-- Select Report Type --</option>
                       <option value="phase1">Phase 1 - Art of the Possible (Target Domains)</option>
                       <option value="phase2">Phase 2 - Deep Dive</option>
                     </select>
@@ -1242,7 +1546,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                   
                   <button
                   onClick={handleGeneratePresentation}
-                  disabled={isGeneratingPresentation}
+                  disabled={isGeneratingPresentation || !presentationPhase}
                   className="w-full mb-4 px-4 py-3 bg-wm-pink text-white font-bold rounded-lg hover:bg-wm-pink/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
                 >
                   {isGeneratingPresentation ? 'Generating...' : 'Generate Presentation'}
@@ -1267,85 +1571,55 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                       {presentations.map((presentation) => (
                         <div
                           key={presentation.generationId}
-                          className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm"
+                          className="relative p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
                         >
-                          {/* Header Section */}
-                          <div className="mb-3">
-                            <h3 className="text-base font-bold text-wm-blue mb-1">
+                          {/* Delete icon in top right corner */}
+                          <button
+                            onClick={() => handleDeletePresentation(presentation.generationId)}
+                            className="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors z-10"
+                            title="Delete presentation"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+
+                          {/* Clickable card content */}
+                          <a
+                            href={presentation.devUrl || `https://gamma.app/doc/${presentation.generationId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block pr-8 group"
+                          >
+                            <h3 className="text-base font-bold text-wm-blue mb-1 group-hover:text-wm-blue/80 transition-colors">
                               AI Automation Solutions
                             </h3>
-                            <h4 className="text-lg font-semibold text-gray-900 mb-1">
+                            <h4 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-wm-accent transition-colors">
                               {presentation.companyName || companyInfo.name}
                             </h4>
                             <p className="text-sm text-gray-600 mb-1">
                               {presentation.phase || 'Workflow Implementation & Opportunities'}
                             </p>
-                            <p className="text-xs text-gray-500">
-                              {new Date(presentation.createdAt).toLocaleDateString('en-US', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
-                              })}
-                            </p>
-                          </div>
-                          
-                          {/* URLs Display */}
-                          {(presentation.publicUrl || presentation.devUrl) && (
-                            <div className="flex gap-2 mb-2 text-xs">
-                              {presentation.publicUrl && (
-                                <a
-                                  href={presentation.publicUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:underline flex items-center gap-1"
-                                >
-                                  <span>🌐</span> Public
-                                </a>
-                              )}
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="text-gray-500">
+                                {new Date(presentation.createdAt).toLocaleDateString('en-US', {
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric'
+                                })}
+                              </span>
+                              
+                              {/* Dev badge */}
                               {presentation.devUrl && (
-                                <a
-                                  href={presentation.devUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-purple-600 hover:underline flex items-center gap-1"
-                                >
-                                  <span>🔧</span> Dev
-                                </a>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-medium group-hover:bg-purple-200 transition-colors">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                                  </svg>
+                                  Dev
+                                </span>
                               )}
                             </div>
-                          )}
-                          
-                          <div className="flex flex-col gap-2">
-                            <a
-                              href={`https://gamma.app/doc/${presentation.generationId}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="w-full px-3 py-1.5 bg-wm-pink text-white text-xs font-bold rounded-lg hover:bg-wm-pink/90 transition-colors text-center"
-                            >
-                              Open in Gamma
-                            </a>
-                            
-                            <div className="flex gap-2">
-                              {!presentation.publicUrl && !presentation.devUrl && (
-                                <button
-                                  onClick={() => {
-                                    setCurrentGenerationId(presentation.generationId);
-                                    setShowUrlModal(true);
-                                  }}
-                                  className="flex-1 px-2 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors"
-                                >
-                                  Add URLs
-                                </button>
-                              )}
-                              <button
-                                onClick={() => handleDeletePresentation(presentation.generationId)}
-                                className="flex-1 px-2 py-1.5 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700 transition-colors"
-                                title="Delete presentation"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
+                          </a>
                         </div>
                       ))}
                     </div>
@@ -1413,7 +1687,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                           onClick={() => setSelectedDocument(doc)}
                         >
                           <td className="px-4 py-3 text-wm-blue font-semibold">{doc.title}</td>
-                          <td className="px-4 py-3 text-wm-accent font-bold text-sm">{doc.type}</td>
+                          <td className="px-4 py-3 text-wm-accent font-bold text-sm">{doc.documentAnalysis?.category || doc.type}</td>
                           <td className="px-4 py-3 text-wm-blue/70 text-sm">
                             {new Date(doc.uploadedAt).toLocaleDateString('en-US', {
                               year: 'numeric',
@@ -1476,15 +1750,29 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                           </span>
                         </div>
                       </div>
-                      <button
-                        onClick={() => setSelectedDocument(null)}
-                        className="flex-shrink-0 p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded transition-colors"
-                        title="Close"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleCopyModalContent}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 border border-slate-200 rounded hover:bg-slate-100 transition-colors"
+                          title="Copy for Word/Confluence"
+                          type="button"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 12h8m-6 8h6a2 2 0 002-2V8l-6-6H8a2 2 0 00-2 2v4" />
+                          </svg>
+                          Copy
+                        </button>
+                        <button
+                          onClick={() => setSelectedDocument(null)}
+                          className="flex-shrink-0 p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded transition-colors"
+                          title="Close"
+                          type="button"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
                   
@@ -1494,10 +1782,85 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                       <h4 className="text-sm font-bold text-slate-700 mb-2">Summary</h4>
                       <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                         <p className="text-slate-800 leading-relaxed text-sm">
-                          {selectedDocument.context}
+                          {selectedDocument.documentAnalysis?.summary || selectedDocument.context}
                         </p>
                       </div>
                     </div>
+                    {selectedDocument.documentAnalysis?.keyPoints?.length ? (
+                      <div className="mb-6">
+                        <h4 className="text-sm font-bold text-slate-700 mb-2">Key Points</h4>
+                        <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                          <ul className="list-disc pl-5 space-y-1 text-sm text-slate-800">
+                            {selectedDocument.documentAnalysis.keyPoints.map((point, idx) => (
+                              <li key={idx}>{point}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    ) : null}
+                    {selectedDocument.analysis ? (
+                      <div className="mb-6 space-y-4">
+                        <h4 className="text-sm font-bold text-slate-700">RFP Analysis</h4>
+                        <div className="grid grid-cols-1 gap-4">
+                          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                            <p className="text-xs font-semibold text-slate-600 mb-1">Project Structure</p>
+                            {renderMarkdown(selectedDocument.analysis.projectStructure)}
+                          </div>
+                          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                            <p className="text-xs font-semibold text-slate-600 mb-1">Detailed Analysis</p>
+                            {renderMarkdown(selectedDocument.analysis.detailedAnalysis)}
+                          </div>
+                          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                            <p className="text-xs font-semibold text-slate-600 mb-1">Requirements</p>
+                            {renderMarkdown(selectedDocument.analysis.requirements)}
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                              <p className="text-xs font-semibold text-slate-600 mb-1">Timeline</p>
+                              {renderMarkdown(selectedDocument.analysis.timeline)}
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                              <p className="text-xs font-semibold text-slate-600 mb-1">Budget</p>
+                              {renderMarkdown(selectedDocument.analysis.budget)}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                              <p className="text-xs font-semibold text-slate-600 mb-1">Stakeholders</p>
+                              {renderMarkdown(selectedDocument.analysis.stakeholders)}
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                              <p className="text-xs font-semibold text-slate-600 mb-1">Success Criteria</p>
+                              {renderMarkdown(selectedDocument.analysis.successCriteria)}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                              <p className="text-xs font-semibold text-slate-600 mb-1">Risks</p>
+                              {renderMarkdown(selectedDocument.analysis.risks)}
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                              <p className="text-xs font-semibold text-slate-600 mb-1">Constraints</p>
+                              {renderMarkdown(selectedDocument.analysis.constraints)}
+                            </div>
+                          </div>
+                          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                            <p className="text-xs font-semibold text-slate-600 mb-1">AI Recommendations</p>
+                            {renderMarkdown(selectedDocument.analysis.aiRecommendations)}
+                          </div>
+                          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                            <p className="text-xs font-semibold text-slate-600 mb-1">AI Capabilities</p>
+                            {renderMarkdown(selectedDocument.analysis.aiCapabilities)}
+                          </div>
+                          {selectedDocument.analysis.clarificationNeeded ? (
+                            <div className="bg-amber-50 rounded-lg p-4 border border-amber-200">
+                              <p className="text-xs font-semibold text-amber-700 mb-1">Clarification Needed</p>
+                              {renderMarkdown(selectedDocument.analysis.clarificationNeeded)}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
                     <div>
                       <h4 className="text-sm font-bold text-slate-700 mb-2">Full Document Text</h4>
                       <div className="bg-slate-50 rounded-lg p-6 border border-slate-200 max-h-96 overflow-y-auto">
@@ -1599,48 +1962,48 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
       </div>
     )}
 
-    {/* Gamma API Key Modal */}
-    {showGammaKeyModal && (
+    {/* Presentation Prompt Modal */}
+    {showPromptModal && (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
-          <h3 className="text-lg font-bold text-wm-blue mb-4">Enter Gamma API Key</h3>
-          
-          <p className="text-sm text-wm-blue/70 mb-4">
-            To generate presentations with Gamma AI, you need an API key. Get yours at{' '}
-            <a 
-              href="https://gamma.app/settings/api" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-wm-accent underline"
-            >
-              gamma.app/settings/api
-            </a>
-          </p>
-          
-          <input
-            type="password"
-            value={gammaApiKeyInput}
-            onChange={(e) => setGammaApiKeyInput(e.target.value)}
-            placeholder="Enter your Gamma API key"
-            className="w-full px-3 py-2 border border-wm-neutral/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-wm-accent mb-4"
-          />
-          
-          <div className="flex gap-2">
+        <div className="bg-white rounded-lg shadow-lg p-6 max-w-3xl w-full mx-4">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h3 className="text-lg font-bold text-wm-blue">Presentation Prompt</h3>
+              <p className="text-sm text-wm-blue/70">
+                Copy this prompt into your presentation tool.
+              </p>
+            </div>
             <button
-              onClick={handleSaveGammaKey}
-              disabled={!gammaApiKeyInput.trim()}
-              className="flex-1 px-4 py-2 bg-wm-accent text-white font-bold rounded-lg hover:bg-wm-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              onClick={() => setShowPromptModal(false)}
+              className="text-wm-blue/50 hover:text-wm-blue"
+              aria-label="Close"
             >
-              Save & Continue
+              ✕
+            </button>
+          </div>
+          <textarea
+            readOnly
+            value={presentationPrompt}
+            className="w-full min-h-[320px] rounded-lg border border-wm-neutral/30 p-3 text-sm text-wm-blue"
+          />
+          <div className="mt-4 flex flex-wrap gap-2 justify-end">
+            <button
+              onClick={() => setShowPromptModal(false)}
+              className="px-4 py-2 bg-wm-neutral/20 text-wm-blue font-bold rounded-lg hover:bg-wm-neutral/30 transition-colors"
+            >
+              Close
             </button>
             <button
-              onClick={() => {
-                setShowGammaKeyModal(false);
-                setGammaApiKeyInput('');
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(presentationPrompt);
+                } catch (error) {
+                  console.error('Failed to copy prompt:', error);
+                }
               }}
-              className="flex-1 px-4 py-2 bg-wm-neutral/20 text-wm-blue font-bold rounded-lg hover:bg-wm-neutral/30 transition-colors"
+              className="px-4 py-2 bg-wm-accent text-white font-bold rounded-lg hover:bg-wm-accent/90 transition-colors"
             >
-              Cancel
+              Copy prompt
             </button>
           </div>
         </div>

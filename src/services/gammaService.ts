@@ -6,7 +6,7 @@
 
 export interface GammaGenerateRequest {
   text: string;
-  format?: 'pptx' | 'pdf' | 'webpage';
+  format?: 'pptx' | 'pdf' | 'web' | 'webpage';
   themeId?: string;
   apiKey: string;
 }
@@ -29,7 +29,7 @@ export interface GammaGenerateResponse {
 export async function generateGammaPresentation(
   text: string,
   apiKey: string,
-  format: 'pptx' | 'pdf' | 'webpage' = 'pptx',
+  format: 'pptx' | 'pdf' | 'web' | 'webpage' = 'pptx',
   themeId: string = 'lbwzv30urvx3eqk'
 ): Promise<GammaGenerateResponse> {
   try {
@@ -52,7 +52,9 @@ export async function generateGammaPresentation(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `Function error: ${response.status}`);
+      const baseMessage = errorData.error || `Function error: ${response.status}`;
+      const details = errorData.details ? ` ${errorData.details}` : '';
+      throw new Error(`${baseMessage}${details}`.trim());
     }
 
     const data = await response.json();

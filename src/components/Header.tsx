@@ -13,7 +13,6 @@ interface HeaderProps {
   onNavigate: (view: 'DASHBOARD' | 'TRAINING' | 'ADMIN' | 'RESEARCH') => void;
   user: User | null;
   userRole?: 'SUPER_ADMIN' | 'ADMIN' | 'PRO_USER' | 'USER' | null;
-  onOpenWorkflowDrawer?: () => void;
 }
 
   const Avatar: React.FC<{ user: User; onClick?: () => void }> = ({ user, onClick }) => {
@@ -32,7 +31,7 @@ interface HeaderProps {
 };
 
 
-const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkflowDrawer }) => {
+const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -43,6 +42,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
   const { t, lang, setLang } = useTranslation();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [activeApp, setActiveApp] = useState<'intellio-agent' | 'nigel' | 'intellio-advantage'>('intellio-agent');
   
   // Helper to check if current path matches
   const isActive = (path: string) => location.pathname.startsWith(path);
@@ -119,51 +119,27 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
                 onClick={() => onNavigate('DASHBOARD')}
               >
                 <img src={brainIcon} alt="Logo" className="h-8 w-8 object-contain drop-shadow" />
-                <span className="text-xl font-bold text-wm-white">{t('app.title')}</span>
               </Link>
-              
-              {/* Workflow Drawer Button */}
-              {user && onOpenWorkflowDrawer && (
-                <button
-                  onClick={onOpenWorkflowDrawer}
-                  className="p-2 rounded-lg bg-wm-white/10 hover:bg-wm-white/20 border border-wm-white/20 text-wm-white hover:text-wm-yellow transition-colors"
-                  title="Open My Workflows"
+
+              {/* App Family Selector */}
+              <div className="hidden md:block">
+                <select
+                  value={activeApp}
+                  onChange={(e) => setActiveApp(e.target.value as 'intellio-agent' | 'nigel' | 'intellio-advantage')}
+                  className="bg-wm-white/10 border border-wm-white/30 text-wm-white rounded-lg px-3 py-2 text-sm font-semibold"
+                  aria-label="Select app"
                 >
-                  <Icons.Document />
-                </button>
-              )}
+                  <option value="intellio-agent">Intellio Agent</option>
+                  <option value="nigel">Nigel</option>
+                  <option value="intellio-advantage">Intellio Advantage</option>
+                </select>
+              </div>
+              
             </div>
             {user ? (
               <>
                 {/* Desktop Navigation */}
                 <div className="hidden md:flex items-center space-x-4">
-                  <Link 
-                    to="/dashboard"
-                    onClick={() => onNavigate('DASHBOARD')}
-                    className={`px-3 py-2 rounded-md text-sm font-bold transition-colors ${
-                      isActive('/dashboard') 
-                        ? 'bg-wm-white/20 text-wm-white' 
-                        : 'text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white'
-                    }`}
-                  >
-                    {t('nav.dashboard')}
-                  </Link>
-                  
-                  {/* Library/Resources with icon */}
-                  <Link 
-                    to="/library"
-                    onClick={() => onNavigate('TRAINING')}
-                    className={`p-2 rounded-md transition-colors ${
-                      isActive('/library') 
-                        ? 'bg-wm-white/20 text-wm-white' 
-                        : 'text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white'
-                    }`}
-                    title={t('nav.resources')}
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                    </svg>
-                  </Link>
                   
                   {/* Language selector */}
                   <select
@@ -294,28 +270,6 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole, onOpenWorkf
             <button onClick={() => { setIsProfileOpen(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 rounded-md text-wm-white/80 hover:bg-wm-white/10">{t('header.editProfile')}</button>
           </div>
 
-        <Link 
-          to="/dashboard"
-          onClick={() => handleMobileNav('DASHBOARD')}
-          className={`w-full text-xl py-4 rounded-md font-bold transition-colors ${
-            isActive('/dashboard')
-              ? 'bg-wm-white/20 text-wm-white'
-              : 'text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white'
-          }`}
-        >
-          {t('nav.dashboard')}
-        </Link>
-        <Link 
-          to="/library"
-          onClick={() => handleMobileNav('TRAINING')}
-          className={`w-full text-xl py-4 rounded-md font-bold transition-colors ${
-            isActive('/library')
-              ? 'bg-wm-white/20 text-wm-white'
-              : 'text-wm-white/90 hover:bg-wm-white/10 hover:text-wm-white'
-          }`}
-        >
-          {t('nav.library')}
-        </Link>
         <Link 
           to="/research"
           onClick={() => handleMobileNav('RESEARCH')}

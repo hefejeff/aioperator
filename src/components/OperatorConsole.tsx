@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { User } from 'firebase/auth';
 import type { Scenario, EvaluationResult, StoredEvaluationResult, Platform } from '../types';
 import type { AIActionsPlatform } from './AIActionsPanel';
@@ -11,6 +12,7 @@ import AIActionsPanel from './AIActionsPanel';
 import { useTranslation } from '../i18n';
 import { useDiagramAsImage } from './useDiagramAsImage';
 import Breadcrumbs from './Breadcrumbs';
+import SidebarNav, { SidebarNavItem } from './SidebarNav';
 
 interface OperatorConsoleProps {
   scenario: Scenario;
@@ -32,6 +34,9 @@ export const LoadingSpinner: React.FC = () => (
 );
 
 const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEvaluationCompleted: _onEvaluationCompleted, onViewWorkflow, companyName, companyId, onNavigateToDashboard, onNavigateToResearch }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [workflowExplanation, setWorkflowExplanation] = useState('');
   const [evaluation, setEvaluation] = useState<(EvaluationResult & { demoProjectUrl?: string; demoPublishedUrl?: string; demoPrompt?: string }) | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -421,8 +426,8 @@ Make this demo impressive, clearly branded for West Monroe, and demonstrate the 
         result,
         workflowExplanation,
         imageUrl,
-        user.displayName,
-        companyId
+        companyId,
+        companyName
       );
       
       // Update local history state with new entry
@@ -1064,6 +1069,34 @@ Return only the steps.`;
       
       if (result.status === 'completed' && result.downloadUrl) {
         setGammaDownloadUrl(result.downloadUrl);
+        try {
+          const evaluationsRef = await import('firebase/database').then(mod => mod.ref);
+          const db = (await import('../services/firebaseInit')).db;
+          const get = await import('firebase/database').then(mod => mod.get);
+          const update = await import('firebase/database').then(mod => mod.update);
+
+          const userWorkflowsRef = evaluationsRef(db, `workflowVersions/${user.uid}/${scenario.id}`);
+          const snapshot = await get(userWorkflowsRef);
+          if (snapshot.exists()) {
+            const workflows = snapshot.val();
+            let latestWorkflowId: string | null = null;
+            let latestTimestamp = 0;
+            Object.entries<any>(workflows).forEach(([id, workflow]) => {
+              if (workflow.timestamp > latestTimestamp) {
+                latestTimestamp = workflow.timestamp;
+                latestWorkflowId = id;
+              }
+            });
+            if (latestWorkflowId) {
+              await update(
+                evaluationsRef(db, `workflowVersions/${user.uid}/${scenario.id}/${latestWorkflowId}`),
+                { gammaDownloadUrl: result.downloadUrl }
+              );
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to persist Gamma presentation URL:', err);
+        }
       } else if (result.status === 'failed') {
         setGammaError(result.error || 'Presentation generation failed');
       } else {
@@ -1122,6 +1155,8 @@ Return only the steps.`;
           demoProjectUrl: demoProjectUrl || null,
           demoPublishedUrl: demoPublishedUrl || null,
           demoPrompt: demoPrompt || null,
+          companyId: companyId || null,
+          companyName: companyName || null,
         }
       );
       setIsVersionNameOpen(false);
@@ -1159,11 +1194,50 @@ Return only the steps.`;
     return () => { cancelled = true; };
   }, [user?.uid, scenario?.id]);
 
+  const menuItems: SidebarNavItem[] = [
+    {
+      id: 'overview',
+      label: 'Dashboard',
+      icon: <Icons.Home className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard'),
+      isActive: location.pathname.startsWith('/dashboard') && !location.search.includes('section=')
+    },
+    {
+      id: 'companies',
+      label: 'Companies',
+      icon: <Icons.Building className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard?section=companies'),
+      isActive: location.pathname.startsWith('/company2') || location.pathname.startsWith('/research') || location.search.includes('section=companies')
+    },
+    {
+      id: 'processes',
+      label: 'Processes',
+      icon: <Icons.Workflow className="w-5 h-5" />,
+      onClick: () => navigate('/library'),
+      isActive: location.pathname.startsWith('/library')
+    },
+    {
+      id: 'settings',
+      label: 'Output History',
+      icon: <Icons.Document className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard?section=settings'),
+      isActive: location.search.includes('section=settings')
+    }
+  ];
+
   return (
-    <>
-      <div className="flex flex-col lg:flex-row gap-8 max-w-7xl mx-auto animate-fade-in">
-        {/* Main Console */}
-        <div className="w-full lg:flex-1 min-w-0">
+    <div className="flex h-screen bg-wm-white">
+      <SidebarNav
+        user={user}
+        items={menuItems}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+      />
+      <main className="flex-1 overflow-auto bg-wm-neutral/5">
+        <div className="p-6">
+          <div className="flex flex-col lg:flex-row gap-8 max-w-7xl mx-auto animate-fade-in">
+            {/* Main Console */}
+            <div className="w-full lg:flex-1 min-w-0">
           {/* Breadcrumbs */}
           <Breadcrumbs
             items={[
@@ -1412,7 +1486,7 @@ Return only the steps.`;
                       <div className="space-y-2">
                         {evaluation.demoProjectUrl && (
                           <div className="bg-gradient-to-r from-wm-accent/10 to-wm-pink/10 border-l-4 border-wm-accent rounded-lg p-3">
-                            <label className="text-xs font-bold text-wm-accent block mb-1 flex items-center gap-1">
+                            <label className="text-xs font-bold text-wm-accent mb-1 flex items-center gap-1">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                               </svg>
@@ -1433,7 +1507,7 @@ Return only the steps.`;
                         )}
                         {evaluation.demoPublishedUrl && (
                           <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500 rounded-lg p-3">
-                            <label className="text-xs font-bold text-green-700 block mb-1 flex items-center gap-1">
+                            <label className="text-xs font-bold text-green-700 mb-1 flex items-center gap-1">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                               </svg>
@@ -1582,14 +1656,10 @@ Return only the steps.`;
             )}
           </div>
         </div>
-
-  {/* (Removed unused empty aside that previously held a sidebar) */}
       </div>
 
-      {/* Modals rendered as siblings after main content for valid JSX structure */}
-  {/* Historic modal removed: historic selection now loads directly into editor */}
-
-      {isMermaidOpen && (
+        {/* Modals rendered as siblings after main content for valid JSX structure */}
+        {isMermaidOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => setIsMermaidOpen(false)}>
           <div className="bg-white border border-wm-neutral/30 rounded-xl max-w-3xl w-full p-4 md:p-6 max-h-[90vh] overflow-y-auto shadow-xl" onClick={(e)=>e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
@@ -1947,7 +2017,9 @@ Return only the steps.`;
           </div>
         </div>
       )}
-    </>
+        </div>
+      </main>
+    </div>
   );
 };
 

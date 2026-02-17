@@ -1,73 +1,233 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import type { User } from 'firebase/auth';
 import { Icons } from '../constants';
-import { useTranslation } from '../i18n';
-import RfpUploadField from './RfpUploadField';
-import type { CompanyResearch as CompanyInfo, CompanyResearchEntry, RelatedScenario, Company, Scenario, StoredEvaluationResult, WorkflowVersion } from '../types';
-import { getScenarios, getCompanyResearch, saveCompanyResearch, getLatestPrdForScenario, getLatestPitchForScenario, deleteEvaluation, deleteWorkflowVersion, getAllUserEvaluations, getAllUserWorkflowVersions } from '../services/firebaseService';
-import { researchCompany, findRelevantScenarios, generatePresentationWebsite, AI_MODELS, AIModelId } from '../services/geminiService';
-import { saveCompany, getCompany, updateCompanySelectedScenarios } from '../services/companyService';
-import { createWordPressPage, isWordPressConfigured } from '../services/wordpressService';
-import { ref, onValue } from 'firebase/database';
-import { db } from '../services/firebaseInit';
-import ResearchListView from './ResearchListView';
-import RfpAnalysisView from './RfpAnalysisView';
-import CompanyResearchContent from './CompanyResearchContent';
+import type { CompanyJourney, CompanyResearch as CompanyInfo, Scenario } from '../types';
+import { getCompany, updateCompanyJourneyStatus } from '../services/companyService';
+import SidebarNav, { SidebarNavItem } from './SidebarNav';
 
-interface CompanyResearchProps {
+type CompanyResearchProps = {
+  user: User;
   userId: string;
-  initialCompany?: string;  // This is now expected to be a company ID
-  initialTab?: 'info' | 'domains' | 'documents' | 'meetings'; // Initial tab to show
-  startWithNewForm?: boolean; // Start directly in research form view
+  initialCompany?: string;
+  initialTab?: 'info' | 'domains' | 'documents' | 'meetings';
+  startWithNewForm?: boolean;
   onSelectScenario?: (scenario: Scenario, companyName?: string, companyId?: string) => void;
-  onCreateScenario?: (context?: { companyId?: string; companyName?: string }) => void;
-  onViewWorkflow?: (workflowId: string, companyName?: string, companyId?: string) => void;
-  onCompanyChange?: (companyId: string | null, tab?: 'info' | 'domains' | 'documents' | 'meetings') => void; // Callback when company or tab changes
-}
+  onCreateScenario?: (context?: { companyId?: string; companyName?: string; domain?: string }) => void;
+  onViewWorkflow?: (workflowId: string) => void;
+  onCompanyChange?: (companyId: string | null, tab?: string | null) => void;
+};
 
-type View = 'LIST' | 'RESEARCH';
+const CompanyResearch: React.FC<CompanyResearchProps> = ({ user, userId, initialCompany }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
 
-const CompanyResearch: React.FC<CompanyResearchProps> = ({
-  userId,
-  initialCompany,
-  startWithNewForm,
-  onSelectScenario,
-  onCreateScenario,
-  onViewWorkflow,
-  onCompanyChange,
-}) => {
-  const [view, setView] = useState<View>(initialCompany || startWithNewForm ? 'RESEARCH' : 'LIST');
-  const [companyName, setCompanyName] = useState('');
-  const [isLoadingResearch, setIsLoadingResearch] = useState(false);
-  const [isLoadingOpportunities, setIsLoadingOpportunities] = useState(false);
-  const [, setIsCreatingCompany] = useState(false);
-  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
-  const [relatedScenarios, setRelatedScenarios] = useState<RelatedScenario[]>([]);
-  const [selectedScenarios, setSelectedScenarios] = useState<string[]>([]);
-  const [rfpDocument, setRfpDocument] = useState<{
-    content: string;
-    fileName: string;
-    uploadedAt: number;
-  } | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCompanyName, setSelectedCompanyName] = useState<string | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(null);
-  const [scenarioCatalog, setScenarioCatalog] = useState<Record<string, Scenario>>({});
-  const [scenarioRuns, setScenarioRuns] = useState<Record<string, StoredEvaluationResult[]>>({});
-  const [isLoadingScenarioRuns, setIsLoadingScenarioRuns] = useState(false);
-  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
-  const [isGeneratingPresentation, setIsGeneratingPresentation] = useState(false);
-  const [presentationUrl, setPresentationUrl] = useState<string | null>(null);
-  const [showCopiedMessage, setShowCopiedMessage] = useState(false);
-  const [isCreatingWordPressPage, setIsCreatingWordPressPage] = useState(false);
-  const [wordPressPageUrl, setWordPressPageUrl] = useState<string | null>(null);
-  const [scenarioRunsRefreshKey, setScenarioRunsRefreshKey] = useState(0);
-  const [selectedAIModel, setSelectedAIModel] = useState<AIModelId>('gemini-2.5-pro');
-  const [allScenarios, setAllScenarios] = useState<Scenario[]>([]);
-  const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'info' | 'domains' | 'documents' | 'meetings'>('info');
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
+  const [companyJourneys, setCompanyJourneys] = useState<Record<string, CompanyJourney>>({});
+  const [currentJourneyId, setCurrentJourneyId] = useState<string | null>(null);
+  const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(initialCompany ?? null);
+  const [companyName, setCompanyName] = useState<string | null>(null);
 
-  const { t } = useTranslation();
+  useEffect(() => {
+    if (!initialCompany) {
+      setCurrentCompanyId(null);
+      setCompanyInfo(null);
+      setCompanyJourneys({});
+      setCurrentJourneyId(null);
+      setCompanyName(null);
+      setError(null);
+      return;
+    }
+
+    let isActive = true;
+    const loadCompany = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const company = await getCompany(initialCompany);
+        if (!isActive) return;
+
+        if (!company) {
+          setError('Company not found.');
+          setCompanyInfo(null);
+          setCompanyJourneys({});
+          setCurrentJourneyId(null);
+          setCompanyName(null);
+          setCurrentCompanyId(initialCompany);
+          return;
+        }
+
+        setCurrentCompanyId(company.id);
+        setCompanyName(company.name);
+        setCompanyInfo(company.research || null);
+        setCompanyJourneys(company.journeys || {});
+        setCurrentJourneyId(company.currentJourneyId || null);
+      } catch (loadError) {
+        console.error('Failed to load company research:', loadError);
+        if (isActive) {
+          setError('Failed to load company research.');
+        }
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadCompany();
+    return () => {
+      isActive = false;
+    };
+  }, [initialCompany]);
+
+  const handleCreateJourney = async () => {
+    if (!currentCompanyId) return;
+    const newJourneyId = `journey-${Date.now()}`;
+    await updateCompanyJourneyStatus(currentCompanyId, userId, { companyResearchComplete: false }, newJourneyId);
+    const refreshed = await getCompany(currentCompanyId);
+    setCompanyJourneys(refreshed?.journeys || {});
+    setCurrentJourneyId(newJourneyId);
+    navigate(`/company2?companyId=${currentCompanyId}&journeyId=${newJourneyId}`);
+  };
+
+  const menuItems: SidebarNavItem[] = [
+    {
+      id: 'overview',
+      label: 'Dashboard',
+      icon: <Icons.Home />,
+      onClick: () => navigate('/dashboard'),
+      isActive: location.pathname.startsWith('/dashboard') && !location.search.includes('section=')
+    },
+    {
+      id: 'companies',
+      label: 'Companies',
+      icon: <Icons.Building />,
+      onClick: () => navigate('/dashboard?section=companies'),
+      isActive: location.pathname.startsWith('/company2') || location.pathname.startsWith('/research') || location.search.includes('section=companies'),
+      children: []
+    },
+    {
+      id: 'processes',
+      label: 'Processes',
+      icon: <Icons.Workflow />,
+      onClick: () => navigate('/library'),
+      isActive: location.pathname.startsWith('/library')
+    },
+    {
+      id: 'settings',
+      label: 'Output History',
+      icon: <Icons.Document />,
+      onClick: () => navigate('/dashboard?section=settings'),
+      isActive: location.search.includes('section=settings')
+    }
+  ];
+
+  return (
+    <div className="flex h-screen bg-wm-white">
+      <SidebarNav
+        user={user}
+        items={menuItems}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+      />
+
+      <main className="flex-1 overflow-y-auto bg-wm-neutral/5">
+        <div className="p-6 animate-fade-in">
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-wm-blue">Company Research</h1>
+              {companyName && <p className="mt-1 text-2xl font-extrabold tracking-tight text-wm-blue">{companyName}</p>}
+            </div>
+            {companyInfo && (
+              <button
+                type="button"
+                onClick={handleCreateJourney}
+                disabled={!currentCompanyId}
+                className="px-4 py-2 rounded-lg bg-wm-accent text-white font-semibold hover:bg-wm-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                New journey
+              </button>
+            )}
+          </div>
+
+          {isLoading && (
+            <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm text-sm text-wm-blue/70">
+              Loading company research...
+            </div>
+          )}
+
+          {!isLoading && error && (
+            <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm text-sm text-wm-accent">
+              {error}
+            </div>
+          )}
+
+          {!isLoading && !error && !companyInfo && (
+            <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm text-sm text-wm-blue/70">
+              Select a company to view its research.
+            </div>
+          )}
+
+          {!isLoading && !error && companyInfo && (
+            <div className="space-y-8">
+              <section className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold text-wm-blue">Company Journeys</h2>
+                  <p className="text-sm text-wm-blue/60">Start a new journey or revisit an existing one.</p>
+                </div>
+
+                {Object.keys(companyJourneys).length === 0 ? (
+                  <div className="text-sm text-wm-blue/60">No journeys yet.</div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {Object.values(companyJourneys)
+                      .sort((a, b) => b.createdAt - a.createdAt)
+                      .map((journey, index) => (
+                        <button
+                          key={journey.id}
+                          onClick={() => navigate(`/company2?companyId=${currentCompanyId}&journeyId=${journey.id}`)}
+                          className={`text-left border rounded-lg p-4 transition ${
+                            currentJourneyId === journey.id
+                              ? 'border-wm-accent bg-wm-accent/5'
+                              : 'border-wm-neutral/30 hover:border-wm-blue/30 hover:shadow-sm'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold text-wm-blue">Journey {index + 1}</p>
+                            <span className="text-xs text-wm-blue/50">
+                              {new Date(journey.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-xs text-wm-blue/50 mt-2">Updated {new Date(journey.updatedAt).toLocaleDateString()}</p>
+                          <p className="text-xs mt-2 font-semibold text-wm-accent">
+                            {journey.companyResearchComplete ? 'Research complete' : 'Research pending'}
+                          </p>
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default CompanyResearch;
+
+/*
+
+  useEffect(() => {
+    if (!autoRunResearch) return;
+    if (!companyName.trim() || isLoadingResearch) return;
+    handleResearch();
+    setAutoRunResearch(false);
+  }, [autoRunResearch, companyName, isLoadingResearch]);
 
   // Helper function to keep local catalog of scenarios for lookup when rendering history
   const updateScenarioCatalog = (scenariosToTrack: Scenario[]) => {
@@ -144,6 +304,8 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
       
       setCurrentCompanyId(company.id);
       setCompanyName(company.name);
+      setCompanyJourneys(company.journeys || {});
+      setCurrentJourneyId(company.currentJourneyId || null);
       
       // Notify parent of company selection (keep current tab)
       onCompanyChange?.(company.id, activeTab);
@@ -614,6 +776,7 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({
   const handleScenarioSelect = (scenario: Scenario) => {
     onSelectScenario?.(scenario, companyName || selectedCompanyName || undefined, currentCompanyId || undefined);
   };
+  void handleScenarioSelect;
 
   const handleToggleRunId = (runId: string) => {
     setSelectedRunIds(prev => 
@@ -971,38 +1134,123 @@ The tone should be professional, consultative, and focused on digital transforma
       setIsLoadingOpportunities(false);
     }
   };
+  void handleFindOpportunities;
 
   if (view === 'LIST') {
+    const menuItems: SidebarNavItem[] = [
+      {
+        id: 'overview',
+        label: 'Dashboard',
+        icon: <Icons.Home className="w-5 h-5" />,
+        onClick: () => navigate('/dashboard'),
+        isActive: location.pathname.startsWith('/dashboard') && !location.search.includes('section=')
+      },
+      {
+        id: 'companies',
+        label: 'Companies',
+        icon: <Icons.Building className="w-5 h-5" />,
+        onClick: () => navigate('/dashboard?section=companies'),
+        isActive: location.pathname.startsWith('/research') || location.search.includes('section=companies'),
+        children: []
+      },
+      {
+        id: 'processes',
+        label: 'Processes',
+        icon: <Icons.Workflow className="w-5 h-5" />,
+        onClick: () => navigate('/library'),
+        isActive: location.pathname.startsWith('/library'),
+        children: []
+      },
+      {
+        id: 'settings',
+        label: 'Output History',
+        icon: <Icons.Document className="w-5 h-5" />,
+        onClick: () => navigate('/dashboard?section=settings'),
+        isActive: location.search.includes('section=settings')
+      }
+    ];
+
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-wm-blue">{t('research.researchList')}</h1>
-          <button
-            onClick={handleNewResearch}
-            className="px-4 py-2 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2 font-bold"
-          >
-            <Icons.Plus className="w-5 h-5" />
-            {t('research.newResearch')}
-          </button>
-        </div>
-        <ResearchListView 
-          userId={userId} 
-          onSelectCompany={handleSelectCompany}
-          handleNavigate={(_view, companyId) => {
-            if (companyId) {
-              setSelectedCompanyName(companyId);
-              setView('RESEARCH');
-              loadExistingResearch(companyId);
-            }
-          }}
+      <div className="flex h-screen bg-wm-white">
+        <SidebarNav
+          user={user}
+          items={menuItems}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         />
+        <main className="flex-1 overflow-auto bg-wm-neutral/5">
+          <div className="p-6 space-y-6">
+            <div className="flex justify-between items-center">
+              <h1 className="text-2xl font-bold text-wm-blue">{t('research.researchList')}</h1>
+              <button
+                onClick={handleNewResearch}
+                className="px-4 py-2 bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2 font-bold"
+              >
+                <Icons.Plus className="w-5 h-5" />
+                {t('research.newResearch')}
+              </button>
+            </div>
+            <ResearchListView 
+              userId={userId} 
+              onSelectCompany={handleSelectCompany}
+              handleNavigate={(_view, companyId) => {
+                if (companyId) {
+                  setSelectedCompanyName(companyId);
+                  setView('RESEARCH');
+                  loadExistingResearch(companyId);
+                }
+              }}
+            />
+          </div>
+        </main>
       </div>
     );
   }
 
+  const menuItems: SidebarNavItem[] = [
+    {
+      id: 'overview',
+      label: 'Dashboard',
+      icon: <Icons.Home className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard'),
+      isActive: location.pathname.startsWith('/dashboard') && !location.search.includes('section=')
+    },
+    {
+      id: 'companies',
+      label: 'Companies',
+      icon: <Icons.Building className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard?section=companies'),
+      isActive: location.pathname.startsWith('/research') || location.search.includes('section=companies'),
+      children: []
+    },
+    {
+      id: 'processes',
+      label: 'Processes',
+      icon: <Icons.Workflow className="w-5 h-5" />,
+      onClick: () => navigate('/library'),
+      isActive: location.pathname.startsWith('/library'),
+      children: []
+    },
+    {
+      id: 'settings',
+      label: 'Output History',
+      icon: <Icons.Document className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard?section=settings'),
+      isActive: location.search.includes('section=settings')
+    }
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* Search Input - only show if no research exists yet */}
+    <div className="flex h-screen bg-wm-white">
+      <SidebarNav
+        user={user}
+        items={menuItems}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+      />
+      <main className="flex-1 overflow-auto bg-wm-neutral/5">
+        <div className="p-6 space-y-6">
+      {/* Search Input - only show if no research exists yet * /}
       {!companyInfo?.currentResearch && (
         <>
           <div className="flex justify-between items-center mb-6">
@@ -1022,7 +1270,7 @@ The tone should be professional, consultative, and focused on digital transforma
 
           <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
             <div className="space-y-4">
-              {/* AI Model Selector */}
+              {/* AI Model Selector * /}
               <div className="flex items-center gap-3">
                 <label className="text-sm font-medium text-wm-blue/70">AI Model:</label>
                 <select
@@ -1073,7 +1321,7 @@ The tone should be professional, consultative, and focused on digital transforma
         </>
       )}
 
-      {/* Company Name Header - show when research exists */}
+      {/* Company Name Header - show when research exists * /}
       {companyInfo?.name && (
         <h1 className="text-3xl font-bold text-wm-blue">{companyInfo.name}</h1>
       )}
@@ -1084,11 +1332,11 @@ The tone should be professional, consultative, and focused on digital transforma
         </div>
       )}
 
-      {/* Research Results */}
+      {/* Research Results * /}
       <div>
         {companyInfo && (
           <div className="space-y-8">
-            {/* Company Research Section */}
+            {/* Company Research Section * /}
             <CompanyResearchContent
               companyInfo={companyInfo}
               scenarioRuns={scenarioRuns}
@@ -1162,7 +1410,7 @@ The tone should be professional, consultative, and focused on digital transforma
               }}
             />
 
-            {/* RFP Analysis Section - Completely Separate */}
+            {/* RFP Analysis Section - Completely Separate * /}
             {companyInfo?.currentResearch?.rfpDocument?.analysis ? (
               <RfpAnalysisView 
                 analysis={companyInfo.currentResearch.rfpDocument.analysis} 
@@ -1184,7 +1432,7 @@ The tone should be professional, consultative, and focused on digital transforma
         )}
       </div>
 
-      {/* Presentation Created Modal */}
+      {/* Presentation Created Modal * /}
       {presentationUrl && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 max-w-md w-full shadow-xl">
@@ -1252,7 +1500,7 @@ The tone should be professional, consultative, and focused on digital transforma
         </div>
       )}
 
-      {/* Loading Overlay */}
+      {/* Loading Overlay * /}
       {isGeneratingPresentation && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white border border-wm-neutral/30 rounded-xl p-8 flex flex-col items-center shadow-xl">
@@ -1262,8 +1510,11 @@ The tone should be professional, consultative, and focused on digital transforma
           </div>
         </div>
       )}
+        </div>
+      </main>
     </div>
   );
 };
 
 export default CompanyResearch;
+*/

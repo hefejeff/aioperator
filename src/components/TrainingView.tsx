@@ -1,12 +1,16 @@
 
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import type { User } from 'firebase/auth';
-import type { Scenario } from '../types';
-import { saveUserScenario, deleteUserScenario, updateScenario, toggleFavoriteScenario, getUserFavoriteScenarioIds } from '../services/firebaseService';
+import type { Scenario, AggregatedEvaluationResult } from '../types';
+import { saveUserScenario, deleteUserScenario, updateScenario, toggleFavoriteScenario, getUserFavoriteScenarioIds, getAllUserEvaluations } from '../services/firebaseService';
 import ScenarioCard from './ScenarioCard';
 import CreateScenarioForm from './CreateScenarioForm';
+import SearchInput from './SearchInput';
 import { useTranslation } from '../i18n';
+import { Icons } from '../constants';
+import SidebarNav, { SidebarNavItem } from './SidebarNav';
 
 interface TrainingViewProps {
   scenarios: Scenario[];
@@ -16,6 +20,9 @@ interface TrainingViewProps {
 }
 
 const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario, user, onScenarioCreated }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [localScenarios, setLocalScenarios] = useState<Scenario[]>(scenarios);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -26,6 +33,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
   const [showStarredOnly, setShowStarredOnly] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [favoriteBusyId, setFavoriteBusyId] = useState<string | null>(null);
+  const [allEvaluations, setAllEvaluations] = useState<AggregatedEvaluationResult[]>([]);
 
   useEffect(() => {
   setLocalScenarios(scenarios);
@@ -41,6 +49,18 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
       }
     })();
   }, [user]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const evaluations = await getAllUserEvaluations(user.uid);
+        setAllEvaluations(evaluations);
+      } catch (error) {
+        console.error('Failed to load evaluations for process cards:', error);
+        setAllEvaluations([]);
+      }
+    })();
+  }, [user.uid]);
 
   // Reset subdomain filter when domain changes
   useEffect(() => {
@@ -200,6 +220,40 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
     return a.title.localeCompare(b.title);
   });
 
+  const processUseCaseCounts = localScenarios.reduce<Record<string, number>>((acc, scenario) => {
+    const processKey = scenario.process?.trim();
+    if (!processKey) return acc;
+    acc[processKey] = (acc[processKey] || 0) + 1;
+    return acc;
+  }, {});
+
+  const latestDemoUrlByProcess = (() => {
+    const scenarioById = new Map(localScenarios.map((scenario) => [scenario.id, scenario]));
+    const latestByProcess: Record<string, { timestamp: number; url: string }> = {};
+
+    allEvaluations.forEach((evaluation) => {
+      const scenario = scenarioById.get(evaluation.scenarioId);
+      const processKey = scenario?.process?.trim();
+      if (!processKey) return;
+
+      const demoUrl = evaluation.demoPublishedUrl || evaluation.demoProjectUrl;
+      if (!demoUrl) return;
+
+      const existing = latestByProcess[processKey];
+      if (!existing || evaluation.timestamp > existing.timestamp) {
+        latestByProcess[processKey] = {
+          timestamp: evaluation.timestamp,
+          url: demoUrl
+        };
+      }
+    });
+
+    return Object.entries(latestByProcess).reduce<Record<string, string>>((acc, [process, value]) => {
+      acc[process] = value.url;
+      return acc;
+    }, {});
+  })();
+
   const handleToggleFavorite = async (scenario: Scenario) => {
     if (favoriteBusyId) return;
     setFavoriteBusyId(scenario.id);
@@ -230,92 +284,132 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
 
   const { t } = useTranslation();
 
+  const menuItems: SidebarNavItem[] = [
+    {
+      id: 'overview',
+      label: 'Dashboard',
+      icon: <Icons.ClipboardCheck className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard'),
+      isActive: location.pathname.startsWith('/dashboard') && !location.search.includes('section=')
+    },
+    {
+      id: 'companies',
+      label: 'Companies',
+      icon: <Icons.Building className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard?section=companies'),
+      isActive: location.pathname.startsWith('/company2') || location.pathname.startsWith('/research') || location.search.includes('section=companies'),
+      children: []
+    },
+    {
+      id: 'processes',
+      label: 'Processes',
+      icon: <Icons.Workflow className="w-5 h-5" />,
+      onClick: () => navigate('/library'),
+      isActive: location.pathname.startsWith('/library')
+    },
+    {
+      id: 'settings',
+      label: 'Output History',
+      icon: <Icons.Document className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard?section=settings'),
+      isActive: location.search.includes('section=settings')
+    }
+  ];
+
   return (
-    <div className="animate-fade-in">
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold mb-2 text-wm-blue">{t('training.title')}</h1>
-        <p className="text-lg text-wm-blue/60">{t('training.subtitle')}</p>
-        
-        {/* Large Search Box with Create Option */}
-        <div className="mt-6 max-w-3xl mx-auto relative">
-          <div className="relative">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setShowSearchDropdown(true);
-              }}
-              onFocus={() => setShowSearchDropdown(true)}
-              onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)}
-              placeholder="Search scenarios by title, description, domain, sub-domain, or industry..."
-              className="w-full px-6 py-4 text-lg border-2 border-wm-neutral/30 rounded-xl focus:outline-none focus:border-wm-accent transition-colors"
-            />
-          </div>
-          
-          {/* Search Results Dropdown */}
-          {showSearchDropdown && (
-            <div className="absolute top-full mt-2 w-full bg-white border-2 border-wm-accent/30 rounded-xl shadow-xl max-h-96 overflow-y-auto z-50">
-              {searchQuery.trim() && searchResults.length > 0 && (
-                <>
-                  {searchResults.slice(0, 10).map(scenario => (
-                    <button
-                      key={scenario.id}
-                      onClick={() => {
-                        onSelectScenario(scenario);
-                        setShowSearchDropdown(false);
-                        setSearchQuery('');
-                      }}
-                      className="w-full px-6 py-3 text-left hover:bg-wm-accent/10 transition-colors border-b border-wm-neutral/10 last:border-b-0"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="flex-1">
-                          <div className="font-bold text-wm-blue">{scenario.title}</div>
-                          <div className="text-sm text-wm-blue/60 line-clamp-1">{scenario.description}</div>
-                          <div className="flex gap-2 mt-1">
-                            {scenario.domain && (
-                              <span className="text-xs px-2 py-0.5 bg-wm-accent/10 text-wm-accent rounded-full">{scenario.domain}</span>
-                            )}
-                            {scenario.process && (
-                              <span className="text-xs px-2 py-0.5 bg-wm-blue/10 text-wm-blue rounded-full">{scenario.process}</span>
-                            )}
+    <div className="flex h-screen bg-wm-white">
+      <SidebarNav
+        user={user}
+        items={menuItems}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+      />
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-hidden bg-wm-neutral/5">
+        <div className="p-6 animate-fade-in flex flex-col h-full">
+          <div className="text-center mb-5">
+            <h1 className="text-2xl font-bold mb-1 text-wm-blue">{t('training.title')}</h1>
+            <p className="text-base text-wm-blue/60">{t('training.subtitle')}</p>
+            
+            {/* Large Search Box with Create Option */}
+            <div className="mt-4 max-w-3xl mx-auto relative">
+              <SearchInput
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowSearchDropdown(true);
+                }}
+                onFocus={() => setShowSearchDropdown(true)}
+                onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)}
+                placeholder="Search scenarios by title, description, domain, sub-domain, or industry..."
+                inputClassName="py-2"
+              />
+              
+              {/* Search Results Dropdown */}
+              {showSearchDropdown && (
+                <div className="absolute top-full mt-2 w-full bg-white border-2 border-wm-accent/30 rounded-xl shadow-xl max-h-96 overflow-y-auto z-50">
+                  {searchQuery.trim() && searchResults.length > 0 && (
+                    <>
+                      {searchResults.slice(0, 10).map(scenario => (
+                        <button
+                          key={scenario.id}
+                          onClick={() => {
+                            onSelectScenario(scenario);
+                            setShowSearchDropdown(false);
+                            setSearchQuery('');
+                          }}
+                          className="w-full px-6 py-3 text-left hover:bg-wm-accent/10 transition-colors border-b border-wm-neutral/10 last:border-b-0"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1">
+                              <div className="font-bold text-wm-blue">{scenario.title}</div>
+                              <div className="text-sm text-wm-blue/60 line-clamp-1">{scenario.description}</div>
+                              <div className="flex gap-2 mt-1">
+                                {scenario.domain && (
+                                  <span className="text-xs px-2 py-0.5 bg-wm-accent/10 text-wm-accent rounded-full">{scenario.domain}</span>
+                                )}
+                                {scenario.process && (
+                                  <span className="text-xs px-2 py-0.5 bg-wm-blue/10 text-wm-blue rounded-full">{scenario.process}</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
+                        </button>
+                      ))}
+                      {searchResults.length > 10 && (
+                        <div className="px-6 py-2 text-sm text-wm-blue/50 text-center border-b border-wm-neutral/10">
+                          Showing 10 of {searchResults.length} results
                         </div>
-                      </div>
-                    </button>
-                  ))}
-                  {searchResults.length > 10 && (
-                    <div className="px-6 py-2 text-sm text-wm-blue/50 text-center border-b border-wm-neutral/10">
-                      Showing 10 of {searchResults.length} results
+                      )}
+                    </>
+                  )}
+                  
+                  {searchQuery.trim() && searchResults.length === 0 && (
+                    <div className="px-6 py-4 text-center text-wm-blue/50 border-b border-wm-neutral/10">
+                      No scenarios found matching "{searchQuery}"
                     </div>
                   )}
-                </>
-              )}
-              
-              {searchQuery.trim() && searchResults.length === 0 && (
-                <div className="px-6 py-4 text-center text-wm-blue/50 border-b border-wm-neutral/10">
-                  No scenarios found matching "{searchQuery}"
+                  
+                  {/* Create New Option - Always Visible and Sticky */}
+                  <button
+                    onClick={() => {
+                      setIsCreating(true);
+                      setShowSearchDropdown(false);
+                      setSearchQuery('');
+                    }}
+                    className="w-full px-6 py-4 text-left bg-wm-accent/5 hover:bg-wm-accent/10 transition-colors font-bold text-wm-accent flex items-center gap-2 sticky bottom-0"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Create New Scenario
+                  </button>
                 </div>
               )}
-              
-              {/* Create New Option - Always Visible and Sticky */}
-              <button
-                onClick={() => {
-                  setIsCreating(true);
-                  setShowSearchDropdown(false);
-                  setSearchQuery('');
-                }}
-                className="w-full px-6 py-4 text-left bg-wm-accent/5 hover:bg-wm-accent/10 transition-colors font-bold text-wm-accent flex items-center gap-2 sticky bottom-0"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Create New Scenario
-              </button>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
       {isCreating && (
         <CreateScenarioForm
@@ -324,15 +418,15 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
         />
       )}
 
-        <div className="flex items-center justify-between mb-6 bg-gradient-to-r from-wm-accent/5 via-wm-blue/5 to-wm-accent/5 p-4 rounded-xl border border-wm-neutral/20 shadow-sm">
+        <div className="flex items-center justify-between mb-3 bg-gradient-to-r from-wm-accent/5 via-wm-blue/5 to-wm-accent/5 p-3 rounded-xl border border-wm-neutral/20 shadow-sm">
         <div />
-        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
           {/* Star Filter Toggle */}
           <div className="flex items-center gap-4">
-            <span className="text-sm font-bold text-wm-blue/70">Filters</span>
+            <span className="text-xs font-bold text-wm-blue/70">Filters</span>
             <button
               onClick={() => setShowStarredOnly(!showStarredOnly)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 font-bold ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-200 font-bold ${
                 showStarredOnly
                   ? 'bg-wm-yellow/20 text-wm-blue border border-wm-yellow/50'
                   : 'bg-wm-neutral/20 text-wm-blue/60 border border-wm-neutral/30 hover:bg-wm-neutral/30 hover:text-wm-blue'
@@ -347,7 +441,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
               >
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
               </svg>
-              <span className="text-sm font-bold">
+              <span className="text-xs font-bold">
                 {showStarredOnly ? 'Starred' : 'All'}
               </span>
             </button>
@@ -355,8 +449,8 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
           
           {/* Industry Filter */}
           <div className="flex items-center space-x-2">
-            <label className="text-sm text-wm-blue/70 font-bold">Industry</label>
-            <select value={industryFilter} onChange={(e) => setIndustryFilter(e.target.value)} className="bg-white border border-wm-neutral/30 rounded-md p-2 text-wm-blue">
+            <label className="text-xs text-wm-blue/70 font-bold">Industry</label>
+            <select value={industryFilter} onChange={(e) => setIndustryFilter(e.target.value)} className="bg-white border border-wm-neutral/30 rounded-md px-2 py-1.5 text-sm text-wm-blue">
               <option value="All">All Industries</option>
               {['Healthcare', 'Finance', 'Retail', 'Manufacturing', 'Technology', 'Education', 'Real Estate', 'Hospitality', 'Transportation', 'Energy', 'Telecommunications', 'Media & Entertainment', 'Government', 'Non-Profit', 'Professional Services', 'Other'].map(i => (
                 <option key={i} value={i}>{i}</option>
@@ -366,8 +460,8 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
 
           {/* Domain Filter */}
           <div className="flex items-center space-x-2">
-            <label className="text-sm text-wm-blue/70 font-bold">{t('training.filter')}</label>
-            <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} className="bg-white border border-wm-neutral/30 rounded-md p-2 text-wm-blue">
+            <label className="text-xs text-wm-blue/70 font-bold">{t('training.filter')}</label>
+            <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} className="bg-white border border-wm-neutral/30 rounded-md px-2 py-1.5 text-sm text-wm-blue">
               <option value="All">{t('filter.all')}</option>
               {['Sales','HR','Finance','Operations','Logistics','Healthcare','Manufacturing','Legal','Procurement','Marketing','IT','Customer Support','General'].map(d => (
                 <option key={d} value={d}>{d}</option>
@@ -377,11 +471,11 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
 
           {/* Subdomain Filter */}
           <div className="flex items-center space-x-2">
-            <label className="text-sm text-wm-blue/70 font-bold">Sub-domain</label>
+            <label className="text-xs text-wm-blue/70 font-bold">Sub-domain</label>
             <select 
               value={subdomainFilter} 
               onChange={(e) => setSubdomainFilter(e.target.value)} 
-              className="bg-white border border-wm-neutral/30 rounded-md p-2 text-wm-blue"
+              className="bg-white border border-wm-neutral/30 rounded-md px-2 py-1.5 text-sm text-wm-blue"
               disabled={availableSubdomains.length === 0}
             >
               <option value="All">All Sub-domains</option>
@@ -393,66 +487,72 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
         </div>
       </div>
 
-      {sortedScenarios.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {sortedScenarios.map(scenario => (
-            <ScenarioCard 
-              key={scenario.id} 
-              scenario={scenario} 
-              onSelect={onSelectScenario}
-              isFavorited={favoriteIds.has(scenario.id)}
-              onToggleFavorite={handleToggleFavorite}
-              favoriteBusy={favoriteBusyId === scenario.id}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-20">
-          <div className="relative max-w-md mx-auto">
-            {/* Background glow effect */}
-            <div className="absolute inset-0 bg-gradient-to-r from-wm-yellow/10 via-wm-accent/10 to-wm-pink/10 rounded-3xl blur-2xl animate-pulse"></div>
-            
-            {/* Icon container */}
-            <div className="relative w-32 h-32 bg-gradient-to-br from-white to-wm-neutral/20 backdrop-blur-xl rounded-3xl flex items-center justify-center mx-auto mb-8 border border-wm-neutral/30 shadow-sm">
-              <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent rounded-3xl"></div>
-              <div className="relative text-wm-blue/40">
-                <svg className="w-16 h-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                </svg>
+      <div className="flex-1 overflow-auto">
+        {sortedScenarios.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-6 items-start">
+            {sortedScenarios.map(scenario => (
+              <ScenarioCard 
+                key={scenario.id} 
+                scenario={scenario} 
+                onSelect={onSelectScenario}
+                isFavorited={favoriteIds.has(scenario.id)}
+                onToggleFavorite={handleToggleFavorite}
+                favoriteBusy={favoriteBusyId === scenario.id}
+                processUseCaseCount={scenario.process ? (processUseCaseCounts[scenario.process] || 0) : 0}
+                latestDemoUrl={scenario.process ? latestDemoUrlByProcess[scenario.process] || null : null}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-20">
+            <div className="relative max-w-md mx-auto">
+              {/* Background glow effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-wm-yellow/10 via-wm-accent/10 to-wm-pink/10 rounded-3xl blur-2xl animate-pulse"></div>
+              
+              {/* Icon container */}
+              <div className="relative w-32 h-32 bg-gradient-to-br from-white to-wm-neutral/20 backdrop-blur-xl rounded-3xl flex items-center justify-center mx-auto mb-8 border border-wm-neutral/30 shadow-sm">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent rounded-3xl"></div>
+                <div className="relative text-wm-blue/40">
+                  <svg className="w-16 h-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                </div>
+              </div>
+              
+              {/* Content */}
+              <div className="relative">
+                <h3 className="text-3xl font-bold text-wm-blue mb-4">
+                  {showStarredOnly ? 'No Starred Scenarios Yet' : 'No Scenarios Found'}
+                </h3>
+                <p className="text-lg text-wm-blue/60 mb-10 max-w-sm mx-auto leading-relaxed">
+                  {showStarredOnly 
+                    ? 'Star your favorite scenarios to keep them organized and easily accessible.'
+                    : domainFilter !== 'All' 
+                      ? `No scenarios found in the ${domainFilter} domain.`
+                      : 'Create your first scenario to get started with AI automation.'
+                  }
+                </p>
+                {!showStarredOnly && (
+                  <button
+                    onClick={() => setIsCreating(true)}
+                    className="group relative px-10 py-4 bg-wm-accent text-white font-bold rounded-2xl hover:shadow-2xl hover:shadow-wm-accent/25 transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm border border-wm-accent/20 hover:border-wm-accent/40"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    <span className="relative flex items-center gap-3">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span className="text-lg">Create Your First Scenario</span>
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
-            
-            {/* Content */}
-            <div className="relative">
-              <h3 className="text-3xl font-bold text-wm-blue mb-4">
-                {showStarredOnly ? 'No Starred Scenarios Yet' : 'No Scenarios Found'}
-              </h3>
-              <p className="text-lg text-wm-blue/60 mb-10 max-w-sm mx-auto leading-relaxed">
-                {showStarredOnly 
-                  ? 'Star your favorite scenarios to keep them organized and easily accessible.'
-                  : domainFilter !== 'All' 
-                    ? `No scenarios found in the ${domainFilter} domain.`
-                    : 'Create your first scenario to get started with AI automation.'
-                }
-              </p>
-              {!showStarredOnly && (
-                <button
-                  onClick={() => setIsCreating(true)}
-                  className="group relative px-10 py-4 bg-wm-accent text-white font-bold rounded-2xl hover:shadow-2xl hover:shadow-wm-accent/25 transition-all duration-300 hover:-translate-y-1 backdrop-blur-sm border border-wm-accent/20 hover:border-wm-accent/40"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  <span className="relative flex items-center gap-3">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    <span className="text-lg">Create Your First Scenario</span>
-                  </span>
-                </button>
-              )}
-            </div>
           </div>
+        )}
+      </div>
         </div>
-      )}
+      </main>
     </div>
   );
 };

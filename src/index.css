@@ -4,12 +4,12 @@
 
 /* West Monroe Brand Variables */
 :root {
-  --wm-blue: #000033;
+  --wm-blue: #000022;
   --wm-white: #FFFFFF;
-  --wm-yellow: #F2E800;
-  --wm-accent: #0045FF;
+  --wm-yellow: #E8DF00;
+  --wm-accent: #0036CC;
   --wm-pink: #F500A0;
-  --wm-neutral: #CBD2DA;
+  --wm-neutral: #A9B5C4;
 }
 
 /* Global scrollbar styling */

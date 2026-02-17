@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { User } from 'firebase/auth';
 import { 
   getAllUserEvaluations, 
@@ -7,11 +8,17 @@ import {
   saveUserScenario, 
   toggleFavoriteScenario,
   listCompanyResearch,
-  searchOtherUsersCompanies
+  searchOtherUsersCompanies,
+  migrateCompanyInfoForUserRuns,
+  backfillUnknownCompanyForUserRuns,
+  getUserProfile
 } from '../services/firebaseService';
-import type { Scenario, WorkflowVersion, AggregatedEvaluationResult, Company } from '../types';
+import type { Scenario, WorkflowVersion, AggregatedEvaluationResult, Company, Role } from '../types';
+import { deleteCompany } from '../services/companyService';
 import CreateScenarioForm, { ScenarioFormPayload } from './CreateScenarioForm';
 import { Icons, ALL_SCENARIOS } from '../constants';
+import SearchInput from './SearchInput';
+import SidebarNav, { SidebarNavItem } from './SidebarNav';
 
 interface Dashboard2Props {
   user: User;
@@ -22,7 +29,7 @@ interface Dashboard2Props {
   onNavigateToScenario?: (scenarioId: string) => void;
 }
 
-type MenuSection = 'overview' | 'companies' | 'workflows' | 'settings';
+type MenuSection = 'overview' | 'companies' | 'settings';
 
 // Collapsible Companies Table with Scenarios Sub-component
 interface CompaniesTableProps {
@@ -860,7 +867,9 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
   handleNavigate,
   onNavigateToScenario
 }) => {
-  const [activeSection, setActiveSection] = useState<MenuSection>('overview');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [activeSection, setActiveSection] = useState<MenuSection>('companies');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
   // Data states
@@ -869,6 +878,7 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
   const [evaluations, setEvaluations] = useState<AggregatedEvaluationResult[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [userRole, setUserRole] = useState<Role>('USER');
   
   // UI states
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -878,7 +888,16 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [otherUsersCompanies, setOtherUsersCompanies] = useState<Company[]>([]);
   const [isSearchingOthers, setIsSearchingOthers] = useState(false);
-  const [expandedProcesses, setExpandedProcesses] = useState<Record<string, boolean>>({});
+  const [expandedRecentProcesses, setExpandedRecentProcesses] = useState<Record<string, boolean>>({});
+  const isAdminUser = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const sectionParam = params.get('section');
+    if (sectionParam === 'overview' || sectionParam === 'companies' || sectionParam === 'settings') {
+      setActiveSection(sectionParam);
+    }
+  }, [location.search]);
   
   // Search for other users' companies when query changes
   useEffect(() => {
@@ -916,7 +935,7 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
   const hasExactMatch = companies.some(
     c => c.name.toLowerCase() === companySearchQuery.trim().toLowerCase()
   );
-  const showCreateOption = companySearchQuery.trim().length > 0 && !hasExactMatch;
+  const showCreateOption = isSearchFocused && !hasExactMatch;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -928,6 +947,21 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
       try {
         setIsLoading(true);
 
+        const profile = await getUserProfile(user.uid);
+        setUserRole(profile?.role || 'USER');
+
+        if (typeof window !== 'undefined') {
+          const migrationKey = `migration-company-info-runs-v1:${user.uid}`;
+          if (!window.localStorage.getItem(migrationKey)) {
+            try {
+              await migrateCompanyInfoForUserRuns(user.uid);
+              window.localStorage.setItem(migrationKey, 'done');
+            } catch (migrationError) {
+              console.warn('Company info migration skipped:', migrationError);
+            }
+          }
+        }
+
         const [scenariosData, workflowData, evaluationsData, companyResearchData] = await Promise.all([
           getScenarios(user.uid),
           getAllUserWorkflowVersions(user.uid),
@@ -935,50 +969,22 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
           listCompanyResearch(user.uid)
         ]);
 
-        // Transform company research data
-        console.log('=== DASHBOARD TRANSFORM DEBUG ===');
-        console.log('Raw companyResearchData:', companyResearchData);
-        
-        const transformedCompanies = companyResearchData.reduce((uniqueCompanies, researchData) => {
-          const { name, currentResearch, history, lastUpdated, selectedScenarios = [] } = researchData;
-          console.log(`Processing company: ${name}`);
-          console.log('currentResearch:', currentResearch);
-          console.log('currentResearch.documents:', currentResearch?.documents);
-          
-          const resolvedLastUpdated = lastUpdated ?? Date.now();
-          const existingCompany = uniqueCompanies.find(c => c.name.toLowerCase() === name.toLowerCase());
-          
-          if (existingCompany) {
-            if (resolvedLastUpdated > existingCompany.lastUpdated) {
-              existingCompany.lastUpdated = resolvedLastUpdated;
-              existingCompany.selectedScenarios = selectedScenarios;
-              existingCompany.research = {
-                name,
-                currentResearch,
-                history: [...(history || []), ...(existingCompany.research.history || [])],
-                lastUpdated: resolvedLastUpdated
-              };
+        const transformedCompanies = companyResearchData;
+
+        if (typeof window !== 'undefined') {
+          const nikeCompany = transformedCompanies.find(company => company.name.toLowerCase() === 'nike');
+          if (nikeCompany) {
+            const backfillKey = `backfill-unknown-company-nike-v1:${user.uid}`;
+            if (!window.localStorage.getItem(backfillKey)) {
+              try {
+                await backfillUnknownCompanyForUserRuns(user.uid, nikeCompany.name);
+                window.localStorage.setItem(backfillKey, 'done');
+              } catch (backfillError) {
+                console.warn('Nike backfill skipped:', backfillError);
+              }
             }
-            return uniqueCompanies;
           }
-
-          uniqueCompanies.push({
-            id: `${name.toLowerCase()}_${Date.now()}`,
-            name,
-            createdBy: user.uid,
-            createdAt: resolvedLastUpdated,
-            lastUpdated: resolvedLastUpdated,
-            selectedScenarios,
-            research: {
-              name,
-              currentResearch,
-              history: history || [],
-              lastUpdated: resolvedLastUpdated
-            }
-          });
-
-          return uniqueCompanies;
-        }, [] as Company[]);
+        }
 
         setScenarios(scenariosData);
         setWorkflowVersions(workflowData);
@@ -1000,44 +1006,7 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
       // Refetch company data when a document is uploaded
       if (user && !user.isAnonymous) {
         listCompanyResearch(user.uid).then(companyResearchData => {
-          const transformedCompanies = companyResearchData.reduce((uniqueCompanies, researchData) => {
-            const { name, currentResearch, history, lastUpdated, selectedScenarios = [] } = researchData;
-            const resolvedLastUpdated = lastUpdated ?? Date.now();
-            const existingCompany = uniqueCompanies.find(c => c.name.toLowerCase() === name.toLowerCase());
-            
-            if (existingCompany) {
-              if (resolvedLastUpdated > existingCompany.lastUpdated) {
-                existingCompany.lastUpdated = resolvedLastUpdated;
-                existingCompany.selectedScenarios = selectedScenarios;
-                existingCompany.research = {
-                  name,
-                  currentResearch,
-                  history: [...(history || []), ...(existingCompany.research.history || [])],
-                  lastUpdated: resolvedLastUpdated
-                };
-              }
-              return uniqueCompanies;
-            }
-
-            uniqueCompanies.push({
-              id: `${name.toLowerCase()}_${Date.now()}`,
-              name,
-              createdBy: user.uid,
-              createdAt: resolvedLastUpdated,
-              lastUpdated: resolvedLastUpdated,
-              selectedScenarios,
-              research: {
-                name,
-                currentResearch,
-                history: history || [],
-                lastUpdated: resolvedLastUpdated
-              }
-            });
-
-            return uniqueCompanies;
-          }, [] as Company[]);
-          
-          setCompanies(transformedCompanies);
+          setCompanies(companyResearchData);
         }).catch(err => {
           console.error('Failed to refresh companies after document upload:', err);
         });
@@ -1096,12 +1065,77 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
     }
   };
 
-  // Menu items configuration
-  const menuItems: { id: MenuSection; label: string; icon: React.ReactNode }[] = [
-    { id: 'overview', label: 'Overview', icon: <Icons.Home className="w-5 h-5" /> },
-    { id: 'companies', label: 'Companies', icon: <Icons.Building className="w-5 h-5" /> },
-    { id: 'workflows', label: 'Use Cases', icon: <Icons.Workflow className="w-5 h-5" /> },
-    { id: 'settings', label: 'Settings', icon: <Icons.Settings className="w-5 h-5" /> },
+  const allAvailableScenarios = [...ALL_SCENARIOS, ...scenarios];
+
+  const companyItems: SidebarNavItem[] = [...companies]
+    .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0))
+    .slice(0, 5)
+    .map((company) => ({
+      id: `company-${company.id}`,
+      label: company.name,
+      icon: <Icons.Building className="w-4 h-4" />,
+      onClick: () => handleNavigate?.('RESEARCH', company.id)
+    }));
+
+  const processRuns = evaluations.length > 0
+    ? evaluations.map(run => ({ scenarioId: run.scenarioId, timestamp: run.timestamp }))
+    : workflowVersions.map(run => ({ scenarioId: run.scenarioId, timestamp: run.timestamp }));
+
+  const processByScenario = new Map<string, number>();
+  processRuns.forEach((run) => {
+    const current = processByScenario.get(run.scenarioId);
+    if (!current || run.timestamp > current) {
+      processByScenario.set(run.scenarioId, run.timestamp);
+    }
+  });
+
+  const processItems: SidebarNavItem[] = Array.from(processByScenario.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([scenarioId]) => {
+      const scenario = allAvailableScenarios.find(s => s.id === scenarioId);
+      return {
+        id: `process-${scenarioId}`,
+        label: scenario?.title || 'Untitled process',
+        icon: <Icons.Workflow className="w-4 h-4" />,
+        onClick: () => {
+          if (scenario) {
+            onStartTraining?.(scenario);
+          }
+        }
+      };
+    });
+
+  const menuItems: SidebarNavItem[] = [
+    {
+      id: 'overview',
+      label: 'Dashboard',
+      icon: <Icons.ClipboardCheck className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard'),
+      isActive: location.pathname.startsWith('/dashboard') && !location.search.includes('section=')
+    },
+    {
+      id: 'companies',
+      label: 'Companies',
+      icon: <Icons.Building className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard?section=companies'),
+      isActive: location.pathname.startsWith('/company2') || location.pathname.startsWith('/research') || location.search.includes('section=companies'),
+      children: companyItems
+    },
+    {
+      id: 'processes',
+      label: 'Processes',
+      icon: <Icons.Workflow className="w-5 h-5" />,
+      onClick: () => navigate('/library'),
+      isActive: location.pathname.startsWith('/library')
+    },
+    {
+      id: 'settings',
+      label: 'Output History',
+      icon: <Icons.Document className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard?section=settings'),
+      isActive: location.search.includes('section=settings')
+    }
   ];
 
   if (isLoading) {
@@ -1117,283 +1151,359 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
 
   return (
     <div className="flex h-screen bg-wm-white">
-      {/* Left Sidebar */}
-      <aside 
-        className={`${isSidebarCollapsed ? 'w-16' : 'w-64'} bg-white border-r border-wm-neutral/20 flex flex-col transition-all duration-300 ease-in-out`}
-      >
-        {/* Sidebar Header */}
-        <div className="p-4 border-b border-wm-neutral/20">
-          <div className="flex items-center justify-between">
-            {!isSidebarCollapsed && (
-              <h1 className="text-lg font-bold text-wm-blue">AI Operator Hub</h1>
-            )}
-            <button 
-              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="p-2 hover:bg-wm-neutral/10 rounded-lg transition-colors text-wm-blue/70"
-            >
-              {isSidebarCollapsed ? (
-                <Icons.ChevronRight className="w-5 h-5" />
-              ) : (
-                <Icons.ChevronLeft className="w-5 h-5" />
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Navigation Menu */}
-        <nav className="flex-1 py-4">
-          <ul className="space-y-1 px-2">
-            {menuItems.map((item) => (
-              <li key={item.id}>
-                <button
-                  onClick={() => setActiveSection(item.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
-                    activeSection === item.id
-                      ? 'bg-wm-blue text-white'
-                      : 'text-wm-blue/70 hover:bg-wm-neutral/10 hover:text-wm-blue'
-                  }`}
-                  title={isSidebarCollapsed ? item.label : undefined}
-                >
-                  {item.icon}
-                  {!isSidebarCollapsed && (
-                    <span className="font-medium">{item.label}</span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
-        {/* Sidebar Footer - User Info */}
-        <div className="p-4 border-t border-wm-neutral/20">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-wm-accent flex items-center justify-center text-sm font-bold text-white">
-              {user.displayName?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'}
-            </div>
-            {!isSidebarCollapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-wm-blue truncate">{user.displayName || 'User'}</p>
-                <p className="text-xs text-wm-blue/50 truncate">{user.email}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </aside>
+      <SidebarNav
+        user={user}
+        items={menuItems}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-auto bg-wm-neutral/5">
-        {/* Top Bar */}
-        <header className="bg-white border-b border-wm-neutral/20 px-6 py-4 sticky top-0 z-10">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-wm-blue capitalize">{activeSection}</h2>
-              <p className="text-sm text-wm-blue/60">
-                {activeSection === 'overview' && 'Your dashboard at a glance'}
-                {activeSection === 'companies' && 'Manage your company research'}
-                {activeSection === 'workflows' && 'View and manage your use cases'}
-                {activeSection === 'settings' && 'Configure your preferences'}
-              </p>
-            </div>
-            {activeSection !== 'workflows' && (
-              <div className="flex items-center gap-3">
-                {/* Company Search Experience */}
-                <div className="relative">
-                  <div className="flex items-center">
-                    <div className="relative">
-                      <Icons.Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-wm-blue/40" />
-                      <input
-                        type="text"
-                        value={companySearchQuery}
-                        onChange={(e) => setCompanySearchQuery(e.target.value)}
-                        onFocus={() => setIsSearchFocused(true)}
-                        onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-                        placeholder="Research Company"
-                        className="pl-9 pr-4 py-2 w-64 border border-wm-neutral/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-wm-accent/50 focus:border-wm-accent text-sm"
-                      />
-                      {companySearchQuery && (
-                        <button
-                          onClick={() => setCompanySearchQuery('')}
-                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-wm-blue/40 hover:text-wm-blue"
-                        >
-                          <Icons.X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Search Dropdown */}
-                  {isSearchFocused && companySearchQuery.trim() && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-wm-neutral/20 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto min-w-[320px]">
-                      {/* Your Companies Section */}
-                      {filteredCompanies.length > 0 && (
-                        <div className="p-2">
-                          <p className="text-xs text-wm-blue/50 px-2 py-1 uppercase font-medium">Your Companies</p>
-                          {filteredCompanies.slice(0, 5).map((company) => (
-                            <button
-                              key={company.id}
-                              onClick={() => {
-                                handleNavigate?.('RESEARCH', company.id);
-                                setCompanySearchQuery('');
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-wm-blue/5 rounded-md flex items-center gap-2 text-sm"
-                            >
-                              <Icons.Building className="w-4 h-4 text-wm-blue/60" />
-                              <span className="text-wm-blue">{company.name}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      
-                      {/* Other Users' Research Section */}
-                      {(otherUsersCompanies.length > 0 || isSearchingOthers) && (
-                        <div className="border-t border-wm-neutral/10 p-2">
-                          <p className="text-xs text-wm-blue/50 px-2 py-1 uppercase font-medium flex items-center gap-2">
-                            <Icons.Users className="w-3 h-3" />
-                            Other Users' Research
-                            {isSearchingOthers && <span className="text-wm-accent">...</span>}
-                          </p>
-                          {otherUsersCompanies.slice(0, 5).map((company) => (
-                            <button
-                              key={company.id}
-                              onClick={() => {
-                                handleNavigate?.('RESEARCH', company.id);
-                                setCompanySearchQuery('');
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-purple-50 rounded-md flex items-center gap-2 text-sm group"
-                            >
-                              <Icons.Building className="w-4 h-4 text-purple-400" />
-                              <div className="flex-1 min-w-0">
-                                <span className="text-wm-blue">{company.name}</span>
-                                <span className="ml-2 text-xs text-purple-500 bg-purple-100 px-1.5 py-0.5 rounded">
-                                  shared
-                                </span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      
-                      {showCreateOption && (
-                        <div className="border-t border-wm-neutral/10 p-2">
-                          <button
-                            onClick={() => {
-                              // Navigate to research view with pre-filled company name
-                              handleNavigate?.('RESEARCH');
-                              // Store the company name to be used in the research form
-                              sessionStorage.setItem('newCompanyName', companySearchQuery.trim());
-                              setCompanySearchQuery('');
-                            }}
-                            className="w-full px-3 py-2 text-left hover:bg-wm-accent/10 rounded-md flex items-center gap-2 text-sm"
-                          >
-                            <Icons.Plus className="w-4 h-4 text-wm-accent" />
-                            <span className="text-wm-accent font-medium">Create "{companySearchQuery.trim()}"</span>
-                          </button>
-                        </div>
-                      )}
-                      
-                      {filteredCompanies.length === 0 && otherUsersCompanies.length === 0 && !isSearchingOthers && !showCreateOption && (
-                        <div className="p-4 text-center text-sm text-wm-blue/50">
-                          No companies found
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </header>
-
-        {/* Content Area */}
-        <div className="p-6">
+        <div className="p-6 h-full flex flex-col">
           {/* Overview Section - Companies Table and Scenarios/Versions */}
           {activeSection === 'overview' && (
-            <div className="space-y-6">
-              {/* Show filtered indicator when searching */}
-              {companySearchQuery.trim() && (
-                <div className="flex items-center gap-2 text-sm text-wm-blue/60 bg-wm-blue/5 px-4 py-2 rounded-lg">
-                  <Icons.Search className="w-4 h-4" />
-                  <span>
-                    Showing {filteredCompanies.length} {filteredCompanies.length === 1 ? 'company' : 'companies'} matching "{companySearchQuery}"
-                  </span>
-                  <button
-                    onClick={() => setCompanySearchQuery('')}
-                    className="ml-auto text-wm-accent hover:text-wm-accent/80"
-                  >
-                    Clear search
-                  </button>
-                </div>
-              )}
-              <CompaniesTableWithScenarios 
-                companies={filteredCompanies}
-                scenarios={scenarios}
-                workflowVersions={workflowVersions}
-                onNavigateToResearch={(companyId) => handleNavigate?.('RESEARCH', companyId)}
-                onStartTraining={onStartTraining}
-                onNavigateToScenario={onNavigateToScenario}
-                onViewWorkflow={onViewWorkflow}
-              />
+            <div className="space-y-8">
+              <div className="text-center space-y-4">
+                <h2 className="text-2xl font-semibold text-wm-blue">
+                  Company Research Center
+                </h2>
+                <div className="flex items-center justify-center">
+                  <div className="relative w-full max-w-2xl">
+                    <SearchInput
+                      type="text"
+                      value={companySearchQuery}
+                      onChange={(e) => setCompanySearchQuery(e.target.value)}
+                      onFocus={() => setIsSearchFocused(true)}
+                      onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+                      placeholder="Search a company to explore"
+                    />
 
-              {/* Workflows Section */}
-              <div className="bg-white rounded-xl border border-wm-neutral/20 shadow-sm">
-                <div className="p-4 border-b border-wm-neutral/20 flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-wm-blue text-lg">Use Cases</h3>
-                    <p className="text-sm text-wm-blue/60 mt-1">Your saved use case versions and solutions</p>
-                  </div>
-                  <button
-                    onClick={() => setActiveSection('workflows')}
-                    className="text-sm text-wm-accent hover:text-wm-accent/80 font-medium"
-                  >
-                    View All →
-                  </button>
-                </div>
-                <div className="p-4">
-                  {workflowVersions.length === 0 ? (
-                    <div className="text-center py-12">
-                      <Icons.Workflow className="w-12 h-12 text-wm-neutral mx-auto mb-4" />
-                      <p className="text-wm-blue/60">No use cases yet</p>
-                      <p className="text-sm text-wm-blue/50 mt-2">Create your first use case by training on a scenario</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {workflowVersions.slice(0, 6).map((workflow) => {
-                        const scenario = scenarios.find(s => s.id === workflow.scenarioId);
-                        return (
-                          <div 
-                            key={workflow.id}
-                            className="p-4 border border-wm-neutral/20 rounded-lg hover:border-wm-blue/30 hover:shadow-md cursor-pointer transition-all"
-                            onClick={() => onViewWorkflow?.(workflow.id)}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <Icons.Workflow className="w-6 h-6 text-purple-600" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-semibold text-wm-blue truncate">
-                                  {workflow.versionTitle || 'Untitled Use Case'}
-                                </h4>
-                                <p className="text-sm text-wm-blue/60 mt-1 line-clamp-2">
-                                  {scenario?.title || 'Unknown scenario'}
-                                </p>
-                                <div className="flex items-center gap-2 mt-2">
-                                  {workflow.evaluationScore !== null && (
-                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                                      Score: {workflow.evaluationScore}
-                                    </span>
-                                  )}
-                                  <span className="text-xs text-wm-blue/50">
-                                    {new Date(workflow.timestamp).toLocaleDateString()}
-                                  </span>
+                    {isSearchFocused && (
+                      <div className="absolute top-full mt-2 w-full bg-white border-2 border-wm-accent/30 rounded-xl shadow-xl max-h-96 overflow-y-auto z-50">
+                        {filteredCompanies.length > 0 && (
+                          <div className="p-2">
+                            <p className="text-xs text-wm-blue/50 px-4 py-2 uppercase font-medium">Your Companies</p>
+                            {filteredCompanies.slice(0, 5).map((company) => (
+                              <button
+                                key={company.id}
+                                onClick={() => {
+                                  handleNavigate?.('RESEARCH', company.id);
+                                  setCompanySearchQuery('');
+                                }}
+                                className="w-full px-6 py-3 text-left hover:bg-wm-accent/10 transition-colors border-b border-wm-neutral/10 last:border-b-0"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <Icons.Building className="w-4 h-4 text-wm-blue/60" />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-bold text-wm-blue">{company.name}</div>
+                                    <div className="text-sm text-wm-blue/60 line-clamp-1">
+                                      {company.research?.currentResearch?.industry || 'Industry not specified'}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {(otherUsersCompanies.length > 0 || isSearchingOthers) && (
+                          <div className="border-t border-wm-neutral/10 p-2">
+                            <p className="text-xs text-wm-blue/50 px-4 py-2 uppercase font-medium flex items-center gap-2">
+                              <Icons.Users className="w-3 h-3" />
+                              Other Users' Research
+                              {isSearchingOthers && <span className="text-wm-accent">...</span>}
+                            </p>
+                            {otherUsersCompanies.slice(0, 5).map((company) => (
+                              <button
+                                key={company.id}
+                                onClick={() => {
+                                  handleNavigate?.('RESEARCH', company.id);
+                                  setCompanySearchQuery('');
+                                }}
+                                className="w-full px-6 py-3 text-left hover:bg-wm-accent/10 transition-colors border-b border-wm-neutral/10 last:border-b-0"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <Icons.Building className="w-4 h-4 text-purple-400" />
+                                  <div className="flex-1 min-w-0">
+                                    <span className="text-wm-blue">{company.name}</span>
+                                    <span className="ml-2 text-xs text-purple-500 bg-purple-100 px-1.5 py-0.5 rounded">shared</span>
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {showCreateOption && (
+                          <div className="border-t border-wm-neutral/10 p-2">
+                            <button
+                              onClick={() => {
+                                handleNavigate?.('RESEARCH');
+                                if (companySearchQuery.trim()) {
+                                  sessionStorage.setItem('newCompanyName', companySearchQuery.trim());
+                                  localStorage.removeItem('lastViewedCompany');
+                                } else {
+                                  sessionStorage.removeItem('newCompanyName');
+                                  localStorage.removeItem('lastViewedCompany');
+                                }
+                                setCompanySearchQuery('');
+                              }}
+                              className="w-full px-6 py-3 text-left bg-wm-accent/5 hover:bg-wm-accent/10 transition-colors font-bold text-wm-accent flex items-center gap-2"
+                            >
+                              <Icons.Plus className="w-4 h-4" />
+                              {companySearchQuery.trim()
+                                ? `New research of "${companySearchQuery.trim()}"`
+                                : 'New Company Research'}
+                            </button>
+                          </div>
+                        )}
+
+                        {companySearchQuery.trim().length > 0 && filteredCompanies.length === 0 && otherUsersCompanies.length === 0 && !isSearchingOthers && !showCreateOption && (
+                          <div className="px-6 py-4 text-center text-wm-blue/50">
+                            No companies found matching "{companySearchQuery}"
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <section className="lg:col-span-2 bg-white rounded-xl border border-wm-neutral/20 shadow-sm p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-wm-blue">Recent Companies</h3>
+                      <p className="text-sm text-wm-blue/60">Manage and analyze organizations you work with</p>
+                    </div>
+                  </div>
+                  {companies.length === 0 ? (
+                    <div className="text-center py-10 text-wm-blue/60">No companies yet.</div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {[...companies]
+                        .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0))
+                        .slice(0, 6)
+                        .map((company) => (
+                          <div
+                            key={company.id}
+                            className="w-full text-left border border-wm-neutral/20 rounded-lg p-4 hover:shadow-sm hover:border-wm-blue/30 transition"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <button
+                                onClick={() => handleNavigate?.('RESEARCH', company.id)}
+                                className="text-left flex-1"
+                              >
+                                <p className="text-sm font-semibold text-wm-blue">{company.name}</p>
+                                <p className="text-xs text-wm-blue/50 mt-1">
+                                  {company.research?.currentResearch?.industry || 'Industry not specified'}
+                                </p>
+                              </button>
+                              {isAdminUser && (
+                                <button
+                                  type="button"
+                                  onClick={async (event) => {
+                                    event.stopPropagation();
+                                    if (!window.confirm(`Delete ${company.name}? This cannot be undone.`)) {
+                                      return;
+                                    }
+                                    try {
+                                      await deleteCompany(company.id, user.uid);
+                                      setCompanies((prev) => prev.filter((item) => item.id !== company.id));
+                                    } catch (error) {
+                                      console.error('Failed to delete company:', error);
+                                      const message = error instanceof Error ? error.message : 'Unknown error';
+                                      alert(`Failed to delete company: ${message}`);
+                                    }
+                                  }}
+                                  className="p-2 rounded-md text-wm-pink hover:bg-wm-pink/10"
+                                  aria-label={`Delete ${company.name}`}
+                                  title="Delete company"
+                                >
+                                  <Icons.Trash className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                            <div className="mt-3 text-xs text-wm-blue/50">
+                              {company.selectedScenarios?.length || 0} processes • Updated {company.lastUpdated ? new Date(company.lastUpdated).toLocaleDateString() : '—'}
                             </div>
                           </div>
-                        );
-                      })}
+                        ))}
                     </div>
                   )}
-                </div>
+                </section>
+
+                <section className="bg-white rounded-xl border border-wm-neutral/20 shadow-sm p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-wm-blue">Recent Processes</h3>
+                      <p className="text-sm text-wm-blue/60">Quickly access your recent processes</p>
+                    </div>
+                  </div>
+                  {workflowVersions.length === 0 ? (
+                    <div className="text-center py-10 text-wm-blue/60">No processes yet.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {(() => {
+                        const allAvailableScenarios = [...ALL_SCENARIOS, ...scenarios];
+                        const useEvaluations = evaluations.length > 0;
+                        const runs = useEvaluations
+                          ? evaluations.map(run => ({
+                              id: run.id,
+                              scenarioId: run.scenarioId,
+                              scenarioTitle: run.scenarioTitle,
+                              companyName: run.companyName ?? null,
+                              timestamp: run.timestamp,
+                              workflowId: run.workflowVersionId || null
+                            }))
+                          : workflowVersions.map(run => ({
+                              id: run.id,
+                              scenarioId: run.scenarioId,
+                              scenarioTitle: null,
+                              companyName: run.companyName ?? null,
+                              timestamp: run.timestamp,
+                              workflowId: run.id
+                            }));
+
+                        const sortedRuns = [...runs].sort((a, b) => b.timestamp - a.timestamp);
+                        const grouped = new Map<string, { scenarioId: string; latestTimestamp: number; runs: typeof runs }>();
+                        sortedRuns.forEach((run) => {
+                          const existing = grouped.get(run.scenarioId);
+                          if (!existing) {
+                            grouped.set(run.scenarioId, {
+                              scenarioId: run.scenarioId,
+                              latestTimestamp: run.timestamp,
+                              runs: [run]
+                            });
+                          } else {
+                            existing.runs.push(run);
+                          }
+                        });
+
+                        return Array.from(grouped.values())
+                          .sort((a, b) => b.latestTimestamp - a.latestTimestamp)
+                          .map((group) => {
+                            const scenario = allAvailableScenarios.find(s => s.id === group.scenarioId);
+                            const latestRun = group.runs[0];
+                            const remainingRuns = group.runs.slice(1);
+                            const runsToShow = remainingRuns.slice(0, 3);
+                            const isExpanded = !!expandedRecentProcesses[group.scenarioId];
+                            return (
+                              <div
+                                key={group.scenarioId}
+                                className={`w-full text-left border border-wm-neutral/20 rounded-lg p-4 transition-all ${
+                                  scenario && onStartTraining
+                                    ? 'hover:border-wm-accent/40 hover:bg-wm-neutral/5'
+                                    : 'opacity-70 cursor-not-allowed'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <a
+                                      href="#"
+                                      onClick={(event) => {
+                                        event.preventDefault();
+                                        if (scenario) {
+                                          onStartTraining?.(scenario);
+                                        }
+                                      }}
+                                      className={`text-sm font-semibold ${
+                                        scenario && onStartTraining
+                                          ? 'text-wm-blue hover:text-wm-accent underline'
+                                          : 'text-wm-blue/60 cursor-not-allowed'
+                                      }`}
+                                      aria-disabled={!scenario || !onStartTraining}
+                                    >
+                                      {scenario?.title || latestRun.scenarioTitle || 'Untitled process'}
+                                    </a>
+                                    <p className="text-xs text-wm-blue/50">
+                                      {scenario?.domain || 'General'}
+                                    </p>
+                                    {latestRun ? (
+                                      <p className="text-xs text-wm-blue/50">
+                                        Latest run:{' '}
+                                        {latestRun.workflowId ? (
+                                          <a
+                                            href="#"
+                                            onClick={(event) => {
+                                              event.preventDefault();
+                                              event.stopPropagation();
+                                              onViewWorkflow?.(latestRun.workflowId as string);
+                                            }}
+                                            className="text-wm-blue hover:text-wm-accent underline"
+                                          >
+                                            {(latestRun.companyName || 'Unknown company')} • {new Date(latestRun.timestamp).toLocaleDateString()}
+                                          </a>
+                                        ) : (
+                                          <span>
+                                            {(latestRun.companyName || 'Unknown company')} • {new Date(latestRun.timestamp).toLocaleDateString()}
+                                          </span>
+                                        )}
+                                      </p>
+                                    ) : (
+                                      <p className="text-xs text-wm-blue/50">
+                                        No runs yet
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                {remainingRuns.length > 0 && (
+                                  <div className="mt-3 pt-3 border-t border-wm-neutral/10 space-y-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setExpandedRecentProcesses(prev => ({
+                                          ...prev,
+                                          [group.scenarioId]: !prev[group.scenarioId]
+                                        }))
+                                      }
+                                      className="text-xs text-wm-accent hover:text-wm-accent/80"
+                                    >
+                                      {isExpanded ? 'Hide' : 'Show'} {remainingRuns.length} previous run{remainingRuns.length === 1 ? '' : 's'}
+                                    </button>
+                                    {isExpanded && (
+                                      <div className="space-y-2">
+                                        {runsToShow.map((run) => (
+                                          <div
+                                            key={run.id}
+                                            className="flex items-center justify-between gap-3"
+                                          >
+                                            <div className="min-w-0">
+                                              {run.workflowId ? (
+                                                <a
+                                                  href="#"
+                                                  onClick={(event) => {
+                                                    event.preventDefault();
+                                                    event.stopPropagation();
+                                                    onViewWorkflow?.(run.workflowId as string);
+                                                  }}
+                                                  className="text-xs font-medium text-wm-blue hover:text-wm-accent underline truncate block"
+                                                >
+                                                  {(run.companyName || 'Unknown company')} • {new Date(run.timestamp).toLocaleDateString()}
+                                                </a>
+                                              ) : (
+                                                <span className="text-xs font-medium text-wm-blue truncate block">
+                                                  {(run.companyName || 'Unknown company')} • {new Date(run.timestamp).toLocaleDateString()}
+                                                </span>
+                                              )}
+                                              <p className="text-[11px] text-wm-blue/50">
+                                                {new Date(run.timestamp).toLocaleDateString()}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          });
+                      })()}
+                    </div>
+                  )}
+                </section>
               </div>
             </div>
           )}
@@ -1402,31 +1512,145 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
           {activeSection === 'companies' && (
             <div className="space-y-6">
               <div className="bg-white rounded-xl border border-wm-neutral/20 shadow-sm">
-                <div className="p-4 border-b border-wm-neutral/20 flex items-center justify-between">
-                  <h3 className="font-semibold text-wm-blue">All Companies</h3>
-                  <button
-                    onClick={() => handleNavigate?.('RESEARCH')}
-                    className="px-3 py-1.5 bg-wm-accent text-white text-sm rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2"
-                  >
-                    <Icons.Plus className="w-4 h-4" />
-                    Add Company
-                  </button>
+                <div className="p-6 border-b border-wm-neutral/20">
+                  <div className="text-center space-y-4">
+                    <h3 className="text-xl font-semibold text-wm-blue">All Companies</h3>
+                    <div className="flex items-center justify-center">
+                      <div className="relative w-full max-w-2xl">
+                        <SearchInput
+                          type="text"
+                          value={companySearchQuery}
+                          onChange={(e) => setCompanySearchQuery(e.target.value)}
+                          onFocus={() => setIsSearchFocused(true)}
+                          onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+                          placeholder="Search a company to explore"
+                        />
+
+                        {isSearchFocused && (
+                          <div className="absolute top-full mt-2 w-full bg-white border-2 border-wm-accent/30 rounded-xl shadow-xl max-h-96 overflow-y-auto z-50">
+                            {/* Your Companies Section */}
+                            {filteredCompanies.length > 0 && (
+                              <div className="p-2">
+                                <p className="text-xs text-wm-blue/50 px-4 py-2 uppercase font-medium">Your Companies</p>
+                                {filteredCompanies.slice(0, 5).map((company) => (
+                                  <button
+                                    key={company.id}
+                                    onClick={() => {
+                                      handleNavigate?.('RESEARCH', company.id);
+                                      setCompanySearchQuery('');
+                                    }}
+                                    className="w-full px-6 py-3 text-left hover:bg-wm-accent/10 transition-colors border-b border-wm-neutral/10 last:border-b-0"
+                                  >
+                                    <div className="flex items-start gap-3">
+                                      <Icons.Building className="w-4 h-4 text-wm-blue/60" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-bold text-wm-blue">{company.name}</div>
+                                        <div className="text-sm text-wm-blue/60 line-clamp-1">
+                                          {company.research?.currentResearch?.industry || 'Industry not specified'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Other Users' Research Section */}
+                            {(otherUsersCompanies.length > 0 || isSearchingOthers) && (
+                              <div className="border-t border-wm-neutral/10 p-2">
+                                <p className="text-xs text-wm-blue/50 px-4 py-2 uppercase font-medium flex items-center gap-2">
+                                  <Icons.Users className="w-3 h-3" />
+                                  Other Users' Research
+                                  {isSearchingOthers && <span className="text-wm-accent">...</span>}
+                                </p>
+                                {otherUsersCompanies.slice(0, 5).map((company) => (
+                                  <button
+                                    key={company.id}
+                                    onClick={() => {
+                                      handleNavigate?.('RESEARCH', company.id);
+                                      setCompanySearchQuery('');
+                                    }}
+                                    className="w-full px-6 py-3 text-left hover:bg-purple-50 transition-colors border-b border-wm-neutral/10 last:border-b-0"
+                                  >
+                                    <div className="flex items-start gap-3">
+                                      <Icons.Building className="w-4 h-4 text-purple-400" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-bold text-wm-blue">{company.name}</div>
+                                        <div className="text-xs text-purple-500 bg-purple-100 inline-block mt-1 px-1.5 py-0.5 rounded">
+                                          shared
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            {showCreateOption && (
+                              <div className="border-t border-wm-neutral/10 p-2">
+                                <button
+                                  onClick={() => {
+                                    handleNavigate?.('RESEARCH');
+                                    if (companySearchQuery.trim()) {
+                                      sessionStorage.setItem('newCompanyName', companySearchQuery.trim());
+                                      localStorage.removeItem('lastViewedCompany');
+                                    } else {
+                                      sessionStorage.removeItem('newCompanyName');
+                                      localStorage.removeItem('lastViewedCompany');
+                                    }
+                                    setCompanySearchQuery('');
+                                  }}
+                                  className="w-full px-6 py-3 text-left hover:bg-wm-accent/10 transition-colors"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Icons.Plus className="w-4 h-4 text-wm-accent" />
+                                    <span className="text-wm-accent font-medium">
+                                      {companySearchQuery.trim()
+                                        ? `New research of "${companySearchQuery.trim()}"`
+                                        : 'New Company Research'}
+                                    </span>
+                                  </div>
+                                </button>
+                              </div>
+                            )}
+
+                            {companySearchQuery.trim().length > 0 && filteredCompanies.length === 0 && otherUsersCompanies.length === 0 && !isSearchingOthers && !showCreateOption && (
+                              <div className="p-4 text-center text-sm text-wm-blue/50">
+                                No companies found
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleNavigate?.('RESEARCH')}
+                      className="mx-auto px-4 py-2 bg-wm-accent text-white text-sm rounded-lg hover:bg-wm-accent/90 transition-colors flex items-center gap-2"
+                    >
+                      <Icons.Plus className="w-4 h-4" />
+                      Add Company
+                    </button>
+                  </div>
                 </div>
                 <div className="p-4">
-                  {companies.length === 0 ? (
+                  {filteredCompanies.length === 0 ? (
                     <div className="text-center py-12">
                       <Icons.Building className="w-12 h-12 text-wm-neutral mx-auto mb-4" />
-                      <p className="text-wm-blue/60">No companies yet</p>
-                      <button
-                        onClick={() => handleNavigate?.('RESEARCH')}
-                        className="mt-4 px-4 py-2 bg-wm-blue text-white rounded-lg hover:bg-wm-blue/90 transition-colors"
-                      >
-                        Start Your First Research
-                      </button>
+                      <p className="text-wm-blue/60">
+                        {companySearchQuery.trim() ? 'No matching companies' : 'No companies yet'}
+                      </p>
+                      {!companySearchQuery.trim() && (
+                        <button
+                          onClick={() => handleNavigate?.('RESEARCH')}
+                          className="mt-4 px-4 py-2 bg-wm-blue text-white rounded-lg hover:bg-wm-blue/90 transition-colors"
+                        >
+                          Start Your First Research
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {companies.map((company) => (
+                      {filteredCompanies.map((company) => (
                         <div 
                           key={company.id}
                           className="p-4 border border-wm-neutral/20 rounded-lg hover:border-wm-blue/30 hover:shadow-md cursor-pointer transition-all"
@@ -1457,243 +1681,139 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
             </div>
           )}
 
-          {/* Workflows Section */}
-          {activeSection === 'workflows' && (
-            <div className="space-y-6">
-              {(() => {
-                const toggleProcess = (scenarioId: string) => {
-                  setExpandedProcesses(prev => ({
-                    ...prev,
-                    [scenarioId]: !prev[scenarioId]
-                  }));
-                };
-                
-                if (workflowVersions.length === 0) {
-                  return (
-                    <div className="bg-white rounded-xl border border-wm-neutral/20 shadow-sm">
-                      <div className="p-4 border-b border-wm-neutral/20">
-                        <h3 className="font-semibold text-wm-blue">All Use Cases</h3>
-                      </div>
-                      <div className="p-4">
-                        <div className="text-center py-12">
-                          <Icons.Workflow className="w-12 h-12 text-wm-neutral mx-auto mb-4" />
-                          <p className="text-wm-blue/60">No use cases yet</p>
-                          <p className="text-sm text-wm-blue/50 mt-2">Complete a scenario to create your first use case</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-                
-                return (
-                  <>
-                    {workflowVersions.length === 0 ? (
-                <div className="bg-white rounded-xl border border-wm-neutral/20 shadow-sm">
-                  <div className="p-4 border-b border-wm-neutral/20">
-                    <h3 className="font-semibold text-wm-blue">All Use Cases</h3>
-                  </div>
-                  <div className="p-4">
-                    <div className="text-center py-12">
-                      <Icons.Workflow className="w-12 h-12 text-wm-neutral mx-auto mb-4" />
-                      <p className="text-wm-blue/60">No use cases yet</p>
-                      <p className="text-sm text-wm-blue/50 mt-2">Complete a scenario to create your first use case</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                (() => {
-                  // Group workflow versions by scenario
-                  const groupedByScenario: Record<string, { scenario: Scenario | undefined; workflows: typeof workflowVersions }> = {};
-                  
-                  workflowVersions.forEach((workflow) => {
-                    if (!groupedByScenario[workflow.scenarioId]) {
-                      groupedByScenario[workflow.scenarioId] = {
-                        scenario: scenarios.find(s => s.id === workflow.scenarioId),
-                        workflows: []
-                      };
-                    }
-                    groupedByScenario[workflow.scenarioId].workflows.push(workflow);
-                  });
-
-                  // Sort workflows within each group by timestamp (newest first)
-                  Object.values(groupedByScenario).forEach(group => {
-                    group.workflows.sort((a, b) => b.timestamp - a.timestamp);
-                  });
-
-                  return (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {Object.entries(groupedByScenario).map(([scenarioId, { scenario, workflows }]) => {
-                        // Get latest workflow - all data is stored on workflow version
-                        const latestWorkflow = workflows[0];
-                        const projectUrl = latestWorkflow?.demoProjectUrl;
-                        const publishedUrl = latestWorkflow?.demoPublishedUrl;
-                        
-                        return (
-                          <div key={scenarioId} className="bg-white rounded-xl border border-wm-neutral/20 shadow-sm hover:shadow-md transition-shadow flex flex-col">
-                            <div className="p-5 flex-1">
-                              <div className="flex items-start justify-between mb-3">
-                                <h3 className="font-semibold text-wm-blue text-lg line-clamp-2 flex-1">
-                                  {scenario?.title || 'Unknown Process'}
-                                </h3>
-                                {scenario?.domain && (
-                                  <span className="ml-2 px-2 py-1 bg-wm-blue/10 text-wm-blue text-xs font-semibold rounded-full flex-shrink-0">
-                                    {scenario.domain}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm text-wm-blue/60 mb-4">
-                                {workflows.length} use {workflows.length === 1 ? 'case' : 'cases'}
-                              </p>
-                              
-                              {/* Latest Use Case Info */}
-                              {latestWorkflow && (
-                                <div className="mb-4 p-3 bg-wm-neutral/5 rounded-lg">
-                                  <p className="text-xs font-medium text-wm-blue/70 mb-1">Latest:</p>
-                                  <p className="text-sm text-wm-blue font-medium line-clamp-1">
-                                    {latestWorkflow.versionTitle || 'Untitled'}
-                                  </p>
-                                  <p className="text-xs text-wm-blue/60 mt-1">
-                                    {new Date(latestWorkflow.timestamp).toLocaleDateString()}
-                                  </p>
-                                  {latestWorkflow.evaluationScore !== null && (
-                                    <span className="inline-block mt-2 px-2 py-1 bg-green-50 text-green-700 text-xs font-semibold rounded">
-                                      Score: {latestWorkflow.evaluationScore}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              
-                              {/* Demo URLs for latest use case */}
-                              {(projectUrl || publishedUrl) && (
-                                <div className="flex flex-col gap-2 mb-4">
-                                  {projectUrl && (
-                                    <a
-                                      href={projectUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 px-2 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 text-xs rounded-md transition-colors"
-                                    >
-                                      <Icons.ExternalLink className="w-3 h-3" />
-                                      Demo Project
-                                    </a>
-                                  )}
-                                  {publishedUrl && (
-                                    <a
-                                      href={publishedUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 px-2 py-1.5 bg-green-50 text-green-600 hover:bg-green-100 text-xs rounded-md transition-colors"
-                                    >
-                                      <Icons.ExternalLink className="w-3 h-3" />
-                                      Published Demo
-                                    </a>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                            
-                            {/* Expandable Use Cases List */}
-                            <div className="border-t border-wm-neutral/10">
-                              <button
-                                onClick={() => toggleProcess(scenarioId)}
-                                className="w-full p-4 flex items-center justify-between hover:bg-wm-neutral/5 transition-colors"
-                              >
-                                <span className="text-sm font-medium text-wm-blue">
-                                  {expandedProcesses[scenarioId] ? 'Hide' : 'Show'} All {workflows.length} Use {workflows.length === 1 ? 'Case' : 'Cases'}
-                                </span>
-                                <Icons.ChevronDown className={`w-5 h-5 text-wm-blue/60 transition-transform ${expandedProcesses[scenarioId] ? 'rotate-180' : ''}`} />
-                              </button>
-                              
-                              {expandedProcesses[scenarioId] && (
-                                <div className="px-4 pb-4 space-y-2">
-                                  {workflows.map((workflow) => {
-                                    // All data is stored directly on workflow version
-                                    const projectUrl = workflow.demoProjectUrl;
-                                    const publishedUrl = workflow.demoPublishedUrl;
-                                    
-                                    return (
-                                      <div 
-                                        key={workflow.id}
-                                        className="p-3 border border-wm-neutral/20 rounded-lg hover:border-wm-blue/30 hover:bg-wm-neutral/5 transition-all"
-                                      >
-                                        <div className="flex items-start justify-between gap-3">
-                                          <div className="flex-1 min-w-0">
-                                            <h5 className="text-sm font-medium text-wm-blue line-clamp-1">
-                                              {workflow.versionTitle || 'Untitled Use Case'}
-                                            </h5>
-                                            <p className="text-xs text-wm-blue/60 mt-1">
-                                              {new Date(workflow.timestamp).toLocaleDateString()}
-                                              {workflow.evaluationScore !== null && (
-                                                <span className="ml-2 px-1.5 py-0.5 bg-green-50 text-green-700 font-semibold rounded">
-                                                  {workflow.evaluationScore}
-                                                </span>
-                                              )}
-                                            </p>
-                                            {/* Demo URLs */}
-                                            {(projectUrl || publishedUrl) && (
-                                              <div className="flex flex-wrap gap-1.5 mt-2">
-                                                {projectUrl && (
-                                                  <a
-                                                    href={projectUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-600 hover:bg-blue-100 text-xs rounded transition-colors"
-                                                  >
-                                                    <Icons.ExternalLink className="w-2.5 h-2.5" />
-                                                    Demo
-                                                  </a>
-                                                )}
-                                                {publishedUrl && (
-                                                  <a
-                                                    href={publishedUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-50 text-green-600 hover:bg-green-100 text-xs rounded transition-colors"
-                                                  >
-                                                    <Icons.ExternalLink className="w-2.5 h-2.5" />
-                                                    Published
-                                                  </a>
-                                                )}
-                                              </div>
-                                            )}
-                                          </div>
-                                          <button
-                                            onClick={() => onViewWorkflow?.(workflow.id)}
-                                            className="p-1.5 hover:bg-wm-blue/10 rounded transition-colors flex-shrink-0"
-                                          >
-                                            <Icons.ChevronRight className="w-4 h-4 text-wm-blue/60" />
-                                          </button>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()
-              )}
-            </>
-          );
-        })()}
-            </div>
-          )}
 
           {/* Settings Section */}
           {activeSection === 'settings' && (
             <div className="space-y-6">
-              <div className="bg-white rounded-xl border border-wm-neutral/20 shadow-sm">
-                <div className="p-4 border-b border-wm-neutral/20">
-                  <h3 className="font-semibold text-wm-blue">Settings</h3>
-                </div>
-                <div className="p-6">
-                  <p className="text-wm-blue/60">Settings configuration coming soon...</p>
-                </div>
-              </div>
+              {(() => {
+                const allAvailableScenarios = [...ALL_SCENARIOS, ...scenarios];
+                const companyMap = new Map<string, { name: string; presentations: { label: string; url: string; timestamp: number }[]; demos: { label: string; url: string; timestamp: number }[] }>();
+
+                workflowVersions.forEach((workflow) => {
+                  const companyName = workflow.companyName || 'Unknown company';
+                  const scenario = allAvailableScenarios.find(s => s.id === workflow.scenarioId);
+                  const labelBase = workflow.versionTitle || scenario?.title || 'Untitled process';
+                  const entry = companyMap.get(companyName) || { name: companyName, presentations: [], demos: [] };
+
+                  if (workflow.gammaDownloadUrl) {
+                    entry.presentations.push({
+                      label: `${labelBase} • ${new Date(workflow.timestamp).toLocaleDateString()}`,
+                      url: workflow.gammaDownloadUrl,
+                      timestamp: workflow.timestamp
+                    });
+                  }
+
+                  if (workflow.demoProjectUrl) {
+                    entry.demos.push({
+                      label: `${labelBase} • Demo Project • ${new Date(workflow.timestamp).toLocaleDateString()}`,
+                      url: workflow.demoProjectUrl,
+                      timestamp: workflow.timestamp
+                    });
+                  }
+                  if (workflow.demoPublishedUrl) {
+                    entry.demos.push({
+                      label: `${labelBase} • Published Demo • ${new Date(workflow.timestamp).toLocaleDateString()}`,
+                      url: workflow.demoPublishedUrl,
+                      timestamp: workflow.timestamp
+                    });
+                  }
+
+                  companyMap.set(companyName, entry);
+                });
+
+                evaluations.forEach((evaluation) => {
+                  const companyName = evaluation.companyName || 'Unknown company';
+                  const scenario = allAvailableScenarios.find(s => s.id === evaluation.scenarioId);
+                  const labelBase = scenario?.title || evaluation.scenarioTitle || 'Untitled process';
+                  const entry = companyMap.get(companyName) || { name: companyName, presentations: [], demos: [] };
+
+                  if (evaluation.demoProjectUrl) {
+                    entry.demos.push({
+                      label: `${labelBase} • Demo Project • ${new Date(evaluation.timestamp).toLocaleDateString()}`,
+                      url: evaluation.demoProjectUrl,
+                      timestamp: evaluation.timestamp
+                    });
+                  }
+                  if (evaluation.demoPublishedUrl) {
+                    entry.demos.push({
+                      label: `${labelBase} • Published Demo • ${new Date(evaluation.timestamp).toLocaleDateString()}`,
+                      url: evaluation.demoPublishedUrl,
+                      timestamp: evaluation.timestamp
+                    });
+                  }
+
+                  companyMap.set(companyName, entry);
+                });
+
+                const companiesWithOutput = Array.from(companyMap.values())
+                  .map((company) => ({
+                    ...company,
+                    presentations: company.presentations.sort((a, b) => b.timestamp - a.timestamp),
+                    demos: company.demos.sort((a, b) => b.timestamp - a.timestamp)
+                  }))
+                  .filter((company) => company.presentations.length > 0 || company.demos.length > 0)
+                  .sort((a, b) => a.name.localeCompare(b.name));
+
+                if (companiesWithOutput.length === 0) {
+                  return (
+                    <div className="bg-white rounded-xl border border-wm-neutral/20 shadow-sm p-6 text-center text-wm-blue/60">
+                      No output history yet.
+                    </div>
+                  );
+                }
+
+                return companiesWithOutput.map((company) => (
+                  <div key={company.name} className="bg-white rounded-xl border border-wm-neutral/20 shadow-sm">
+                    <div className="p-4 border-b border-wm-neutral/20">
+                      <h3 className="font-semibold text-wm-blue">{company.name}</h3>
+                    </div>
+                    <div className="p-4 space-y-4">
+                      <div>
+                        <h4 className="text-sm font-semibold text-wm-blue/80 mb-2">Presentations</h4>
+                        {company.presentations.length === 0 ? (
+                          <p className="text-sm text-wm-blue/50">No presentations yet.</p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {company.presentations.map((item, idx) => (
+                              <li key={`${item.url}-${idx}`}>
+                                <a
+                                  href={item.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm text-wm-blue hover:text-wm-accent underline"
+                                >
+                                  {item.label}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-wm-blue/80 mb-2">Demos</h4>
+                        {company.demos.length === 0 ? (
+                          <p className="text-sm text-wm-blue/50">No demos yet.</p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {company.demos.map((item, idx) => (
+                              <li key={`${item.url}-${idx}`}>
+                                <a
+                                  href={item.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm text-wm-blue hover:text-wm-accent underline"
+                                >
+                                  {item.label}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ));
+              })()}
             </div>
           )}
         </div>

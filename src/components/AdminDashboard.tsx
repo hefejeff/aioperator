@@ -1,15 +1,29 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { User } from 'firebase/auth';
-import { listAllUsers, setUserRole, deleteUser, getScenarios, createNewUser } from '../services/firebaseService';
-import type { Role, Scenario, UserProfile } from '../types';
+import { listAllUsers, setUserRole, deleteUser, getScenarios, createNewUser, getJourneyStepSettings, saveJourneyStepSettings } from '../services/firebaseService';
+import type { Role, Scenario, UserProfile, JourneyStepKey, JourneyStepSettings } from '../types';
 import { Icons } from '../constants';
 import BusinessDomainManagement from './BusinessDomainManagement';
+import SidebarNav, { SidebarNavItem } from './SidebarNav';
 
 interface AdminDashboardProps {
   currentUser: User;
 }
 
 const ROLE_OPTIONS: Role[] = ['SUPER_ADMIN', 'ADMIN', 'PRO_USER', 'USER'];
+
+const JOURNEY_STEP_DEFINITIONS: Array<{ key: JourneyStepKey; label: string; phase: string; alwaysOn?: boolean }> = [
+  { key: 'companyResearch', label: 'Company Research', phase: 'MVP', alwaysOn: true },
+  { key: 'targetDomains', label: 'Target Domains', phase: 'MVP' },
+  { key: 'kickoffMeeting', label: 'Kickoff Meeting', phase: 'MVP' },
+  { key: 'makeHypothesesHighLevel', label: 'Make Hypotheses (High‑level)', phase: 'MVP' },
+  { key: 'functionalHighLevel', label: 'Functional High‑Level', phase: 'MVP' },
+  { key: 'makeHypothesesDeepDive', label: 'Make Hypotheses (Deep Dive)', phase: 'Post MVP 2' },
+  { key: 'functionalDeepDive', label: 'Functional Deep Dive', phase: 'Post MVP 2' },
+  { key: 'designIntegrationStrategy', label: 'Design Integration Strategy', phase: 'Post MVP 3' },
+  { key: 'createDevelopmentDocumentation', label: 'Create Development Documentation', phase: 'Post MVP 3' }
+];
 
 const RoleBadge: React.FC<{ role?: Role | null }> = ({ role }) => {
   const color = role === 'SUPER_ADMIN' ? 'bg-wm-pink' : role === 'ADMIN' ? 'bg-wm-accent' : role === 'PRO_USER' ? 'bg-green-600' : 'bg-wm-neutral';
@@ -135,13 +149,83 @@ const UsersTab: React.FC<{
   </>
 );
 
+const JourneyStepsTab: React.FC<{
+  settings: JourneyStepSettings;
+  saving: boolean;
+  onToggle: (key: JourneyStepKey, isActive: boolean) => void;
+  onSave: () => void;
+}> = ({ settings, saving, onToggle, onSave }) => (
+  <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
+    <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+      <div>
+        <h2 className="text-xl font-bold text-wm-blue">Journey Steps</h2>
+        <p className="text-sm text-wm-blue/60 mt-1">
+          Control which steps are active across company journeys. Company Research is always active and first.
+        </p>
+      </div>
+      <button
+        onClick={onSave}
+        disabled={saving}
+        className={`px-4 py-2 rounded-lg font-bold text-sm ${
+          saving
+            ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
+            : 'bg-wm-accent hover:bg-wm-accent/90 text-white'
+        }`}
+      >
+        {saving ? 'Saving...' : 'Save Journey Steps'}
+      </button>
+    </div>
+
+    <div className="space-y-3">
+      {JOURNEY_STEP_DEFINITIONS.map((step, index) => {
+        const isChecked = step.alwaysOn ? true : !!settings[step.key];
+        return (
+          <label key={step.key} className="flex items-center justify-between gap-3 rounded-lg border border-wm-neutral/20 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-wm-blue">{index + 1}. {step.label}</p>
+              <p className="text-xs text-wm-blue/60 mt-1">{step.phase}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {step.alwaysOn && (
+                <span className="text-[11px] font-semibold text-wm-accent bg-wm-accent/10 px-2 py-1 rounded-full">Always on</span>
+              )}
+              <input
+                type="checkbox"
+                checked={isChecked}
+                disabled={step.alwaysOn}
+                onChange={(event) => onToggle(step.key, event.target.checked)}
+                className="h-4 w-4"
+              />
+            </div>
+          </label>
+        );
+      })}
+    </div>
+  </div>
+);
+
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
-  const [activeTab, setActiveTab] = useState<'users' | 'domains'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'domains' | 'journeySteps'>('users');
+  const [journeyStepSettings, setJourneyStepSettings] = useState<JourneyStepSettings>({
+    companyResearch: true,
+    targetDomains: true,
+    kickoffMeeting: true,
+    makeHypothesesHighLevel: true,
+    functionalHighLevel: true,
+    makeHypothesesDeepDive: true,
+    functionalDeepDive: true,
+    designIntegrationStrategy: true,
+    createDevelopmentDocumentation: true
+  });
+  const [isSavingJourneySteps, setIsSavingJourneySteps] = useState(false);
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
   const [newUserForm, setNewUserForm] = useState({
@@ -175,17 +259,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
     (async () => {
       try {
         setError(null);
-        const [u, sc] = await Promise.all([
+        const [u, sc, stepSettings] = await Promise.all([
           listAllUsers(),
           getScenarios(currentUser.uid),
+          getJourneyStepSettings(),
         ]);
         setUsers(u);
         setScenarios(sc);
+        setJourneyStepSettings(stepSettings);
       } catch (e) {
         setError('Failed to load admin data.');
       }
     })();
   }, []);
+
+  const handleToggleJourneyStep = (key: JourneyStepKey, isActive: boolean) => {
+    if (key === 'companyResearch') return;
+    setJourneyStepSettings((prev) => ({
+      ...prev,
+      [key]: isActive,
+      companyResearch: true
+    }));
+  };
+
+  const handleSaveJourneySteps = async () => {
+    setIsSavingJourneySteps(true);
+    setError(null);
+    try {
+      await saveJourneyStepSettings({
+        ...journeyStepSettings,
+        companyResearch: true
+      });
+    } catch (e) {
+      setError('Could not save journey steps settings.');
+    } finally {
+      setIsSavingJourneySteps(false);
+    }
+  };
 
   const totalUsers = users.length;
   const totalScenarios = scenarios.length;
@@ -276,68 +386,125 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
   const currentUserRole = currentUserProfile?.role || 'USER';
   const canDeleteUsers = currentUserRole === 'SUPER_ADMIN' || currentUserRole === 'ADMIN';
 
+  const menuItems: SidebarNavItem[] = [
+    {
+      id: 'overview',
+      label: 'Dashboard',
+      icon: <Icons.Home className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard'),
+      isActive: location.pathname.startsWith('/dashboard') && !location.search.includes('section=')
+    },
+    {
+      id: 'companies',
+      label: 'Companies',
+      icon: <Icons.Building className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard?section=companies'),
+      isActive: location.pathname.startsWith('/company2') || location.pathname.startsWith('/research') || location.search.includes('section=companies')
+    },
+    {
+      id: 'processes',
+      label: 'Processes',
+      icon: <Icons.Workflow className="w-5 h-5" />,
+      onClick: () => navigate('/library'),
+      isActive: location.pathname.startsWith('/library')
+    },
+    {
+      id: 'settings',
+      label: 'Output History',
+      icon: <Icons.Document className="w-5 h-5" />,
+      onClick: () => navigate('/dashboard?section=settings'),
+      isActive: location.search.includes('section=settings')
+    }
+  ];
+
   return (
-    <div className="space-y-8">
-      <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
-        <h1 className="text-2xl font-bold text-wm-blue mb-2 flex items-center gap-2">
-          <Icons.ChartBar /> Admin Dashboard
-        </h1>
-        <p className="text-wm-blue/60">Manage users, roles, and domains.</p>
-        {error && <p className="text-red-600 mt-2 font-bold">{error}</p>}
-        
-        <div className="mt-4 border-b border-wm-neutral/30">
-          <nav className="-mb-px flex gap-4">
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`pb-3 px-1 inline-flex items-center gap-2 text-sm font-bold ${
-                activeTab === 'users'
-                  ? 'border-b-2 border-wm-accent text-wm-accent'
-                  : 'text-wm-blue/60 hover:text-wm-blue'
-              }`}
-            >
-              <Icons.Users />
-              Users & Roles
-            </button>
-            <button
-              onClick={() => setActiveTab('domains')}
-              className={`pb-3 px-1 inline-flex items-center gap-2 text-sm font-bold ${
-                activeTab === 'domains'
-                  ? 'border-b-2 border-wm-accent text-wm-accent'
-                  : 'text-wm-blue/60 hover:text-wm-blue'
-              }`}
-            >
-              <Icons.Building />
-              Domains
-            </button>
-          </nav>
-        </div>
-      </div>
-
-      {activeTab === 'users' ? (
-        <UsersTab
-          users={users}
-          totalUsers={totalUsers}
-          totalScenarios={totalScenarios}
-          canDeleteUsers={canDeleteUsers}
-          currentUser={currentUser}
-          saving={saving}
-          deleting={deleting}
-          onChangeRole={onChangeRole}
-          onDeleteUser={onDeleteUser}
-          onCreateUser={openCreateUserModal}
-        />
-      ) : (
-        <BusinessDomainManagement currentUser={currentUser} />
-      )}
-
-      {/* Create User Modal */}
-      {showCreateUserModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
-            <h3 className="text-xl font-bold text-wm-blue mb-4">Create New User</h3>
+    <div className="flex h-screen bg-wm-white">
+      <SidebarNav
+        user={currentUser}
+        items={menuItems}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+      />
+      <main className="flex-1 overflow-auto bg-wm-neutral/5">
+        <div className="p-6 space-y-8">
+          <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
+            <h1 className="text-2xl font-bold text-wm-blue mb-2 flex items-center gap-2">
+              <Icons.ChartBar /> Admin Dashboard
+            </h1>
+            <p className="text-wm-blue/60">Manage users, roles, and domains.</p>
+            {error && <p className="text-red-600 mt-2 font-bold">{error}</p>}
             
-            <div className="space-y-4">
-              <div>
+            <div className="mt-4 border-b border-wm-neutral/30">
+              <nav className="-mb-px flex gap-4">
+                <button
+                  onClick={() => setActiveTab('users')}
+                  className={`pb-3 px-1 inline-flex items-center gap-2 text-sm font-bold ${
+                    activeTab === 'users'
+                      ? 'border-b-2 border-wm-accent text-wm-accent'
+                      : 'text-wm-blue/60 hover:text-wm-blue'
+                  }`}
+                >
+                  <Icons.Users />
+                  Users & Roles
+                </button>
+                <button
+                  onClick={() => setActiveTab('domains')}
+                  className={`pb-3 px-1 inline-flex items-center gap-2 text-sm font-bold ${
+                    activeTab === 'domains'
+                      ? 'border-b-2 border-wm-accent text-wm-accent'
+                      : 'text-wm-blue/60 hover:text-wm-blue'
+                  }`}
+                >
+                  <Icons.Building />
+                  Domains
+                </button>
+                <button
+                  onClick={() => setActiveTab('journeySteps')}
+                  className={`pb-3 px-1 inline-flex items-center gap-2 text-sm font-bold ${
+                    activeTab === 'journeySteps'
+                      ? 'border-b-2 border-wm-accent text-wm-accent'
+                      : 'text-wm-blue/60 hover:text-wm-blue'
+                  }`}
+                >
+                  <Icons.Workflow />
+                  Journey Steps
+                </button>
+              </nav>
+            </div>
+          </div>
+
+          {activeTab === 'users' ? (
+            <UsersTab
+              users={users}
+              totalUsers={totalUsers}
+              totalScenarios={totalScenarios}
+              canDeleteUsers={canDeleteUsers}
+              currentUser={currentUser}
+              saving={saving}
+              deleting={deleting}
+              onChangeRole={onChangeRole}
+              onDeleteUser={onDeleteUser}
+              onCreateUser={openCreateUserModal}
+            />
+          ) : activeTab === 'domains' ? (
+            <BusinessDomainManagement currentUser={currentUser} />
+          ) : (
+            <JourneyStepsTab
+              settings={journeyStepSettings}
+              saving={isSavingJourneySteps}
+              onToggle={handleToggleJourneyStep}
+              onSave={handleSaveJourneySteps}
+            />
+          )}
+
+          {/* Create User Modal */}
+          {showCreateUserModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+                <h3 className="text-xl font-bold text-wm-blue mb-4">Create New User</h3>
+                
+                <div className="space-y-4">
+                  <div>
                 <label className="block text-sm font-bold text-wm-blue/70 mb-1">Display Name</label>
                 <input
                   type="text"
@@ -431,6 +598,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
           </div>
         </div>
       )}
+        </div>
+      </main>
     </div>
   );
 };

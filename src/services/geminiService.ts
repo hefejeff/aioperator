@@ -657,6 +657,8 @@ export async function generatePRD(
   platforms: Platform[]
 ): Promise<PRD> {
   const platformGuidance: Record<Platform, string> = {
+    AI_CHOICE:
+      'Target flexible AI-first delivery. Recommend the best-fit platform and implementation path based on requirements, constraints, and speed to value.',
     MS365:
       'Target Microsoft 365. Prefer Power Automate flows, Power Apps for UI, SharePoint/Dataverse for data, Outlook/Teams connectors, and Copilot Studio where appropriate.',
     GOOGLE:
@@ -1051,7 +1053,7 @@ Be professional, friendly, and insightful in your responses.`;
     });
 
     const request: any = {
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.5-flash',
       contents,
       config: {
         systemInstruction,

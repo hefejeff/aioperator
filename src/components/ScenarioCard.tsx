@@ -12,9 +12,19 @@ interface ScenarioCardProps {
   isFavorited?: boolean;
   onToggleFavorite?: (scenario: Scenario) => void;
   favoriteBusy?: boolean;
+  processUseCaseCount?: number;
+  latestDemoUrl?: string | null;
 }
 
-const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, isFavorited, onToggleFavorite, favoriteBusy }) => {
+const ScenarioCard: React.FC<ScenarioCardProps> = ({
+  scenario,
+  onSelect,
+  isFavorited,
+  onToggleFavorite,
+  favoriteBusy,
+  processUseCaseCount,
+  latestDemoUrl
+}) => {
   const isCustom = !!scenario.userId;
   const { t, lang } = useTranslation();
   const localizedTitle = lang === 'Spanish' && scenario.title_es ? scenario.title_es : scenario.title;
@@ -22,7 +32,7 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, isFavor
 
   return (
     <div 
-      className="bg-white rounded-lg p-6 border border-wm-neutral/30 hover:border-wm-accent transition-all duration-200 cursor-pointer flex flex-col justify-between transform hover:scale-105 relative shadow-sm"
+      className="bg-white rounded-lg p-4 border border-wm-neutral/30 hover:border-wm-accent transition-all duration-200 cursor-pointer flex flex-col transform hover:scale-[1.02] relative shadow-sm"
       onClick={() => onSelect(scenario)}
       role="button"
       tabIndex={0}
@@ -63,30 +73,45 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({ scenario, onSelect, isFavor
           </button>
         )}
       </div>
-      {/* Domain and Sub-domain pills */}
-      <div className="absolute top-2 left-2 z-10 flex gap-1.5 flex-wrap max-w-[70%]">
-        {scenario.domain && (
-          <span className={`text-[11px] leading-tight uppercase tracking-wide px-2 py-1 rounded-full font-semibold shadow-sm ${DOMAIN_COLORS[scenario.domain] || DOMAIN_COLORS['General']}`}>{scenario.domain}</span>
-        )}
-        {scenario.process && (
-          <span className="text-[10px] leading-tight tracking-wide px-2 py-1 rounded-full font-medium bg-wm-accent/10 text-wm-accent border border-wm-accent/20">{scenario.process}</span>
-        )}
-      </div>
-      {/* Industry badge */}
-      {scenario.industry && (
-        <div className="absolute top-9 left-2 z-10 flex justify-start">
+      {/* Badges */}
+      <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 max-w-[75%]">
+        <div className="flex flex-wrap gap-1.5">
+          {scenario.domain && (
+            <span className={`text-[11px] leading-tight uppercase tracking-wide px-2 py-1 rounded-full font-semibold shadow-sm ${DOMAIN_COLORS[scenario.domain] || DOMAIN_COLORS['General']}`}>{scenario.domain}</span>
+          )}
+          {scenario.process && (
+            <span className="text-[10px] leading-tight tracking-wide px-2 py-1 rounded-full font-medium bg-wm-accent/10 text-wm-accent border border-wm-accent/20">{scenario.process}</span>
+          )}
+        </div>
+        {scenario.industry && (
           <span className="text-[10px] leading-tight uppercase tracking-wide px-2 py-0.5 rounded-full font-medium bg-wm-blue/10 text-wm-blue border border-wm-blue/20">{scenario.industry}</span>
-        </div>
-      )}
-      <div className="flex-grow">
-        <div className="mb-2 pt-12">
-          <h3 className="text-xl font-bold text-wm-accent pr-4">{localizedTitle}</h3>
-        </div>
-  <p className="text-wm-blue/60 text-sm mb-4 line-clamp-3">{localizedDescription}</p>
+        )}
       </div>
-      <button className="mt-4 text-sm font-bold text-white bg-wm-accent/80 hover:bg-wm-accent py-2 rounded-md transition-colors w-full">
-        {t('scenario.start')}
-      </button>
+      <div>
+        <div className="mb-2 pt-12">
+          <h3 className="text-lg font-bold text-wm-accent pr-4 leading-snug">{localizedTitle}</h3>
+        </div>
+        <p className="text-wm-blue/60 text-xs mb-3 line-clamp-3">{localizedDescription}</p>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-wm-blue/70 font-semibold bg-wm-blue/10 border border-wm-blue/20 px-2 py-1 rounded-full">
+          {(processUseCaseCount || 0)} use case{(processUseCaseCount || 0) === 1 ? '' : 's'} in this process
+        </span>
+        {latestDemoUrl && (
+          <a
+            href={latestDemoUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => event.stopPropagation()}
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-wm-accent hover:underline"
+            title="Open most recent use case demo"
+          >
+            <Icons.ExternalLink className="w-3.5 h-3.5" />
+            Demo
+          </a>
+        )}
+      </div>
     </div>
   );
 };
