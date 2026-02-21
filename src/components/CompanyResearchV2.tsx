@@ -1,15 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { User } from 'firebase/auth';
 import SidebarNav, { SidebarNavItem } from './SidebarNav';
-import { Icons, ALL_SCENARIOS } from '../constants';
-import { getCompany, getUserCompanies, updateCompanyJourneyStatus, updateCompanySelectedDomains, updateCompanySelectedScenarios } from '../services/companyService';
+import { Icons, ALL_SCENARIOS, DOMAIN_COLORS } from '../constants';
+import { getCompany, getUserCompanies, updateCompanyJourneyStatus } from '../services/companyService';
 import { researchCompany, AIModelId, AI_MODELS, generateChatResponse } from '../services/geminiService';
-import { getScenarios, saveCompanyResearch, getJourneyStepSettings } from '../services/firebaseService';
+import { getScenarios, saveCompanyResearch, getJourneyStepSettings, getAllUserEvaluations, saveUserScenario } from '../services/firebaseService';
 import { extractTextFromPDF } from '../services/pdfExtractor';
 import { extractTextFromDocx } from '../services/docxExtractor';
-import type { CompanyResearchEntry, UploadedDocument, CompanyResearch, FunctionalHighLevelMeeting, JourneyStepSettings, JourneyStepKey, CustomJourneyStep } from '../types';
+import { getSharePointFolderDocuments } from '../services/collaborationService';
+import type { CompanyResearchEntry, UploadedDocument, CompanyResearch, FunctionalHighLevelMeeting, JourneyStepSettings, JourneyStepKey, CustomJourneyStep, JourneyCollaborationConfig } from '../types';
 import SearchInput from './SearchInput';
+import { CollaborationConfiguration } from './CollaborationConfiguration';
+import CreateScenarioForm, { ScenarioFormPayload } from './CreateScenarioForm';
 
 interface CompanyResearchV2Props {
   user: User;
@@ -28,6 +31,8 @@ type JourneyStep = {
   customStepId?: string;
 };
 
+type UseCaseCreateSource = 'kickoff' | 'phase2' | 'deepDive';
+
 const NOTE_STOP_WORDS = new Set([
   'the', 'and', 'for', 'that', 'with', 'from', 'this', 'have', 'will', 'your', 'you', 'are', 'was', 'were', 'been', 'into', 'about',
   'during', 'after', 'before', 'across', 'their', 'them', 'they', 'then', 'than', 'there', 'where', 'which', 'while', 'would', 'could',
@@ -42,6 +47,12 @@ const tokenize = (text: string): string[] =>
     .split(/\s+/)
     .filter((token) => token.length > 2 && !NOTE_STOP_WORDS.has(token));
 
+const sanitizeTemplateText = (value: string): string =>
+  value
+    .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -51,7 +62,7 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
   const [companyResearch, setCompanyResearch] = useState<CompanyResearch | null>(null);
   const [companySelectedDomains, setCompanySelectedDomains] = useState<string[]>([]);
   const [companySelectedScenarios, setCompanySelectedScenarios] = useState<string[]>([]);
-  const [journeys, setJourneys] = useState<Record<string, { id: string; createdAt: number; updatedAt: number; companyResearchComplete?: boolean; kickoffPresentationUrl?: string; kickoffMeetingNotes?: UploadedDocument[]; phase2SelectedDomains?: string[]; phase2SelectedUseCases?: string[]; functionalHighLevelMeetings?: FunctionalHighLevelMeeting[]; functionalDeepDiveMeetings?: FunctionalHighLevelMeeting[]; deepDiveSelectedDomains?: string[]; deepDiveSelectedUseCases?: string[]; customSteps?: CustomJourneyStep[] }>>({});
+  const [journeys, setJourneys] = useState<Record<string, { id: string; createdAt: number; updatedAt: number; companyResearchComplete?: boolean; kickoffPresentationUrl?: string; kickoffSelectedDomains?: string[]; kickoffSelectedUseCases?: string[]; kickoffTemplateReference?: UploadedDocument | null; deepDiveTemplateReference?: UploadedDocument | null; kickoffMeetingNotes?: UploadedDocument[]; phase2SelectedDomains?: string[]; phase2SelectedUseCases?: string[]; functionalHighLevelMeetings?: FunctionalHighLevelMeeting[]; functionalDeepDiveMeetings?: FunctionalHighLevelMeeting[]; deepDiveSelectedDomains?: string[]; deepDiveSelectedUseCases?: string[]; customSteps?: CustomJourneyStep[]; journeyStepSettings?: Partial<JourneyStepSettings>; currentStepId?: string }>>({});
   const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
   const [userCompanies, setUserCompanies] = useState<Array<{ id: string; name: string; journeys?: Record<string, { id: string; createdAt: number }> }>>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,11 +77,24 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
   const [isSavingProject, setIsSavingProject] = useState(false);
   const [libraryDomains, setLibraryDomains] = useState<string[]>([]);
   const [libraryUseCases, setLibraryUseCases] = useState<typeof ALL_SCENARIOS>([]);
+  const [allEvaluations, setAllEvaluations] = useState<Array<{ scenarioId: string; timestamp: number; demoPublishedUrl?: string | null; demoProjectUrl?: string | null }>>([]);
   const [kickoffPrompt, setKickoffPrompt] = useState('');
   const [showKickoffPromptModal, setShowKickoffPromptModal] = useState(false);
+  const [isCreateUseCaseModalOpen, setIsCreateUseCaseModalOpen] = useState(false);
+  const [createUseCaseDomain, setCreateUseCaseDomain] = useState<string>('General');
+  const [createUseCaseSource, setCreateUseCaseSource] = useState<UseCaseCreateSource>('kickoff');
   const [kickoffPresentationUrl, setKickoffPresentationUrl] = useState('');
   const [isSavingKickoffPresentationUrl, setIsSavingKickoffPresentationUrl] = useState(false);
   const [kickoffUrlStatus, setKickoffUrlStatus] = useState<string | null>(null);
+  const [kickoffTemplateReference, setKickoffTemplateReference] = useState<UploadedDocument | null>(null);
+  const [isSavingKickoffTemplateReference, setIsSavingKickoffTemplateReference] = useState(false);
+  const [kickoffTemplateStatus, setKickoffTemplateStatus] = useState<string | null>(null);
+  const [sharePointPresentationOptions, setSharePointPresentationOptions] = useState<UploadedDocument[]>([]);
+  const [deepDiveTemplateReference, setDeepDiveTemplateReference] = useState<UploadedDocument | null>(null);
+  const [deepDiveSharePointPresentationOptions, setDeepDiveSharePointPresentationOptions] = useState<UploadedDocument[]>([]);
+  const [isLoadingDeepDiveSharePointPresentations, setIsLoadingDeepDiveSharePointPresentations] = useState(false);
+  const [isSavingDeepDiveTemplateReference, setIsSavingDeepDiveTemplateReference] = useState(false);
+  const [deepDiveTemplateStatus, setDeepDiveTemplateStatus] = useState<string | null>(null);
   const [kickoffMeetingNotes, setKickoffMeetingNotes] = useState<UploadedDocument[]>([]);
   const [newKickoffMeetingNote, setNewKickoffMeetingNote] = useState('');
   const [isSavingKickoffMeetingNotes, setIsSavingKickoffMeetingNotes] = useState(false);
@@ -106,12 +130,22 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
   const [newCustomStepSelectedTranscriptIds, setNewCustomStepSelectedTranscriptIds] = useState<string[]>([]);
   const [newCustomStepOutputType, setNewCustomStepOutputType] = useState<'CHAT_INTERFACE' | 'EXCEL_DOC' | 'PRESENTATION'>('CHAT_INTERFACE');
   const [newCustomStepExcelTemplate, setNewCustomStepExcelTemplate] = useState<{ fileName: string; dataUrl: string } | null>(null);
+  const [newCustomStepPresentationTemplate, setNewCustomStepPresentationTemplate] = useState<{ fileName: string; dataUrl: string } | null>(null);
+  const [customStepExcelTemplateOptions, setCustomStepExcelTemplateOptions] = useState<UploadedDocument[]>([]);
+  const [customStepPresentationTemplateOptions, setCustomStepPresentationTemplateOptions] = useState<UploadedDocument[]>([]);
+  const [isLoadingCustomStepExcelTemplates, setIsLoadingCustomStepExcelTemplates] = useState(false);
+  const [isLoadingCustomStepPresentationTemplates, setIsLoadingCustomStepPresentationTemplates] = useState(false);
   const [isSavingCustomStep, setIsSavingCustomStep] = useState(false);
   const [customStepStatus, setCustomStepStatus] = useState<string | null>(null);
   const [customStepOutputStatus, setCustomStepOutputStatus] = useState<string | null>(null);
   const [customStepChatInput, setCustomStepChatInput] = useState('');
   const [isCustomStepChatSending, setIsCustomStepChatSending] = useState(false);
   const [customStepChatByStepId, setCustomStepChatByStepId] = useState<Record<string, Array<{ role: 'user' | 'assistant'; content: string }>>>({});
+  const [selectedStepId, setSelectedStepId] = useState<string>('companyResearch');
+  const [journeyStepOverrides, setJourneyStepOverrides] = useState<Partial<JourneyStepSettings>>({});
+  const [isSavingJourneyStepOverrides, setIsSavingJourneyStepOverrides] = useState(false);
+  const [journeyStepOverridesStatus, setJourneyStepOverridesStatus] = useState<string | null>(null);
+  const [isJourneyStepManagerOpen, setIsJourneyStepManagerOpen] = useState(false);
   const [journeyStepSettings, setJourneyStepSettings] = useState<JourneyStepSettings>({
     companyResearch: true,
     targetDomains: true,
@@ -149,9 +183,71 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
     return Array.from(byId.values());
   }, [libraryUseCases]);
 
+  const journeyOptions = useMemo(() => {
+    const byIdentity = new Map<string, { id: string; createdAt: number; updatedAt: number }>();
+
+    Object.entries(journeys).forEach(([journeyKey, journey]) => {
+      const normalizedId = journey?.id || journeyKey;
+      if (!normalizedId) return;
+      if (byIdentity.has(normalizedId)) return;
+      byIdentity.set(normalizedId, {
+        id: normalizedId,
+        createdAt: journey?.createdAt || 0,
+        updatedAt: journey?.updatedAt || 0,
+      });
+    });
+
+    const byCreatedAt = new Map<string, { id: string; createdAt: number; updatedAt: number }>();
+
+    Array.from(byIdentity.values()).forEach((journey) => {
+      const createdAtKey = journey.createdAt > 0 ? String(Math.floor(journey.createdAt / 1000)) : `id:${journey.id}`;
+      const existing = byCreatedAt.get(createdAtKey);
+      if (!existing) {
+        byCreatedAt.set(createdAtKey, journey);
+        return;
+      }
+
+      const shouldPreferCurrent = selectedJourneyId === journey.id && selectedJourneyId !== existing.id;
+      const shouldPreferNewest = journey.updatedAt > existing.updatedAt;
+      if (shouldPreferCurrent || shouldPreferNewest) {
+        byCreatedAt.set(createdAtKey, journey);
+      }
+    });
+
+    return Array.from(byCreatedAt.values()).sort((a, b) => b.createdAt - a.createdAt);
+  }, [journeys, selectedJourneyId]);
+
+  const latestDemoUrlByProcess = useMemo(() => {
+    const scenarioById = new Map(allLibraryTrainingUseCases.map((scenario) => [scenario.id, scenario]));
+    const latestByProcess: Record<string, { timestamp: number; url: string }> = {};
+
+    allEvaluations.forEach((evaluation) => {
+      const scenario = scenarioById.get(evaluation.scenarioId);
+      const processKey = scenario?.process?.trim();
+      if (!processKey) return;
+
+      const demoUrl = evaluation.demoPublishedUrl || evaluation.demoProjectUrl;
+      if (!demoUrl) return;
+
+      const existing = latestByProcess[processKey];
+      if (!existing || evaluation.timestamp > existing.timestamp) {
+        latestByProcess[processKey] = {
+          timestamp: evaluation.timestamp,
+          url: demoUrl
+        };
+      }
+    });
+
+    return Object.entries(latestByProcess).reduce<Record<string, string>>((acc, [process, value]) => {
+      acc[process] = value.url;
+      return acc;
+    }, {});
+  }, [allEvaluations, allLibraryTrainingUseCases]);
+
   useEffect(() => {
     if (!companySelectedDomains.length && hasResearch && defaultDomainSelection.length > 0) {
       setCompanySelectedDomains(defaultDomainSelection);
+      kickoffTargetsDirtyRef.current = true;
     }
   }, [companySelectedDomains.length, hasResearch, defaultDomainSelection]);
 
@@ -177,6 +273,22 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
   }, [user]);
 
   useEffect(() => {
+    if (!user?.uid) {
+      setAllEvaluations([]);
+      return;
+    }
+
+    getAllUserEvaluations(user.uid)
+      .then((evaluations) => {
+        setAllEvaluations(evaluations);
+      })
+      .catch((error) => {
+        console.error('Failed to load evaluations for demo links:', error);
+        setAllEvaluations([]);
+      });
+  }, [user?.uid]);
+
+  useEffect(() => {
     getJourneyStepSettings()
       .then((settings) => setJourneyStepSettings(settings))
       .catch((error) => {
@@ -198,7 +310,7 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
       isActive: companyId === company.id,
       children: companyJourneys.map((journey, index) => ({
         id: `company-${company.id}-journey-${journey.id}`,
-        label: `Journey ${index + 1} • ${new Date(journey.createdAt).toLocaleDateString()}`,
+        label: `Journey ${index + 1} • ${new Date(journey.createdAt).toLocaleString()}`,
         icon: <Icons.Document className="w-4 h-4" />,
         onClick: () => {
           setSelectedJourneyId(journey.id);
@@ -246,6 +358,19 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
   ];
 
   const [isCompanyResearchComplete, setIsCompanyResearchComplete] = useState(false);
+  const [collaborationConfig, setCollaborationConfig] = useState<JourneyCollaborationConfig | undefined>(undefined);
+  const [isCollaborationConfigComplete, setIsCollaborationConfigComplete] = useState(false);
+  const [isSavingCollaborationConfig, setIsSavingCollaborationConfig] = useState(false);
+  const [collaborationConfigStatus, setCollaborationConfigStatus] = useState<string | null>(null);
+  const kickoffUrlDirtyRef = useRef(false);
+  const kickoffTargetsDirtyRef = useRef(false);
+  const kickoffNotesDirtyRef = useRef(false);
+  const phase2TargetsDirtyRef = useRef(false);
+  const functionalMeetingsDirtyRef = useRef(false);
+  const deepDiveMeetingsDirtyRef = useRef(false);
+  const deepDiveTargetsDirtyRef = useRef(false);
+  const selectedStepDirtyRef = useRef(false);
+  const journeyStepOverridesDirtyRef = useRef(false);
 
   useEffect(() => {
     if (!location.pathname.startsWith('/company2')) {
@@ -280,8 +405,6 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
         }
         setCompanyName(company.name || null);
         setCompanyResearch(company.research || null);
-        setCompanySelectedDomains(company.selectedDomains || []);
-        setCompanySelectedScenarios(company.selectedScenarios || []);
         if (company.research?.currentResearch) {
           setResearchResult(company.research.currentResearch);
         }
@@ -289,11 +412,31 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
         setJourneys(companyJourneys);
         const activeJourneyId = journeyIdFromQuery || (company as any).currentJourneyId || storedJourneyId || null;
         const activeJourney = activeJourneyId ? companyJourneys[activeJourneyId] : (company as any).journey;
-        const fallbackPhase2Domains = company.selectedDomains || [];
-        const fallbackPhase2UseCases = company.selectedScenarios || [];
+        const fallbackKickoffDomains = company.selectedDomains || [];
+        const fallbackKickoffUseCases = company.selectedScenarios || [];
+        const fallbackPhase2Domains = Array.isArray(activeJourney?.kickoffSelectedDomains)
+          ? activeJourney.kickoffSelectedDomains
+          : fallbackKickoffDomains;
+        const fallbackPhase2UseCases = Array.isArray(activeJourney?.kickoffSelectedUseCases)
+          ? activeJourney.kickoffSelectedUseCases
+          : fallbackKickoffUseCases;
+        setCompanySelectedDomains(
+          Array.isArray(activeJourney?.kickoffSelectedDomains)
+            ? activeJourney.kickoffSelectedDomains
+            : fallbackKickoffDomains
+        );
+        setCompanySelectedScenarios(
+          Array.isArray(activeJourney?.kickoffSelectedUseCases)
+            ? activeJourney.kickoffSelectedUseCases
+            : fallbackKickoffUseCases
+        );
         setSelectedJourneyId(activeJourneyId);
         setIsCompanyResearchComplete(!!activeJourney?.companyResearchComplete);
+        setCollaborationConfig(activeJourney?.collaborationConfig);
+        setIsCollaborationConfigComplete(!!activeJourney?.collaborationConfigComplete);
         setKickoffPresentationUrl(activeJourney?.kickoffPresentationUrl || '');
+        setKickoffTemplateReference(activeJourney?.kickoffTemplateReference || null);
+        setDeepDiveTemplateReference(activeJourney?.deepDiveTemplateReference || null);
         setKickoffMeetingNotes(activeJourney?.kickoffMeetingNotes || []);
         setPhase2SelectedDomains(
           Array.isArray(activeJourney?.phase2SelectedDomains)
@@ -329,6 +472,8 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
         setFunctionalDeepDiveMeetings(loadedDeepDiveMeetings);
         setSelectedDeepDiveMeetingId(loadedDeepDiveMeetings[0]?.id || null);
         setCustomSteps(loadedCustomSteps);
+        setJourneyStepOverrides(activeJourney?.journeyStepSettings || {});
+        setSelectedStepId(activeJourney?.currentStepId || 'companyResearch');
         setIsCustomStepFormOpen(false);
         setNewCustomStepTitle('');
         setNewCustomStepDescription('');
@@ -338,7 +483,21 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
         setNewCustomStepSelectedTranscriptIds([]);
         setNewCustomStepOutputType('CHAT_INTERFACE');
         setNewCustomStepExcelTemplate(null);
+        setNewCustomStepPresentationTemplate(null);
+        setCustomStepExcelTemplateOptions([]);
+        setCustomStepPresentationTemplateOptions([]);
         setCustomStepStatus(null);
+        setJourneyStepOverridesStatus(null);
+        setIsJourneyStepManagerOpen(false);
+        kickoffUrlDirtyRef.current = false;
+        kickoffTargetsDirtyRef.current = false;
+        kickoffNotesDirtyRef.current = false;
+        phase2TargetsDirtyRef.current = false;
+        functionalMeetingsDirtyRef.current = false;
+        deepDiveMeetingsDirtyRef.current = false;
+        deepDiveTargetsDirtyRef.current = false;
+        selectedStepDirtyRef.current = false;
+        journeyStepOverridesDirtyRef.current = false;
         if (typeof window !== 'undefined' && activeJourneyId) {
           localStorage.setItem('companyJourneyJourneyId', activeJourneyId);
         }
@@ -662,9 +821,91 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
     }
   }, [deepDiveSelectedDomains.length, deepDiveSelectedUseCases.length, phase2SelectedDomains, phase2SelectedUseCases]);
 
+  useEffect(() => {
+    if (!companyId || isSavingKickoffPresentationUrl || !kickoffUrlDirtyRef.current) return;
+    const timer = window.setTimeout(() => {
+      kickoffUrlDirtyRef.current = false;
+      handleSaveKickoffPresentationUrl();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [companyId, selectedJourneyId, kickoffPresentationUrl, isSavingKickoffPresentationUrl]);
+
+  useEffect(() => {
+    if (!companyId || !kickoffTargetsDirtyRef.current) return;
+    const timer = window.setTimeout(() => {
+      kickoffTargetsDirtyRef.current = false;
+      handleSaveKickoffTargets();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [companyId, selectedJourneyId, companySelectedDomains, companySelectedScenarios]);
+
+  useEffect(() => {
+    if (!companyId || !selectedStepDirtyRef.current || !selectedStepId) return;
+    const timer = window.setTimeout(() => {
+      selectedStepDirtyRef.current = false;
+      handleSaveCurrentJourneyStep(selectedStepId);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [companyId, selectedJourneyId, selectedStepId]);
+
+  useEffect(() => {
+    if (!companyId || !journeyStepOverridesDirtyRef.current) return;
+    const timer = window.setTimeout(() => {
+      journeyStepOverridesDirtyRef.current = false;
+      handleSaveJourneyStepOverrides();
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [companyId, selectedJourneyId, journeyStepOverrides]);
+
+  useEffect(() => {
+    if (!companyId || isSavingKickoffMeetingNotes || !kickoffNotesDirtyRef.current) return;
+    const timer = window.setTimeout(() => {
+      kickoffNotesDirtyRef.current = false;
+      handleSaveKickoffMeetingNotes();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [companyId, selectedJourneyId, kickoffMeetingNotes, isSavingKickoffMeetingNotes]);
+
+  useEffect(() => {
+    if (!companyId || isSavingPhase2Targets || !phase2TargetsDirtyRef.current) return;
+    const timer = window.setTimeout(() => {
+      phase2TargetsDirtyRef.current = false;
+      handleSavePhase2Targets();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [companyId, selectedJourneyId, phase2SelectedDomains, phase2SelectedUseCases, isSavingPhase2Targets]);
+
+  useEffect(() => {
+    if (!companyId || isSavingFunctionalMeetings || !functionalMeetingsDirtyRef.current) return;
+    const timer = window.setTimeout(() => {
+      functionalMeetingsDirtyRef.current = false;
+      handleSaveFunctionalMeetings();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [companyId, selectedJourneyId, functionalHighLevelMeetings, isSavingFunctionalMeetings]);
+
+  useEffect(() => {
+    if (!companyId || isSavingDeepDiveMeetings || !deepDiveMeetingsDirtyRef.current) return;
+    const timer = window.setTimeout(() => {
+      deepDiveMeetingsDirtyRef.current = false;
+      handleSaveDeepDiveMeetings();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [companyId, selectedJourneyId, functionalDeepDiveMeetings, isSavingDeepDiveMeetings]);
+
+  useEffect(() => {
+    if (!companyId || isSavingDeepDiveTargets || !deepDiveTargetsDirtyRef.current) return;
+    const timer = window.setTimeout(() => {
+      deepDiveTargetsDirtyRef.current = false;
+      handleSaveDeepDiveTargets();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [companyId, selectedJourneyId, deepDiveSelectedDomains, deepDiveSelectedUseCases, isSavingDeepDiveTargets]);
+
   const buildKickoffPresentationPrompt = (
     selectedUseCases: Array<(typeof ALL_SCENARIOS)[number]>,
-    selectedDomains: string[]
+    selectedDomains: string[],
+    templateReference?: UploadedDocument | null
   ): string => {
     const targetDomains = selectedDomains.length
       ? selectedDomains
@@ -697,6 +938,24 @@ These use cases are sourced from the scenario library and can be positioned as p
 Readiness is moderate-to-high for kickoff discussions, with clear process narratives and candidate use cases to prioritize.
 `).join('\n\n---\n\n');
 
+    const templateGuidance = templateReference
+  ? `
+---
+
+## Example Deck Style Reference
+
+Use the uploaded example presentation as the design and storytelling baseline.
+
+- Reference file: ${templateReference.fileName}
+- Match the example's slide flow, section ordering, heading style, and tone.
+- Keep formatting concise and executive-ready.
+- If uncertainty exists, prioritize consistency with the example deck over novelty.
+
+### Extracted Reference Notes
+${(templateReference.content || '').substring(0, 2000) || 'No extractable text was found in the file. Use filename + expected visual style as reference.'}
+`
+  : '';
+
     return `
 # Phase 1: Art of the Possible - Kickoff Presentation
 ## AI Automation Opportunity Assessment for ${companyName || pendingCompanyName || 'Selected Company'}
@@ -720,6 +979,8 @@ ${targetDomains.map((domain) => `- **${domain}**`).join('\n')}
 
 ---
 
+${templateGuidance}
+
 ${domainSlides}
 
 ---
@@ -741,7 +1002,7 @@ ${domainSlides}
 `.trim();
   };
 
-  const handleToggleDomain = async (domain: string) => {
+  const handleToggleDomain = (domain: string) => {
     const nextDomains = companySelectedDomains.includes(domain)
       ? companySelectedDomains.filter((item) => item !== domain)
       : [...companySelectedDomains, domain];
@@ -756,32 +1017,287 @@ ${domainSlides}
     const nextSelectedScenarios = companySelectedScenarios.filter((id) => validScenarioIds.has(id));
     if (nextSelectedScenarios.length !== companySelectedScenarios.length) {
       setCompanySelectedScenarios(nextSelectedScenarios);
-      if (companyId) {
-        await updateCompanySelectedScenarios(companyId, user.uid, nextSelectedScenarios);
-      }
     }
 
-    if (companyId) {
-      await updateCompanySelectedDomains(companyId, user.uid, nextDomains);
-    }
+    kickoffTargetsDirtyRef.current = true;
   };
 
-  const handleToggleKickoffUseCase = async (scenarioId: string) => {
+  const handleToggleKickoffUseCase = (scenarioId: string) => {
     const next = companySelectedScenarios.includes(scenarioId)
       ? companySelectedScenarios.filter((id) => id !== scenarioId)
       : [...companySelectedScenarios, scenarioId];
     setCompanySelectedScenarios(next);
-    if (companyId) {
-      await updateCompanySelectedScenarios(companyId, user.uid, next);
+    kickoffTargetsDirtyRef.current = true;
+  };
+
+  const handleOpenCreateUseCaseModal = (domain: string, source: UseCaseCreateSource) => {
+    setCreateUseCaseDomain(domain || 'General');
+    setCreateUseCaseSource(source);
+    setIsCreateUseCaseModalOpen(true);
+  };
+
+  const handleCreateUseCase = async (data: ScenarioFormPayload) => {
+    const { title, description, goal, domain, title_es, description_es, goal_es, process, valueDrivers, painPoints, currentWorkflowImage } = data;
+
+    const newScenario = await saveUserScenario(user.uid, {
+      title,
+      description,
+      goal,
+      domain: domain || 'General',
+      title_es,
+      description_es,
+      goal_es,
+      process,
+      valueDrivers,
+      painPoints,
+      currentWorkflowImage: currentWorkflowImage ? URL.createObjectURL(currentWorkflowImage) : undefined
+    });
+
+    setLibraryUseCases((prev) => {
+      if (prev.some((scenario) => scenario.id === newScenario.id)) return prev;
+      return [newScenario, ...prev];
+    });
+
+    const scenarioDomain = newScenario.domain || 'General';
+
+    if (createUseCaseSource === 'kickoff') {
+      setCompanySelectedDomains((prev) => (prev.includes(scenarioDomain) ? prev : [...prev, scenarioDomain]));
+      setCompanySelectedScenarios((prev) => (prev.includes(newScenario.id) ? prev : [...prev, newScenario.id]));
+      kickoffTargetsDirtyRef.current = true;
+    } else if (createUseCaseSource === 'phase2') {
+      setPhase2SelectedDomains((prev) => (prev.includes(scenarioDomain) ? prev : [...prev, scenarioDomain]));
+      setPhase2SelectedUseCases((prev) => (prev.includes(newScenario.id) ? prev : [...prev, newScenario.id]));
+      phase2TargetsDirtyRef.current = true;
+      setPhase2TargetsStatus('New use case created and selected.');
+    } else {
+      setDeepDiveSelectedDomains((prev) => (prev.includes(scenarioDomain) ? prev : [...prev, scenarioDomain]));
+      setDeepDiveSelectedUseCases((prev) => (prev.includes(newScenario.id) ? prev : [...prev, newScenario.id]));
+      deepDiveTargetsDirtyRef.current = true;
+      setDeepDiveTargetsStatus('New use case created and selected.');
     }
   };
 
   const handleCreateKickoffPresentationPrompt = () => {
     if (!activeResearch || selectedKickoffUseCases.length === 0) return;
-    const promptText = buildKickoffPresentationPrompt(selectedKickoffUseCases, companySelectedDomains);
+    const promptText = buildKickoffPresentationPrompt(selectedKickoffUseCases, companySelectedDomains, kickoffTemplateReference);
 
     setKickoffPrompt(promptText);
     setShowKickoffPromptModal(true);
+  };
+
+  const handleSaveKickoffTargets = async () => {
+    if (!companyId) return;
+
+    try {
+      await updateCompanyJourneyStatus(
+        companyId,
+        user.uid,
+        {
+          kickoffSelectedDomains: companySelectedDomains,
+          kickoffSelectedUseCases: companySelectedScenarios
+        },
+        selectedJourneyId || undefined
+      );
+
+      if (selectedJourneyId) {
+        setJourneys((prev) => ({
+          ...prev,
+          [selectedJourneyId]: {
+            ...prev[selectedJourneyId],
+            kickoffSelectedDomains: companySelectedDomains,
+            kickoffSelectedUseCases: companySelectedScenarios,
+            updatedAt: Date.now()
+          }
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to save kickoff target selections:', error);
+    }
+  };
+
+  const handleSaveCurrentJourneyStep = async (stepId: string) => {
+    if (!companyId) return;
+
+    try {
+      await updateCompanyJourneyStatus(
+        companyId,
+        user.uid,
+        { currentStepId: stepId },
+        selectedJourneyId || undefined
+      );
+
+      if (selectedJourneyId) {
+        setJourneys((prev) => ({
+          ...prev,
+          [selectedJourneyId]: {
+            ...prev[selectedJourneyId],
+            currentStepId: stepId,
+            updatedAt: Date.now()
+          }
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to save current journey step:', error);
+    }
+  };
+
+  const handleSaveJourneyStepOverrides = async () => {
+    if (!companyId) return;
+    setIsSavingJourneyStepOverrides(true);
+    try {
+      await updateCompanyJourneyStatus(
+        companyId,
+        user.uid,
+        { journeyStepSettings: journeyStepOverrides },
+        selectedJourneyId || undefined
+      );
+
+      if (selectedJourneyId) {
+        setJourneys((prev) => ({
+          ...prev,
+          [selectedJourneyId]: {
+            ...prev[selectedJourneyId],
+            journeyStepSettings: journeyStepOverrides,
+            updatedAt: Date.now()
+          }
+        }));
+      }
+      setJourneyStepOverridesStatus('Journey step visibility updated.');
+    } catch (error) {
+      console.error('Failed to save journey step visibility settings:', error);
+      setJourneyStepOverridesStatus('Failed to save journey step visibility settings.');
+    } finally {
+      setIsSavingJourneyStepOverrides(false);
+    }
+  };
+
+  const handleToggleJourneyStepVisibility = (settingKey: JourneyStepKey, enabled: boolean) => {
+    if (settingKey === 'companyResearch') return;
+    const defaultValue = !!journeyStepSettings[settingKey];
+    const nextOverrides = { ...journeyStepOverrides };
+    if (enabled === defaultValue) {
+      delete nextOverrides[settingKey];
+    } else {
+      nextOverrides[settingKey] = enabled;
+    }
+    setJourneyStepOverrides(nextOverrides);
+    setJourneyStepOverridesStatus(null);
+    journeyStepOverridesDirtyRef.current = true;
+  };
+
+  const handleLoadSharePointPresentations = async () => {
+    if (!collaborationConfig?.sharePointFolder) {
+      setSharePointPresentationOptions([]);
+      setKickoffTemplateStatus('Configure a SharePoint folder in Collaboration first.');
+      return;
+    }
+
+    const graphAccessToken = (import.meta.env.VITE_MICROSOFT_GRAPH_ACCESS_TOKEN as string | undefined) || undefined;
+    if (!graphAccessToken) {
+      setSharePointPresentationOptions([]);
+      setKickoffTemplateStatus('Missing Microsoft Graph token. Set VITE_MICROSOFT_GRAPH_ACCESS_TOKEN to list SharePoint presentations.');
+      return;
+    }
+
+    setIsSavingKickoffTemplateReference(true);
+    setKickoffTemplateStatus(null);
+
+    try {
+      const docs = await getSharePointFolderDocuments(collaborationConfig.sharePointFolder, graphAccessToken);
+      const deckDocs = docs.filter((doc) => {
+        const lower = (doc.fileName || '').toLowerCase();
+        return lower.endsWith('.ppt') || lower.endsWith('.pptx');
+      });
+      setSharePointPresentationOptions(deckDocs);
+      setKickoffTemplateStatus(
+        deckDocs.length > 0
+          ? `Loaded ${deckDocs.length} PowerPoint file${deckDocs.length === 1 ? '' : 's'} from SharePoint.`
+          : 'No PowerPoint files were found in the configured SharePoint folder.'
+      );
+    } catch (error) {
+      console.error('Failed to load SharePoint presentations:', error);
+      setSharePointPresentationOptions([]);
+      setKickoffTemplateStatus('Failed to load presentations from SharePoint folder.');
+    } finally {
+      setIsSavingKickoffTemplateReference(false);
+    }
+  };
+
+  const handleUseSharePointPresentationAsTemplate = async (doc: UploadedDocument) => {
+    if (!companyId || isSavingKickoffTemplateReference) return;
+    setIsSavingKickoffTemplateReference(true);
+    setKickoffTemplateStatus(null);
+
+    try {
+      const templateReference: UploadedDocument = {
+        id: doc.id || `kickoff-template-${Date.now()}`,
+        fileName: doc.fileName,
+        content: sanitizeTemplateText(doc.content || ''),
+        uploadedAt: Date.now(),
+        url: doc.url,
+        path: doc.path,
+      };
+
+      await updateCompanyJourneyStatus(
+        companyId,
+        user.uid,
+        { kickoffTemplateReference: templateReference },
+        selectedJourneyId || undefined
+      );
+
+      if (selectedJourneyId) {
+        setJourneys((prev) => ({
+          ...prev,
+          [selectedJourneyId]: {
+            ...prev[selectedJourneyId],
+            kickoffTemplateReference: templateReference,
+            updatedAt: Date.now()
+          }
+        }));
+      }
+
+      setKickoffTemplateReference(templateReference);
+      setKickoffTemplateStatus(`Using '${templateReference.fileName}' as kickoff presentation style reference.`);
+    } catch (error) {
+      console.error('Failed to set kickoff template reference:', error);
+      setKickoffTemplateStatus('Failed to set selected SharePoint presentation as style reference.');
+    } finally {
+      setIsSavingKickoffTemplateReference(false);
+    }
+  };
+
+  const handleRemoveKickoffTemplateReference = async () => {
+    if (!companyId || isSavingKickoffTemplateReference) return;
+    setIsSavingKickoffTemplateReference(true);
+    setKickoffTemplateStatus(null);
+
+    try {
+      await updateCompanyJourneyStatus(
+        companyId,
+        user.uid,
+        { kickoffTemplateReference: null },
+        selectedJourneyId || undefined
+      );
+
+      if (selectedJourneyId) {
+        setJourneys((prev) => ({
+          ...prev,
+          [selectedJourneyId]: {
+            ...prev[selectedJourneyId],
+            kickoffTemplateReference: null,
+            updatedAt: Date.now()
+          }
+        }));
+      }
+
+      setKickoffTemplateReference(null);
+      setKickoffTemplateStatus('Example presentation removed.');
+    } catch (error) {
+      console.error('Failed to remove kickoff template reference:', error);
+      setKickoffTemplateStatus('Failed to remove example presentation. Please try again.');
+    } finally {
+      setIsSavingKickoffTemplateReference(false);
+    }
   };
 
   const handleSaveKickoffPresentationUrl = async () => {
@@ -808,12 +1324,50 @@ ${domainSlides}
         }));
       }
 
-      setKickoffUrlStatus(normalizedUrl ? 'Kickoff presentation URL saved.' : 'Kickoff presentation URL cleared.');
+      setKickoffUrlStatus(normalizedUrl ? 'Kickoff presentation URL auto-saved.' : 'Kickoff presentation URL cleared.');
     } catch (error) {
       console.error('Failed to save kickoff presentation URL:', error);
       setKickoffUrlStatus('Failed to save kickoff presentation URL. Please try again.');
     } finally {
       setIsSavingKickoffPresentationUrl(false);
+    }
+  };
+
+  const handleSaveCollaborationConfig = async (config: JourneyCollaborationConfig) => {
+    if (!companyId || isSavingCollaborationConfig) return;
+    setIsSavingCollaborationConfig(true);
+    setCollaborationConfigStatus(null);
+    try {
+      await updateCompanyJourneyStatus(
+        companyId,
+        user.uid,
+        { 
+          collaborationConfig: config,
+          collaborationConfigComplete: true 
+        },
+        selectedJourneyId || undefined
+      );
+
+      if (selectedJourneyId) {
+        setJourneys((prev) => ({
+          ...prev,
+          [selectedJourneyId]: {
+            ...prev[selectedJourneyId],
+            collaborationConfig: config,
+            collaborationConfigComplete: true,
+            updatedAt: Date.now()
+          }
+        }));
+      }
+
+      setCollaborationConfig(config);
+      setCollaborationConfigStatus('Collaboration configuration saved successfully.');
+      setIsCollaborationConfigComplete(true);
+    } catch (error) {
+      console.error('Failed to save collaboration configuration:', error);
+      setCollaborationConfigStatus('Failed to save collaboration configuration. Please try again.');
+    } finally {
+      setIsSavingCollaborationConfig(false);
     }
   };
 
@@ -858,6 +1412,7 @@ ${domainSlides}
 
     if (uploadedNotes.length > 0) {
       setKickoffMeetingNotes((prev) => [...prev, ...uploadedNotes]);
+      kickoffNotesDirtyRef.current = true;
     }
 
     if (uploadWarnings.length > 0) {
@@ -876,6 +1431,7 @@ ${domainSlides}
       uploadedAt: Date.now()
     };
     setKickoffMeetingNotes((prev) => [...prev, nextNote]);
+    kickoffNotesDirtyRef.current = true;
     setNewKickoffMeetingNote('');
     setKickoffNotesStatus(null);
   };
@@ -903,7 +1459,7 @@ ${domainSlides}
         }));
       }
 
-      setKickoffNotesStatus('Kickoff meeting notes saved.');
+      setKickoffNotesStatus('Kickoff meeting notes auto-saved.');
     } catch (error) {
       console.error('Failed to save kickoff meeting notes:', error);
       setKickoffNotesStatus('Failed to save kickoff meeting notes. Please try again.');
@@ -926,6 +1482,7 @@ ${domainSlides}
       );
       return prev.filter((id) => allowed.has(id));
     });
+    phase2TargetsDirtyRef.current = true;
     setPhase2TargetsStatus(null);
   };
 
@@ -935,6 +1492,7 @@ ${domainSlides}
         ? prev.filter((id) => id !== scenarioId)
         : [...prev, scenarioId]
     ));
+    phase2TargetsDirtyRef.current = true;
     setPhase2TargetsStatus(null);
   };
 
@@ -965,7 +1523,7 @@ ${domainSlides}
         }));
       }
 
-      setPhase2TargetsStatus('Phase 2 targeting saved.');
+      setPhase2TargetsStatus('Phase 2 targeting auto-saved.');
     } catch (error) {
       console.error('Failed to save phase 2 targeting:', error);
       setPhase2TargetsStatus('Failed to save phase 2 targeting. Please try again.');
@@ -976,7 +1534,7 @@ ${domainSlides}
 
   const handleCreatePhase2PresentationPrompt = () => {
     if (!activeResearch || selectedPhase2UseCases.length === 0) return;
-    const promptText = buildKickoffPresentationPrompt(selectedPhase2UseCases, phase2SelectedDomains);
+    const promptText = buildKickoffPresentationPrompt(selectedPhase2UseCases, phase2SelectedDomains, kickoffTemplateReference);
     setKickoffPrompt(promptText);
     setShowKickoffPromptModal(true);
   };
@@ -995,6 +1553,7 @@ ${domainSlides}
       );
       return prev.filter((id) => allowed.has(id));
     });
+    deepDiveTargetsDirtyRef.current = true;
     setDeepDiveTargetsStatus(null);
   };
 
@@ -1004,6 +1563,7 @@ ${domainSlides}
         ? prev.filter((id) => id !== scenarioId)
         : [...prev, scenarioId]
     ));
+    deepDiveTargetsDirtyRef.current = true;
     setDeepDiveTargetsStatus(null);
   };
 
@@ -1034,7 +1594,7 @@ ${domainSlides}
         }));
       }
 
-      setDeepDiveTargetsStatus('Deep dive targets saved.');
+      setDeepDiveTargetsStatus('Deep dive targets auto-saved.');
     } catch (error) {
       console.error('Failed to save deep dive targets:', error);
       setDeepDiveTargetsStatus('Failed to save deep dive targets. Please try again.');
@@ -1045,9 +1605,192 @@ ${domainSlides}
 
   const handleCreateDeepDivePresentationPrompt = () => {
     if (!activeResearch || selectedDeepDiveUseCases.length === 0) return;
-    const promptText = buildKickoffPresentationPrompt(selectedDeepDiveUseCases, deepDiveSelectedDomains);
+    const promptText = buildKickoffPresentationPrompt(
+      selectedDeepDiveUseCases,
+      deepDiveSelectedDomains,
+      deepDiveTemplateReference || kickoffTemplateReference
+    );
     setKickoffPrompt(promptText);
     setShowKickoffPromptModal(true);
+  };
+
+  const handleLoadDeepDiveSharePointPresentations = async () => {
+    if (!collaborationConfig?.sharePointFolder) {
+      setDeepDiveSharePointPresentationOptions([]);
+      setDeepDiveTemplateStatus('Configure a SharePoint folder in Collaboration first.');
+      return;
+    }
+
+    const graphAccessToken = (import.meta.env.VITE_MICROSOFT_GRAPH_ACCESS_TOKEN as string | undefined) || undefined;
+    if (!graphAccessToken) {
+      setDeepDiveSharePointPresentationOptions([]);
+      setDeepDiveTemplateStatus('Missing Microsoft Graph token. Set VITE_MICROSOFT_GRAPH_ACCESS_TOKEN to list SharePoint presentations.');
+      return;
+    }
+
+    setIsLoadingDeepDiveSharePointPresentations(true);
+    setDeepDiveTemplateStatus(null);
+
+    try {
+      const docs = await getSharePointFolderDocuments(collaborationConfig.sharePointFolder, graphAccessToken);
+      const deckDocs = docs.filter((doc) => {
+        const lower = (doc.fileName || '').toLowerCase();
+        return lower.endsWith('.ppt') || lower.endsWith('.pptx');
+      });
+      setDeepDiveSharePointPresentationOptions(deckDocs);
+      setDeepDiveTemplateStatus(
+        deckDocs.length > 0
+          ? `Loaded ${deckDocs.length} PowerPoint file${deckDocs.length === 1 ? '' : 's'} from SharePoint.`
+          : 'No PowerPoint files were found in the configured SharePoint folder.'
+      );
+    } catch (error) {
+      console.error('Failed to load deep dive SharePoint presentations:', error);
+      setDeepDiveSharePointPresentationOptions([]);
+      setDeepDiveTemplateStatus('Failed to load PowerPoint files from SharePoint folder.');
+    } finally {
+      setIsLoadingDeepDiveSharePointPresentations(false);
+    }
+  };
+
+  const handleUseSharePointPresentationAsDeepDiveTemplate = async (doc: UploadedDocument) => {
+    if (!companyId || isSavingDeepDiveTemplateReference) return;
+    setIsSavingDeepDiveTemplateReference(true);
+    setDeepDiveTemplateStatus(null);
+
+    try {
+      const normalized = sanitizeTemplateText(doc.content || '').slice(0, 12000);
+      const templateReference: UploadedDocument = {
+        id: doc.id || `deep-dive-template-${Date.now()}`,
+        fileName: doc.fileName,
+        content: normalized || `Deep dive template reference selected: ${doc.fileName}`,
+        uploadedAt: Date.now(),
+        url: doc.url,
+        path: doc.path
+      };
+
+      await updateCompanyJourneyStatus(
+        companyId,
+        user.uid,
+        { deepDiveTemplateReference: templateReference },
+        selectedJourneyId || undefined
+      );
+
+      if (selectedJourneyId) {
+        setJourneys((prev) => ({
+          ...prev,
+          [selectedJourneyId]: {
+            ...prev[selectedJourneyId],
+            deepDiveTemplateReference: templateReference,
+            updatedAt: Date.now()
+          }
+        }));
+      }
+
+      setDeepDiveTemplateReference(templateReference);
+      setDeepDiveTemplateStatus(`Using '${templateReference.fileName}' as deep dive presentation style reference.`);
+    } catch (error) {
+      console.error('Failed to set deep dive template reference from SharePoint:', error);
+      setDeepDiveTemplateStatus('Failed to set selected SharePoint presentation as style reference.');
+    } finally {
+      setIsSavingDeepDiveTemplateReference(false);
+    }
+  };
+
+  const handleUploadDeepDiveTemplateReference = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !companyId || isSavingDeepDiveTemplateReference) return;
+
+    const file = files[0];
+    const lowerName = file.name.toLowerCase();
+    setIsSavingDeepDiveTemplateReference(true);
+    setDeepDiveTemplateStatus(null);
+
+    try {
+      let extractedContent = '';
+
+      if (file.type === 'application/pdf' || lowerName.endsWith('.pdf')) {
+        extractedContent = await extractTextFromPDF(file);
+      } else if (
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        lowerName.endsWith('.docx')
+      ) {
+        extractedContent = await extractTextFromDocx(file);
+      } else {
+        const rawText = await file.text();
+        extractedContent = sanitizeTemplateText(rawText);
+      }
+
+      const normalized = sanitizeTemplateText(extractedContent).slice(0, 12000);
+      const templateReference: UploadedDocument = {
+        id: `deep-dive-template-${Date.now()}`,
+        fileName: file.name,
+        content: normalized || `Deep dive template reference uploaded: ${file.name}`,
+        uploadedAt: Date.now()
+      };
+
+      await updateCompanyJourneyStatus(
+        companyId,
+        user.uid,
+        { deepDiveTemplateReference: templateReference },
+        selectedJourneyId || undefined
+      );
+
+      if (selectedJourneyId) {
+        setJourneys((prev) => ({
+          ...prev,
+          [selectedJourneyId]: {
+            ...prev[selectedJourneyId],
+            deepDiveTemplateReference: templateReference,
+            updatedAt: Date.now()
+          }
+        }));
+      }
+
+      setDeepDiveTemplateReference(templateReference);
+      setDeepDiveTemplateStatus(
+        normalized
+          ? 'Deep dive template uploaded. Presentation prompts will follow this example style.'
+          : 'Deep dive template uploaded. Text extraction was limited, but style guidance will still be applied.'
+      );
+    } catch (error) {
+      console.error('Failed to upload deep dive template reference:', error);
+      setDeepDiveTemplateStatus('Failed to upload deep dive template. Please try again.');
+    } finally {
+      setIsSavingDeepDiveTemplateReference(false);
+    }
+  };
+
+  const handleRemoveDeepDiveTemplateReference = async () => {
+    if (!companyId || isSavingDeepDiveTemplateReference) return;
+    setIsSavingDeepDiveTemplateReference(true);
+    setDeepDiveTemplateStatus(null);
+
+    try {
+      await updateCompanyJourneyStatus(
+        companyId,
+        user.uid,
+        { deepDiveTemplateReference: null },
+        selectedJourneyId || undefined
+      );
+
+      if (selectedJourneyId) {
+        setJourneys((prev) => ({
+          ...prev,
+          [selectedJourneyId]: {
+            ...prev[selectedJourneyId],
+            deepDiveTemplateReference: null,
+            updatedAt: Date.now()
+          }
+        }));
+      }
+
+      setDeepDiveTemplateReference(null);
+      setDeepDiveTemplateStatus('Deep dive template removed.');
+    } catch (error) {
+      console.error('Failed to remove deep dive template reference:', error);
+      setDeepDiveTemplateStatus('Failed to remove deep dive template. Please try again.');
+    } finally {
+      setIsSavingDeepDiveTemplateReference(false);
+    }
   };
 
   const updateSelectedFunctionalMeeting = (updater: (meeting: FunctionalHighLevelMeeting) => FunctionalHighLevelMeeting) => {
@@ -1057,11 +1800,22 @@ ${domainSlides}
         ? updater({ ...meeting })
         : meeting
     )));
+    functionalMeetingsDirtyRef.current = true;
     setFunctionalMeetingsStatus(null);
   };
 
   const handleAddFunctionalHighLevelMeeting = () => {
     const seedUseCase = selectedPhase2UseCases[functionalHighLevelMeetings.length] || selectedPhase2UseCases[0];
+    if (newCustomStepOutputType === 'EXCEL_DOC' && !newCustomStepExcelTemplate) {
+      setCustomStepStatus('Select an Excel template from SharePoint before saving this step.');
+      return;
+    }
+
+    if (newCustomStepOutputType === 'PRESENTATION' && !newCustomStepPresentationTemplate) {
+      setCustomStepStatus('Select a PowerPoint template from SharePoint before saving this step.');
+      return;
+    }
+
     const now = Date.now();
     const meeting: FunctionalHighLevelMeeting = {
       id: `fhl-${now}`,
@@ -1074,6 +1828,7 @@ ${domainSlides}
     };
     setFunctionalHighLevelMeetings((prev) => [...prev, meeting]);
     setSelectedFunctionalMeetingId(meeting.id);
+    functionalMeetingsDirtyRef.current = true;
     setFunctionalMeetingsStatus(null);
   };
 
@@ -1085,6 +1840,7 @@ ${domainSlides}
       }
       return next;
     });
+    functionalMeetingsDirtyRef.current = true;
     setFunctionalMeetingsStatus(null);
   };
 
@@ -1182,7 +1938,7 @@ ${domainSlides}
         }));
       }
 
-      setFunctionalMeetingsStatus('Functional high-level meetings saved.');
+      setFunctionalMeetingsStatus('Functional high-level meetings auto-saved.');
     } catch (error) {
       console.error('Failed to save functional high-level meetings:', error);
       setFunctionalMeetingsStatus('Failed to save functional high-level meetings. Please try again.');
@@ -1198,6 +1954,7 @@ ${domainSlides}
         ? updater({ ...meeting })
         : meeting
     )));
+    deepDiveMeetingsDirtyRef.current = true;
     setDeepDiveMeetingsStatus(null);
   };
 
@@ -1215,6 +1972,7 @@ ${domainSlides}
     };
     setFunctionalDeepDiveMeetings((prev) => [...prev, meeting]);
     setSelectedDeepDiveMeetingId(meeting.id);
+    deepDiveMeetingsDirtyRef.current = true;
     setDeepDiveMeetingsStatus(null);
   };
 
@@ -1226,6 +1984,7 @@ ${domainSlides}
       }
       return next;
     });
+    deepDiveMeetingsDirtyRef.current = true;
     setDeepDiveMeetingsStatus(null);
   };
 
@@ -1323,7 +2082,7 @@ ${domainSlides}
         }));
       }
 
-      setDeepDiveMeetingsStatus('Functional deep dive meetings saved.');
+      setDeepDiveMeetingsStatus('Functional deep dive meetings auto-saved.');
     } catch (error) {
       console.error('Failed to save functional deep dive meetings:', error);
       setDeepDiveMeetingsStatus('Failed to save functional deep dive meetings. Please try again.');
@@ -1539,6 +2298,13 @@ ${domainSlides}
             uploadedAt: now
           }
         : undefined,
+      presentationTemplate: newCustomStepOutputType === 'PRESENTATION' && newCustomStepPresentationTemplate
+        ? {
+            fileName: newCustomStepPresentationTemplate.fileName,
+            dataUrl: newCustomStepPresentationTemplate.dataUrl,
+            uploadedAt: now
+          }
+        : undefined,
       createdAt: now,
       updatedAt: now
     };
@@ -1553,47 +2319,128 @@ ${domainSlides}
     setNewCustomStepSelectedTranscriptIds([]);
     setNewCustomStepOutputType('CHAT_INTERFACE');
     setNewCustomStepExcelTemplate(null);
+    setNewCustomStepPresentationTemplate(null);
+    setCustomStepExcelTemplateOptions([]);
+    setCustomStepPresentationTemplateOptions([]);
     setIsCustomStepFormOpen(false);
     setSelectedStepId(`custom-${newStep.id}`);
+    selectedStepDirtyRef.current = true;
   };
 
-  const handleNewCustomStepTemplateUpload = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setNewCustomStepExcelTemplate({ fileName: file.name, dataUrl });
-      setCustomStepStatus(null);
-    } catch (error) {
-      console.error('Failed to read Excel template file:', error);
-      setCustomStepStatus('Failed to attach template file. Please try again.');
+  const loadCustomStepTemplatesFromSharePoint = async (templateType: 'EXCEL' | 'PRESENTATION') => {
+    if (!collaborationConfig?.sharePointFolder) {
+      if (templateType === 'EXCEL') {
+        setCustomStepExcelTemplateOptions([]);
+      } else {
+        setCustomStepPresentationTemplateOptions([]);
+      }
+      setCustomStepStatus('Configure a SharePoint folder in Collaboration first.');
+      return;
     }
-  };
 
-  const handleReplaceCustomStepTemplate = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file || !selectedCustomStep) return;
+    const graphAccessToken = (import.meta.env.VITE_MICROSOFT_GRAPH_ACCESS_TOKEN as string | undefined) || undefined;
+    if (!graphAccessToken) {
+      if (templateType === 'EXCEL') {
+        setCustomStepExcelTemplateOptions([]);
+      } else {
+        setCustomStepPresentationTemplateOptions([]);
+      }
+      setCustomStepStatus('Missing Microsoft Graph token. Set VITE_MICROSOFT_GRAPH_ACCESS_TOKEN to list SharePoint files.');
+      return;
+    }
+
+    if (templateType === 'EXCEL') {
+      setIsLoadingCustomStepExcelTemplates(true);
+    } else {
+      setIsLoadingCustomStepPresentationTemplates(true);
+    }
+    setCustomStepStatus(null);
+
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      await handleUpdateCustomStep(selectedCustomStep.id, (step) => ({
-        ...step,
-        excelTemplate: {
-          fileName: file.name,
-          dataUrl,
-          uploadedAt: Date.now()
+      const docs = await getSharePointFolderDocuments(collaborationConfig.sharePointFolder, graphAccessToken);
+      const filteredDocs = docs.filter((doc) => {
+        const lower = (doc.fileName || '').toLowerCase();
+        if (templateType === 'EXCEL') {
+          return lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.csv');
         }
-      }));
-      setCustomStepOutputStatus('Template updated.');
+        return lower.endsWith('.ppt') || lower.endsWith('.pptx');
+      });
+
+      if (templateType === 'EXCEL') {
+        setCustomStepExcelTemplateOptions(filteredDocs);
+      } else {
+        setCustomStepPresentationTemplateOptions(filteredDocs);
+      }
+
+      setCustomStepStatus(
+        filteredDocs.length > 0
+          ? `Loaded ${filteredDocs.length} ${templateType === 'EXCEL' ? 'Excel' : 'PowerPoint'} file${filteredDocs.length === 1 ? '' : 's'} from SharePoint.`
+          : `No ${templateType === 'EXCEL' ? 'Excel' : 'PowerPoint'} files were found in the configured SharePoint folder.`
+      );
     } catch (error) {
-      console.error('Failed to replace Excel template file:', error);
-      setCustomStepOutputStatus('Failed to update template. Please try again.');
+      console.error('Failed to load custom step template files from SharePoint:', error);
+      if (templateType === 'EXCEL') {
+        setCustomStepExcelTemplateOptions([]);
+      } else {
+        setCustomStepPresentationTemplateOptions([]);
+      }
+      setCustomStepStatus('Failed to load template files from SharePoint folder.');
+    } finally {
+      if (templateType === 'EXCEL') {
+        setIsLoadingCustomStepExcelTemplates(false);
+      } else {
+        setIsLoadingCustomStepPresentationTemplates(false);
+      }
     }
+  };
+
+  const handleUseSharePointExcelTemplateForNewCustomStep = (doc: UploadedDocument) => {
+    setNewCustomStepExcelTemplate({
+      fileName: doc.fileName,
+      dataUrl: doc.url || ''
+    });
+    setCustomStepStatus(`Using '${doc.fileName}' as Excel template.`);
+  };
+
+  const handleUseSharePointPresentationTemplateForNewCustomStep = (doc: UploadedDocument) => {
+    setNewCustomStepPresentationTemplate({
+      fileName: doc.fileName,
+      dataUrl: doc.url || ''
+    });
+    setCustomStepStatus(`Using '${doc.fileName}' as PowerPoint template.`);
+  };
+
+  const handleUseSharePointExcelTemplateForSelectedStep = async (doc: UploadedDocument) => {
+    if (!selectedCustomStep) return;
+    await handleUpdateCustomStep(selectedCustomStep.id, (step) => ({
+      ...step,
+      excelTemplate: {
+        fileName: doc.fileName,
+        dataUrl: doc.url || '',
+        uploadedAt: Date.now()
+      }
+    }));
+    setCustomStepOutputStatus('Excel template updated from SharePoint.');
+  };
+
+  const handleUseSharePointPresentationTemplateForSelectedStep = async (doc: UploadedDocument) => {
+    if (!selectedCustomStep) return;
+    await handleUpdateCustomStep(selectedCustomStep.id, (step) => ({
+      ...step,
+      presentationTemplate: {
+        fileName: doc.fileName,
+        dataUrl: doc.url || '',
+        uploadedAt: Date.now()
+      }
+    }));
+    setCustomStepOutputStatus('PowerPoint template updated from SharePoint.');
   };
 
   const handleRemoveCustomStep = async (customStepId: string) => {
     const nextCustomSteps = customSteps.filter((step) => step.id !== customStepId);
     await handleSaveCustomSteps(nextCustomSteps);
     setSelectedStepId('companyResearch');
+    selectedStepDirtyRef.current = true;
   };
 
   const orderedSteps = useMemo<JourneyStep[]>(
@@ -1712,15 +2559,28 @@ ${domainSlides}
     [companyId, customSteps, prerequisitesComplete]
   );
 
+  const effectiveJourneyStepSettings = useMemo<JourneyStepSettings>(
+    () => ({
+      ...journeyStepSettings,
+      ...journeyStepOverrides,
+      companyResearch: true
+    }),
+    [journeyStepSettings, journeyStepOverrides]
+  );
+
   const visibleOrderedSteps = useMemo(
     () => orderedSteps.filter((step) => {
       if (!step.settingKey) return true;
-      return step.settingKey === 'companyResearch' || !!journeyStepSettings[step.settingKey];
+      return step.settingKey === 'companyResearch' || !!effectiveJourneyStepSettings[step.settingKey];
     }),
-    [orderedSteps, journeyStepSettings]
+    [orderedSteps, effectiveJourneyStepSettings]
   );
 
-  const [selectedStepId, setSelectedStepId] = useState(orderedSteps[0]?.id);
+  const configurableJourneySteps = useMemo(
+    () => orderedSteps.filter((step) => !!step.settingKey && step.settingKey !== 'companyResearch' && !step.isCustom),
+    [orderedSteps]
+  );
+
   const selectedStep = visibleOrderedSteps.find(step => step.id === selectedStepId) || visibleOrderedSteps[0];
   const selectedCustomStep = selectedStep?.isCustom && selectedStep.customStepId
     ? customSteps.find((step) => step.id === selectedStep.customStepId) || null
@@ -1747,14 +2607,6 @@ ${domainSlides}
       setCustomStepOutputStatus('Failed to copy. Please try again.');
     }
   };
-
-  const readFileAsDataUrl = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
 
   const handleUpdateCustomStep = async (
     stepId: string,
@@ -1820,15 +2672,16 @@ ${domainSlides}
       `Output: ${step.outputType || 'CHAT_INTERFACE'}`,
       `Prompt: ${step.prompt || 'N/A'}`,
       `Documents: ${docs.length ? docs.join('; ') : 'None selected'}`,
-      `Transcripts: ${transcripts.length ? transcripts.join('; ') : 'None selected'}`
+      `Transcripts: ${transcripts.length ? transcripts.join('; ') : 'None selected'}`,
+      `Excel file template: ${step.excelTemplate?.fileName || 'None'}`,
+      `Presentation template: ${step.presentationTemplate?.fileName || 'None'}`
     ].join('\n');
   };
 
   const buildCustomStepExcelCsv = (step: CustomJourneyStep) => {
     const docs = (step.selectedDocumentIds || []).map((id) => customStepDocumentLabelMap.get(id) || id);
     const transcripts = (step.selectedTranscriptIds || []).map((id) => customStepTranscriptLabelMap.get(id) || id);
-    const rows = [
-      ['Field', 'Value'],
+    const baseFields: Array<[string, string]> = [
       ['Title', step.title],
       ['Description', step.description || ''],
       ['AI Model', step.aiModelId || ''],
@@ -1836,6 +2689,10 @@ ${domainSlides}
       ['Prompt', step.prompt || ''],
       ['Documents', docs.join(' | ')],
       ['Transcripts', transcripts.join(' | ')]
+    ];
+    const rows = [
+      ['Field', 'Value'],
+      ...baseFields
     ];
 
     return rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -1876,6 +2733,7 @@ ${domainSlides}
   useEffect(() => {
     if (!visibleOrderedSteps.some((step) => step.id === selectedStepId)) {
       setSelectedStepId(visibleOrderedSteps[0]?.id);
+      selectedStepDirtyRef.current = true;
     }
   }, [visibleOrderedSteps, selectedStepId]);
 
@@ -1899,20 +2757,6 @@ ${domainSlides}
                     : 'Run a company search to begin research.'}
                 </p>
               </div>
-              {hasResearch && (
-                <button
-                  type="button"
-                  onClick={handleSaveProject}
-                  disabled={isSavingProject}
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold ${
-                    isSavingProject
-                      ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
-                      : 'bg-wm-accent text-white hover:bg-wm-accent/90'
-                  }`}
-                >
-                  {isSavingProject ? 'Saving...' : 'Save company project'}
-                </button>
-              )}
             </div>
             {companyId && Object.keys(journeys).length > 0 && (
               <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1930,10 +2774,24 @@ ${domainSlides}
                         await updateCompanyJourneyStatus(companyId, user.uid, {}, nextJourneyId);
                         navigate(`/company2?companyId=${companyId}&journeyId=${nextJourneyId}`, { replace: true });
                         const active = journeys[nextJourneyId];
-                        const fallbackPhase2Domains = companySelectedDomains || [];
-                        const fallbackPhase2UseCases = companySelectedScenarios || [];
+                        const fallbackKickoffDomains = active?.kickoffSelectedDomains || [];
+                        const fallbackKickoffUseCases = active?.kickoffSelectedUseCases || [];
+                        const fallbackPhase2Domains = active?.phase2SelectedDomains || fallbackKickoffDomains;
+                        const fallbackPhase2UseCases = active?.phase2SelectedUseCases || fallbackKickoffUseCases;
+                        setCompanySelectedDomains(
+                          Array.isArray(active?.kickoffSelectedDomains)
+                            ? active.kickoffSelectedDomains
+                            : fallbackKickoffDomains
+                        );
+                        setCompanySelectedScenarios(
+                          Array.isArray(active?.kickoffSelectedUseCases)
+                            ? active.kickoffSelectedUseCases
+                            : fallbackKickoffUseCases
+                        );
                         setIsCompanyResearchComplete(!!active?.companyResearchComplete);
                         setKickoffPresentationUrl(active?.kickoffPresentationUrl || '');
+                        setKickoffTemplateReference(active?.kickoffTemplateReference || null);
+                        setDeepDiveTemplateReference(active?.deepDiveTemplateReference || null);
                         setKickoffMeetingNotes(active?.kickoffMeetingNotes || []);
                         setPhase2SelectedDomains(
                           Array.isArray(active?.phase2SelectedDomains)
@@ -1969,7 +2827,13 @@ ${domainSlides}
                         setFunctionalDeepDiveMeetings(loadedDeepDiveMeetings);
                         setSelectedDeepDiveMeetingId(loadedDeepDiveMeetings[0]?.id || null);
                         setCustomSteps(loadedCustomSteps);
+                        setJourneyStepOverrides(active?.journeyStepSettings || {});
+                        setSelectedStepId(active?.currentStepId || 'companyResearch');
+                        setSharePointPresentationOptions([]);
+                        setDeepDiveSharePointPresentationOptions([]);
                         setKickoffUrlStatus(null);
+                        setKickoffTemplateStatus(null);
+                        setDeepDiveTemplateStatus(null);
                         setKickoffNotesStatus(null);
                         setPhase2TargetsStatus(null);
                         setFunctionalMeetingsStatus(null);
@@ -1985,15 +2849,27 @@ ${domainSlides}
                         setNewCustomStepSelectedTranscriptIds([]);
                         setNewCustomStepOutputType('CHAT_INTERFACE');
                         setNewCustomStepExcelTemplate(null);
+                        setNewCustomStepPresentationTemplate(null);
+                        setCustomStepExcelTemplateOptions([]);
+                        setCustomStepPresentationTemplateOptions([]);
+                        setJourneyStepOverridesStatus(null);
+                        setIsJourneyStepManagerOpen(false);
+                        kickoffUrlDirtyRef.current = false;
+                        kickoffTargetsDirtyRef.current = false;
+                        kickoffNotesDirtyRef.current = false;
+                        phase2TargetsDirtyRef.current = false;
+                        functionalMeetingsDirtyRef.current = false;
+                        deepDiveMeetingsDirtyRef.current = false;
+                        deepDiveTargetsDirtyRef.current = false;
+                        selectedStepDirtyRef.current = false;
+                        journeyStepOverridesDirtyRef.current = false;
                       }
                     }}
                     className="rounded-md border border-wm-neutral/30 bg-white px-3 py-2 text-sm text-wm-blue"
                   >
-                    {Object.values(journeys)
-                      .sort((a, b) => b.createdAt - a.createdAt)
-                      .map((journey, index) => (
+                    {journeyOptions.map((journey, index) => (
                         <option key={journey.id} value={journey.id}>
-                          {`Journey ${index + 1} • ${new Date(journey.createdAt).toLocaleDateString()}`}
+                          {`Journey ${index + 1} • ${new Date(journey.createdAt).toLocaleString()}`}
                         </option>
                       ))}
                   </select>
@@ -2008,6 +2884,10 @@ ${domainSlides}
                       user.uid,
                       {
                         companyResearchComplete: false,
+                        currentStepId: 'companyResearch',
+                        journeyStepSettings: {},
+                        kickoffSelectedDomains: companySelectedDomains,
+                        kickoffSelectedUseCases: companySelectedScenarios,
                         phase2SelectedDomains: companySelectedDomains,
                         phase2SelectedUseCases: companySelectedScenarios,
                         deepDiveSelectedDomains: companySelectedDomains,
@@ -2023,9 +2903,15 @@ ${domainSlides}
                     setJourneys(refreshedJourneys);
                     setSelectedJourneyId(newJourneyId);
                     setIsCompanyResearchComplete(false);
+                    setSharePointPresentationOptions([]);
+                    setDeepDiveSharePointPresentationOptions([]);
                     setKickoffPresentationUrl('');
+                    setKickoffTemplateReference(null);
+                    setDeepDiveTemplateReference(null);
                     setKickoffMeetingNotes([]);
                     setNewKickoffMeetingNote('');
+                    setCompanySelectedDomains(companySelectedDomains);
+                    setCompanySelectedScenarios(companySelectedScenarios);
                     setPhase2SelectedDomains(companySelectedDomains);
                     setPhase2SelectedUseCases(companySelectedScenarios);
                     setDeepDiveSelectedDomains(companySelectedDomains);
@@ -2037,6 +2923,8 @@ ${domainSlides}
                     setSelectedDeepDiveMeetingId(null);
                     setNewDeepDiveMeetingNote('');
                     setCustomSteps([]);
+                    setJourneyStepOverrides({});
+                    setSelectedStepId('companyResearch');
                     setIsCustomStepFormOpen(false);
                     setNewCustomStepTitle('');
                     setNewCustomStepDescription('');
@@ -2046,13 +2934,29 @@ ${domainSlides}
                     setNewCustomStepSelectedTranscriptIds([]);
                     setNewCustomStepOutputType('CHAT_INTERFACE');
                     setNewCustomStepExcelTemplate(null);
+                    setNewCustomStepPresentationTemplate(null);
+                    setCustomStepExcelTemplateOptions([]);
+                    setCustomStepPresentationTemplateOptions([]);
+                    setJourneyStepOverridesStatus(null);
+                    setIsJourneyStepManagerOpen(false);
                     setKickoffUrlStatus(null);
+                    setKickoffTemplateStatus(null);
+                    setDeepDiveTemplateStatus(null);
                     setKickoffNotesStatus(null);
                     setPhase2TargetsStatus(null);
                     setFunctionalMeetingsStatus(null);
                     setDeepDiveMeetingsStatus(null);
                     setDeepDiveTargetsStatus(null);
                     setCustomStepStatus(null);
+                    kickoffUrlDirtyRef.current = false;
+                    kickoffTargetsDirtyRef.current = false;
+                    kickoffNotesDirtyRef.current = false;
+                    phase2TargetsDirtyRef.current = false;
+                    functionalMeetingsDirtyRef.current = false;
+                    deepDiveMeetingsDirtyRef.current = false;
+                    deepDiveTargetsDirtyRef.current = false;
+                    selectedStepDirtyRef.current = false;
+                    journeyStepOverridesDirtyRef.current = false;
                     navigate(`/company2?companyId=${companyId}&journeyId=${newJourneyId}`, { replace: true });
                   }}
                   className="mt-5 px-3 py-2 text-xs font-semibold rounded-md bg-wm-accent text-white hover:bg-wm-accent/90"
@@ -2122,6 +3026,16 @@ ${domainSlides}
                 <button
                   type="button"
                   onClick={() => {
+                    setIsJourneyStepManagerOpen((prev) => !prev);
+                    setJourneyStepOverridesStatus(null);
+                  }}
+                  className="px-3 py-2 rounded-lg border border-wm-neutral/30 text-wm-blue text-sm font-semibold hover:bg-wm-neutral/10"
+                >
+                  {isJourneyStepManagerOpen ? 'Close step manager' : 'Manage journey steps'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
                     setIsCustomStepFormOpen((prev) => !prev);
                     setCustomStepStatus(null);
                   }}
@@ -2131,6 +3045,36 @@ ${domainSlides}
                 </button>
               </div>
             </div>
+
+            {isJourneyStepManagerOpen && (
+              <div className="mt-3 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-3 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-wm-blue/60">Journey step visibility</p>
+                {configurableJourneySteps.length === 0 ? (
+                  <p className="text-xs text-wm-blue/60">No configurable steps available.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {configurableJourneySteps.map((step) => {
+                      const key = step.settingKey as JourneyStepKey;
+                      const enabled = !!effectiveJourneyStepSettings[key];
+                      return (
+                        <label key={step.id} className="flex items-center justify-between gap-3 rounded-md border border-wm-neutral/20 bg-white px-3 py-2 text-sm text-wm-blue">
+                          <span>{step.title}</span>
+                          <input
+                            type="checkbox"
+                            checked={enabled}
+                            onChange={(event) => handleToggleJourneyStepVisibility(key, event.target.checked)}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  {isSavingJourneyStepOverrides && <p className="text-xs text-wm-blue/70">Saving...</p>}
+                  {journeyStepOverridesStatus && <p className="text-xs text-wm-blue/70">{journeyStepOverridesStatus}</p>}
+                </div>
+              </div>
+            )}
 
             <div className="mt-4">
               {isCustomStepFormOpen && (
@@ -2242,6 +3186,9 @@ ${domainSlides}
                         if (nextOutput !== 'EXCEL_DOC') {
                           setNewCustomStepExcelTemplate(null);
                         }
+                        if (nextOutput !== 'PRESENTATION') {
+                          setNewCustomStepPresentationTemplate(null);
+                        }
                       }}
                       className="w-full rounded-lg border border-wm-neutral/30 bg-white px-3 py-2 text-sm text-wm-blue"
                     >
@@ -2253,17 +3200,84 @@ ${domainSlides}
 
                   {newCustomStepOutputType === 'EXCEL_DOC' && (
                     <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-1">Excel template file</label>
-                      <input
-                        type="file"
-                        accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-                        onChange={(event) => {
-                          void handleNewCustomStepTemplateUpload(event.target.files);
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-1">Excel template from SharePoint</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void loadCustomStepTemplatesFromSharePoint('EXCEL');
                         }}
-                        className="w-full rounded-lg border border-wm-neutral/30 bg-white px-3 py-2 text-sm text-wm-blue"
-                      />
+                        disabled={isLoadingCustomStepExcelTemplates}
+                        className={`px-3 py-2 rounded-lg text-xs font-semibold ${
+                          isLoadingCustomStepExcelTemplates
+                            ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
+                            : 'bg-wm-accent text-white hover:bg-wm-accent/90'
+                        }`}
+                      >
+                        {isLoadingCustomStepExcelTemplates ? 'Loading...' : 'Load Excel files from SharePoint'}
+                      </button>
+                      {customStepExcelTemplateOptions.length > 0 && (
+                        <ul className="mt-2 space-y-2 max-h-40 overflow-auto rounded-lg border border-wm-neutral/20 bg-white p-2">
+                          {customStepExcelTemplateOptions.map((doc) => (
+                            <li key={doc.id} className="flex items-center justify-between gap-2 rounded border border-wm-neutral/20 px-2 py-1.5">
+                              <div>
+                                <p className="text-xs font-semibold text-wm-blue">{doc.fileName}</p>
+                                <p className="text-[11px] text-wm-blue/60">{doc.path || doc.url || 'SharePoint file'}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleUseSharePointExcelTemplateForNewCustomStep(doc)}
+                                className="text-xs font-semibold text-wm-accent hover:underline"
+                              >
+                                Use
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                       {newCustomStepExcelTemplate && (
-                        <p className="mt-1 text-xs text-wm-blue/60">Attached template: {newCustomStepExcelTemplate.fileName}</p>
+                        <p className="mt-1 text-xs text-wm-blue/60">Selected template: {newCustomStepExcelTemplate.fileName}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {newCustomStepOutputType === 'PRESENTATION' && (
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-1">PowerPoint template from SharePoint</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void loadCustomStepTemplatesFromSharePoint('PRESENTATION');
+                        }}
+                        disabled={isLoadingCustomStepPresentationTemplates}
+                        className={`px-3 py-2 rounded-lg text-xs font-semibold ${
+                          isLoadingCustomStepPresentationTemplates
+                            ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
+                            : 'bg-wm-accent text-white hover:bg-wm-accent/90'
+                        }`}
+                      >
+                        {isLoadingCustomStepPresentationTemplates ? 'Loading...' : 'Load PowerPoint files from SharePoint'}
+                      </button>
+                      {customStepPresentationTemplateOptions.length > 0 && (
+                        <ul className="mt-2 space-y-2 max-h-40 overflow-auto rounded-lg border border-wm-neutral/20 bg-white p-2">
+                          {customStepPresentationTemplateOptions.map((doc) => (
+                            <li key={doc.id} className="flex items-center justify-between gap-2 rounded border border-wm-neutral/20 px-2 py-1.5">
+                              <div>
+                                <p className="text-xs font-semibold text-wm-blue">{doc.fileName}</p>
+                                <p className="text-[11px] text-wm-blue/60">{doc.path || doc.url || 'SharePoint file'}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleUseSharePointPresentationTemplateForNewCustomStep(doc)}
+                                className="text-xs font-semibold text-wm-accent hover:underline"
+                              >
+                                Use
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {newCustomStepPresentationTemplate && (
+                        <p className="mt-1 text-xs text-wm-blue/60">Selected template: {newCustomStepPresentationTemplate.fileName}</p>
                       )}
                     </div>
                   )}
@@ -2272,9 +3286,9 @@ ${domainSlides}
                     <button
                       type="button"
                       onClick={handleCreateCustomStep}
-                      disabled={isSavingCustomStep}
+                      disabled={isSavingCustomStep || (newCustomStepOutputType === 'EXCEL_DOC' && !newCustomStepExcelTemplate) || (newCustomStepOutputType === 'PRESENTATION' && !newCustomStepPresentationTemplate)}
                       className={`px-3 py-2 rounded-lg text-sm font-semibold ${
-                        isSavingCustomStep
+                        isSavingCustomStep || (newCustomStepOutputType === 'EXCEL_DOC' && !newCustomStepExcelTemplate) || (newCustomStepOutputType === 'PRESENTATION' && !newCustomStepPresentationTemplate)
                           ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
                           : 'bg-wm-accent text-white hover:bg-wm-accent/90'
                       }`}
@@ -2296,6 +3310,7 @@ ${domainSlides}
                     onClick={() => {
                       if (!step.locked || step.title === 'Company Research') {
                         setSelectedStepId(step.id);
+                        selectedStepDirtyRef.current = true;
                       }
                     }}
                     className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
@@ -2493,26 +3508,55 @@ ${domainSlides}
                         {selectedCustomStep.excelTemplate ? (
                           <div className="mt-1 flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-wm-blue/70">{selectedCustomStep.excelTemplate.fileName}</span>
-                            <a
-                              href={selectedCustomStep.excelTemplate.dataUrl}
-                              download={selectedCustomStep.excelTemplate.fileName}
-                              className="text-xs font-semibold text-wm-accent hover:underline"
-                            >
-                              Download template
-                            </a>
+                            {selectedCustomStep.excelTemplate.dataUrl && (
+                              <a
+                                href={selectedCustomStep.excelTemplate.dataUrl}
+                                download={selectedCustomStep.excelTemplate.fileName}
+                                className="text-xs font-semibold text-wm-accent hover:underline"
+                              >
+                                Download template
+                              </a>
+                            )}
                           </div>
                         ) : (
                           <p className="mt-1 text-xs text-wm-blue/60">No template attached.</p>
                         )}
-                        <input
-                          type="file"
-                          accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-                          onChange={(event) => {
-                            void handleReplaceCustomStepTemplate(event.target.files);
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void loadCustomStepTemplatesFromSharePoint('EXCEL');
                           }}
-                          className="mt-2 text-xs text-wm-blue/70"
-                        />
-                        <p className="mt-1 text-[11px] text-wm-blue/50">Upload a new template to replace the current one for this step.</p>
+                          disabled={isLoadingCustomStepExcelTemplates}
+                          className={`mt-2 px-3 py-2 rounded-lg text-xs font-semibold ${
+                            isLoadingCustomStepExcelTemplates
+                              ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
+                              : 'bg-wm-accent text-white hover:bg-wm-accent/90'
+                          }`}
+                        >
+                          {isLoadingCustomStepExcelTemplates ? 'Loading...' : 'Load Excel files from SharePoint'}
+                        </button>
+                        {customStepExcelTemplateOptions.length > 0 && (
+                          <ul className="mt-2 space-y-2 max-h-40 overflow-auto rounded-lg border border-wm-neutral/20 bg-white p-2">
+                            {customStepExcelTemplateOptions.map((doc) => (
+                              <li key={doc.id} className="flex items-center justify-between gap-2 rounded border border-wm-neutral/20 px-2 py-1.5">
+                                <div>
+                                  <p className="text-xs font-semibold text-wm-blue">{doc.fileName}</p>
+                                  <p className="text-[11px] text-wm-blue/60">{doc.path || doc.url || 'SharePoint file'}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void handleUseSharePointExcelTemplateForSelectedStep(doc);
+                                  }}
+                                  className="text-xs font-semibold text-wm-accent hover:underline"
+                                >
+                                  Use
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <p className="mt-1 text-[11px] text-wm-blue/50">Select a replacement template from the configured SharePoint folder.</p>
                       </div>
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
                         <a
@@ -2537,15 +3581,70 @@ ${domainSlides}
                     <div className="rounded-lg border border-wm-accent/20 bg-white p-3">
                       <p className="text-sm font-semibold text-wm-blue">Presentation Component</p>
                       <p className="text-xs text-wm-blue/60 mt-1">Copy a slide-ready outline for presentation tools.</p>
+                      <div className="mt-2 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-2">
+                        <p className="text-xs font-semibold text-wm-blue">PowerPoint template file</p>
+                        {selectedCustomStep.presentationTemplate ? (
+                          <div className="mt-1 flex items-center gap-2 flex-wrap">
+                            <span className="text-xs text-wm-blue/70">{selectedCustomStep.presentationTemplate.fileName}</span>
+                            {selectedCustomStep.presentationTemplate.dataUrl && (
+                              <a
+                                href={selectedCustomStep.presentationTemplate.dataUrl}
+                                download={selectedCustomStep.presentationTemplate.fileName}
+                                className="text-xs font-semibold text-wm-accent hover:underline"
+                              >
+                                Download template
+                              </a>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-xs text-wm-blue/60">No template attached.</p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void loadCustomStepTemplatesFromSharePoint('PRESENTATION');
+                          }}
+                          disabled={isLoadingCustomStepPresentationTemplates}
+                          className={`mt-2 px-3 py-2 rounded-lg text-xs font-semibold ${
+                            isLoadingCustomStepPresentationTemplates
+                              ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
+                              : 'bg-wm-accent text-white hover:bg-wm-accent/90'
+                          }`}
+                        >
+                          {isLoadingCustomStepPresentationTemplates ? 'Loading...' : 'Load PowerPoint files from SharePoint'}
+                        </button>
+                        {customStepPresentationTemplateOptions.length > 0 && (
+                          <ul className="mt-2 space-y-2 max-h-40 overflow-auto rounded-lg border border-wm-neutral/20 bg-white p-2">
+                            {customStepPresentationTemplateOptions.map((doc) => (
+                              <li key={doc.id} className="flex items-center justify-between gap-2 rounded border border-wm-neutral/20 px-2 py-1.5">
+                                <div>
+                                  <p className="text-xs font-semibold text-wm-blue">{doc.fileName}</p>
+                                  <p className="text-[11px] text-wm-blue/60">{doc.path || doc.url || 'SharePoint file'}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void handleUseSharePointPresentationTemplateForSelectedStep(doc);
+                                  }}
+                                  className="text-xs font-semibold text-wm-accent hover:underline"
+                                >
+                                  Use
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <p className="mt-1 text-[11px] text-wm-blue/50">Select a replacement template from the configured SharePoint folder.</p>
+                      </div>
                       <textarea
                         readOnly
-                        value={`# ${selectedCustomStep.title}\n\n## Objective\n${selectedCustomStep.description || 'Define the objective'}\n\n## Prompt\n${selectedCustomStep.prompt || 'No prompt provided'}\n\n## Source Documents\n${selectedCustomStepDocumentLabels.length ? selectedCustomStepDocumentLabels.map((label) => `- ${label}`).join('\n') : '- None selected'}\n\n## Source Meeting Transcripts\n${selectedCustomStepTranscriptLabels.length ? selectedCustomStepTranscriptLabels.map((label) => `- ${label}`).join('\n') : '- None selected'}\n\n## Suggested Output\nPresentation`}
+                        value={`# ${selectedCustomStep.title}\n\n## Objective\n${selectedCustomStep.description || 'Define the objective'}\n\n## Prompt\n${selectedCustomStep.prompt || 'No prompt provided'}\n\n## Template\n${selectedCustomStep.presentationTemplate?.fileName || 'No PowerPoint template selected'}\n\n## Source Documents\n${selectedCustomStepDocumentLabels.length ? selectedCustomStepDocumentLabels.map((label) => `- ${label}`).join('\n') : '- None selected'}\n\n## Source Meeting Transcripts\n${selectedCustomStepTranscriptLabels.length ? selectedCustomStepTranscriptLabels.map((label) => `- ${label}`).join('\n') : '- None selected'}\n\n## Suggested Output\nPresentation`}
                         rows={10}
                         className="mt-2 w-full rounded-lg border border-wm-neutral/30 bg-wm-neutral/5 px-3 py-2 text-xs text-wm-blue"
                       />
                       <button
                         type="button"
-                        onClick={() => handleCopyCustomOutputText(`# ${selectedCustomStep.title}\n\n## Objective\n${selectedCustomStep.description || 'Define the objective'}\n\n## Prompt\n${selectedCustomStep.prompt || 'No prompt provided'}\n\n## Source Documents\n${selectedCustomStepDocumentLabels.length ? selectedCustomStepDocumentLabels.map((label) => `- ${label}`).join('\n') : '- None selected'}\n\n## Source Meeting Transcripts\n${selectedCustomStepTranscriptLabels.length ? selectedCustomStepTranscriptLabels.map((label) => `- ${label}`).join('\n') : '- None selected'}\n\n## Suggested Output\nPresentation`)}
+                        onClick={() => handleCopyCustomOutputText(`# ${selectedCustomStep.title}\n\n## Objective\n${selectedCustomStep.description || 'Define the objective'}\n\n## Prompt\n${selectedCustomStep.prompt || 'No prompt provided'}\n\n## Template\n${selectedCustomStep.presentationTemplate?.fileName || 'No PowerPoint template selected'}\n\n## Source Documents\n${selectedCustomStepDocumentLabels.length ? selectedCustomStepDocumentLabels.map((label) => `- ${label}`).join('\n') : '- None selected'}\n\n## Source Meeting Transcripts\n${selectedCustomStepTranscriptLabels.length ? selectedCustomStepTranscriptLabels.map((label) => `- ${label}`).join('\n') : '- None selected'}\n\n## Suggested Output\nPresentation`)}
                         className="mt-2 px-3 py-2 rounded-lg bg-wm-accent text-white text-xs font-semibold hover:bg-wm-accent/90"
                       >
                         Copy presentation outline
@@ -2563,6 +3662,66 @@ ${domainSlides}
 
           {selectedStep?.title === 'Target Domains' && companyId && (
             <section className="mb-6 rounded-xl border border-wm-neutral/30 bg-white p-4 shadow-sm">
+              <div className="mb-5 border-b border-wm-neutral/20 pb-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-2">3) SharePoint presentation reference</h3>
+                <p className="text-xs text-wm-blue/60 mb-3">
+                  Use presentations from your configured SharePoint folder. The selected deck will guide kickoff presentation output style.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleLoadSharePointPresentations}
+                  disabled={isSavingKickoffTemplateReference}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold ${
+                    isSavingKickoffTemplateReference
+                      ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
+                      : 'bg-wm-accent text-white hover:bg-wm-accent/90'
+                  }`}
+                >
+                  {isSavingKickoffTemplateReference ? 'Loading...' : 'Load presentations from SharePoint'}
+                </button>
+
+                {sharePointPresentationOptions.length > 0 && (
+                  <ul className="mt-3 space-y-2">
+                    {sharePointPresentationOptions.map((doc) => (
+                      <li key={doc.id} className="rounded-lg border border-wm-neutral/20 bg-white p-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-wm-blue">{doc.fileName}</p>
+                          <p className="text-xs text-wm-blue/60">{doc.path || doc.url || 'SharePoint file'}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleUseSharePointPresentationAsTemplate(doc)}
+                          disabled={isSavingKickoffTemplateReference}
+                          className="text-xs font-semibold text-wm-accent hover:underline"
+                        >
+                          Use as reference
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {kickoffTemplateReference && (
+                  <div className="mt-3 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-wm-blue">{kickoffTemplateReference.fileName}</p>
+                      <p className="text-xs text-wm-blue/60">Selected {new Date(kickoffTemplateReference.uploadedAt).toLocaleString()}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveKickoffTemplateReference}
+                      disabled={isSavingKickoffTemplateReference}
+                      className="text-xs font-semibold text-wm-pink hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+                {kickoffTemplateStatus && (
+                  <p className="mt-2 text-xs text-wm-blue/70">{kickoffTemplateStatus}</p>
+                )}
+              </div>
+
               <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
                 <div>
                   <h2 className="text-lg font-semibold text-wm-blue">Target Domains & Kickoff Pitch Use Cases</h2>
@@ -2617,30 +3776,83 @@ ${domainSlides}
 
                       return (
                         <div key={domain} className="rounded-lg border border-wm-neutral/20 p-3">
-                          <p className="text-sm font-semibold text-wm-blue mb-2">{domain}</p>
+                          <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
+                            <p className="text-sm font-semibold text-wm-blue">{domain}</p>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCreateUseCaseModal(domain, 'kickoff')}
+                              className="px-2.5 py-1 text-xs font-semibold rounded-md border border-wm-accent/40 text-wm-accent hover:bg-wm-accent/10"
+                            >
+                              + Create use case
+                            </button>
+                          </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {domainUseCases.map((scenario) => {
                               const checked = companySelectedScenarios.includes(scenario.id);
+                              const fallbackDemoUrl = (scenario as { demoPublishedUrl?: string | null; demoProjectUrl?: string | null }).demoPublishedUrl
+                                || (scenario as { demoPublishedUrl?: string | null; demoProjectUrl?: string | null }).demoProjectUrl
+                                || null;
+                              const latestDemoUrl = (scenario.process ? latestDemoUrlByProcess[scenario.process.trim()] : null) || fallbackDemoUrl;
                               return (
-                                <label
+                                <div
                                   key={scenario.id}
-                                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                                  onClick={() => handleToggleKickoffUseCase(scenario.id)}
+                                  role="checkbox"
+                                  aria-checked={checked}
+                                  tabIndex={0}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault();
+                                      handleToggleKickoffUseCase(scenario.id);
+                                    }
+                                  }}
+                                  className={`relative rounded-lg border p-3 cursor-pointer transition-all duration-200 bg-white shadow-sm ${
                                     checked
-                                      ? 'border-wm-accent bg-wm-accent/5'
-                                      : 'border-wm-neutral/30 hover:border-wm-blue/40'
+                                      ? 'border-wm-accent ring-2 ring-wm-accent/20'
+                                      : 'border-wm-neutral/30 hover:border-wm-accent'
                                   }`}
                                 >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => handleToggleKickoffUseCase(scenario.id)}
-                                    className="mt-1"
-                                  />
-                                  <div>
-                                    <p className="text-sm font-semibold text-wm-blue">{scenario.title}</p>
-                                    <p className="text-xs text-wm-blue/60 mt-1">{scenario.process || 'General process'}</p>
+                                  <div className="absolute top-2 right-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => handleToggleKickoffUseCase(scenario.id)}
+                                      onClick={(event) => event.stopPropagation()}
+                                      className="h-4 w-4"
+                                    />
                                   </div>
-                                </label>
+
+                                  <div className="absolute top-2 left-2 z-10 flex flex-wrap gap-1.5 max-w-[80%]">
+                                    <span className={`text-[11px] leading-tight uppercase tracking-wide px-2 py-1 rounded-full font-semibold ${DOMAIN_COLORS[scenario.domain || 'General'] || DOMAIN_COLORS['General']}`}>
+                                      {scenario.domain || 'General'}
+                                    </span>
+                                    <span className="text-[10px] leading-tight tracking-wide px-2 py-1 rounded-full font-medium bg-wm-accent/10 text-wm-accent border border-wm-accent/20">
+                                      {scenario.process || 'General process'}
+                                    </span>
+                                  </div>
+
+                                  <div className="pt-12">
+                                    <p className="text-sm font-semibold text-wm-blue pr-6 leading-snug">{scenario.title}</p>
+                                    {scenario.description && (
+                                      <p className="text-xs text-wm-blue/60 mt-1 line-clamp-3">{scenario.description}</p>
+                                    )}
+                                    {latestDemoUrl && (
+                                      <div className="mt-2">
+                                        <a
+                                          href={latestDemoUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          onClick={(event) => event.stopPropagation()}
+                                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-wm-accent hover:underline"
+                                          title="Open most recent use case demo"
+                                        >
+                                          <Icons.ExternalLink className="w-3.5 h-3.5" />
+                                          Demo
+                                        </a>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
                               );
                             })}
                           </div>
@@ -2684,23 +3896,12 @@ ${domainSlides}
                     value={kickoffPresentationUrl}
                     onChange={(event) => {
                       setKickoffPresentationUrl(event.target.value);
+                      kickoffUrlDirtyRef.current = true;
                       setKickoffUrlStatus(null);
                     }}
                     placeholder="https://gamma.app/docs/..."
                     className="flex-1 rounded-lg border border-wm-neutral/30 px-3 py-2 text-sm text-wm-blue"
                   />
-                  <button
-                    type="button"
-                    onClick={handleSaveKickoffPresentationUrl}
-                    disabled={isSavingKickoffPresentationUrl}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold ${
-                      isSavingKickoffPresentationUrl
-                        ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
-                        : 'bg-wm-accent text-white hover:bg-wm-accent/90'
-                    }`}
-                  >
-                    {isSavingKickoffPresentationUrl ? 'Saving...' : 'Save URL'}
-                  </button>
                 </div>
                 {kickoffPresentationUrl.trim() && (
                   <a
@@ -2720,121 +3921,12 @@ ${domainSlides}
               <div className="mt-6 border-t border-wm-neutral/20 pt-5">
                 <h3 className="text-sm font-semibold text-wm-blue">Kickoff Meeting Notes</h3>
                 <p className="text-xs text-wm-blue/60 mt-1">
-                  Upload files or paste notes from one or more kickoff meetings.
+                  Meeting notes and transcripts are managed in the connected SharePoint folder.
                 </p>
-
-                <div className="mt-3">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-2">
-                    Upload meeting notes files
-                  </label>
-                  <div
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      setIsKickoffDropActive(true);
-                    }}
-                    onDragEnter={(event) => {
-                      event.preventDefault();
-                      setIsKickoffDropActive(true);
-                    }}
-                    onDragLeave={(event) => {
-                      event.preventDefault();
-                      setIsKickoffDropActive(false);
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      setIsKickoffDropActive(false);
-                      handleKickoffMeetingUpload(event.dataTransfer.files);
-                    }}
-                    className={`rounded-lg border-2 border-dashed p-4 transition-colors ${
-                      isKickoffDropActive
-                        ? 'border-wm-accent bg-wm-accent/5'
-                        : 'border-wm-neutral/30 bg-wm-neutral/5'
-                    }`}
-                  >
-                    <p className="text-sm font-semibold text-wm-blue">Drag and drop files here</p>
-                    <p className="text-xs text-wm-blue/60 mt-1">Supported: .txt, .md, .csv, .json, .pdf, .docx</p>
-                  </div>
-                  <input
-                    type="file"
-                    multiple
-                    accept=".txt,.md,.csv,.json,.pdf,.docx"
-                    onChange={(event) => handleKickoffMeetingUpload(event.target.files)}
-                    className="mt-3 text-sm text-wm-blue/70"
-                  />
-                </div>
-
-                <div className="mt-4">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-2">
-                    Cut and paste meeting notes
-                  </label>
-                  <textarea
-                    value={newKickoffMeetingNote}
-                    onChange={(event) => setNewKickoffMeetingNote(event.target.value)}
-                    placeholder="Paste kickoff meeting notes here..."
-                    className="w-full min-h-[120px] rounded-lg border border-wm-neutral/30 p-3 text-sm text-wm-blue"
-                  />
-                  <div className="mt-2">
-                    <button
-                      type="button"
-                      onClick={handleAddKickoffMeetingNote}
-                      className="px-3 py-2 text-xs font-semibold bg-wm-accent text-white rounded-md hover:bg-wm-accent/90"
-                    >
-                      Add notes
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-2">
-                    Added kickoff notes ({kickoffMeetingNotes.length})
-                  </h4>
-                  {kickoffMeetingNotes.length === 0 ? (
-                    <p className="text-sm text-wm-blue/60">No kickoff meeting notes added yet.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {kickoffMeetingNotes.map((note, index) => (
-                        <li key={note.id} className="rounded-lg border border-wm-neutral/20 p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-wm-blue">{note.fileName || `Kickoff Note ${index + 1}`}</p>
-                              <p className="text-xs text-wm-blue/60 mt-1">
-                                {new Date(note.uploadedAt).toLocaleString()}
-                              </p>
-                              <p className="text-xs text-wm-blue/70 mt-2 line-clamp-3">{note.content}</p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setKickoffMeetingNotes((prev) => prev.filter((item) => item.id !== note.id));
-                                setKickoffNotesStatus(null);
-                              }}
-                              className="text-xs font-semibold text-wm-pink hover:underline"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
-                <div className="mt-4 flex items-center justify-end gap-3">
-                  {kickoffNotesStatus && (
-                    <p className="text-xs text-wm-blue/70">{kickoffNotesStatus}</p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleSaveKickoffMeetingNotes}
-                    disabled={isSavingKickoffMeetingNotes}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold ${
-                      isSavingKickoffMeetingNotes
-                        ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
-                        : 'bg-wm-accent text-white hover:bg-wm-accent/90'
-                    }`}
-                  >
-                    {isSavingKickoffMeetingNotes ? 'Saving...' : 'Save kickoff notes'}
-                  </button>
+                <div className="mt-3 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-3">
+                  <p className="text-sm text-wm-blue/70">
+                    Add kickoff documents and transcripts directly to the configured SharePoint folder. This page no longer accepts manual note uploads or pasted transcripts.
+                  </p>
                 </div>
               </div>
             </section>
@@ -2967,34 +4059,87 @@ ${domainSlides}
 
                         return (
                           <div key={domain} className="rounded-lg border border-wm-neutral/20 p-3">
-                            <p className="text-sm font-semibold text-wm-blue mb-2">{domain}</p>
+                            <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
+                              <p className="text-sm font-semibold text-wm-blue">{domain}</p>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCreateUseCaseModal(domain, 'phase2')}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-md border border-wm-accent/40 text-wm-accent hover:bg-wm-accent/10"
+                              >
+                                + Create use case
+                              </button>
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {domainUseCases.map((scenario) => {
                                 const checked = phase2SelectedUseCases.includes(scenario.id);
                                 const isRecommended = recommendedScenarioIds.has(scenario.id);
+                                const fallbackDemoUrl = (scenario as { demoPublishedUrl?: string | null; demoProjectUrl?: string | null }).demoPublishedUrl
+                                  || (scenario as { demoPublishedUrl?: string | null; demoProjectUrl?: string | null }).demoProjectUrl
+                                  || null;
+                                const latestDemoUrl = (scenario.process ? latestDemoUrlByProcess[scenario.process.trim()] : null) || fallbackDemoUrl;
                                 return (
-                                  <label
+                                  <div
                                     key={scenario.id}
-                                    className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                                    onClick={() => handleTogglePhase2UseCase(scenario.id)}
+                                    role="checkbox"
+                                    aria-checked={checked}
+                                    tabIndex={0}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault();
+                                        handleTogglePhase2UseCase(scenario.id);
+                                      }
+                                    }}
+                                    className={`relative rounded-lg border p-3 cursor-pointer transition-all duration-200 bg-white shadow-sm ${
                                       checked
-                                        ? 'border-wm-accent bg-wm-accent/5'
-                                        : 'border-wm-neutral/30 hover:border-wm-blue/40'
+                                        ? 'border-wm-accent ring-2 ring-wm-accent/20'
+                                        : 'border-wm-neutral/30 hover:border-wm-accent'
                                     }`}
                                   >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => handleTogglePhase2UseCase(scenario.id)}
-                                      className="mt-1"
-                                    />
-                                    <div>
-                                      <p className="text-sm font-semibold text-wm-blue">{scenario.title}</p>
-                                      <p className="text-xs text-wm-blue/60 mt-1">{scenario.process || 'General process'}</p>
+                                    <div className="absolute top-2 right-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => handleTogglePhase2UseCase(scenario.id)}
+                                        onClick={(event) => event.stopPropagation()}
+                                        className="h-4 w-4"
+                                      />
+                                    </div>
+
+                                    <div className="absolute top-2 left-2 z-10 flex flex-wrap gap-1.5 max-w-[80%]">
+                                      <span className={`text-[11px] leading-tight uppercase tracking-wide px-2 py-1 rounded-full font-semibold ${DOMAIN_COLORS[scenario.domain || 'General'] || DOMAIN_COLORS['General']}`}>
+                                        {scenario.domain || 'General'}
+                                      </span>
+                                      <span className="text-[10px] leading-tight tracking-wide px-2 py-1 rounded-full font-medium bg-wm-accent/10 text-wm-accent border border-wm-accent/20">
+                                        {scenario.process || 'General process'}
+                                      </span>
+                                    </div>
+
+                                    <div className="pt-12">
+                                      <p className="text-sm font-semibold text-wm-blue pr-6 leading-snug">{scenario.title}</p>
+                                      {scenario.description && (
+                                        <p className="text-xs text-wm-blue/60 mt-1 line-clamp-3">{scenario.description}</p>
+                                      )}
                                       {isRecommended && (
-                                        <p className="text-[11px] font-semibold text-wm-accent mt-1">Recommended from kickoff notes</p>
+                                        <p className="text-[11px] font-semibold text-wm-accent mt-2">Recommended from kickoff notes</p>
+                                      )}
+                                      {latestDemoUrl && (
+                                        <div className="mt-2">
+                                          <a
+                                            href={latestDemoUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            onClick={(event) => event.stopPropagation()}
+                                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-wm-accent hover:underline"
+                                            title="Open most recent use case demo"
+                                          >
+                                            <Icons.ExternalLink className="w-3.5 h-3.5" />
+                                            Demo
+                                          </a>
+                                        </div>
                                       )}
                                     </div>
-                                  </label>
+                                  </div>
                                 );
                               })}
                             </div>
@@ -3018,18 +4163,7 @@ ${domainSlides}
                   {phase2TargetsStatus && (
                     <p className="text-xs text-wm-blue/70">{phase2TargetsStatus}</p>
                   )}
-                  <button
-                    type="button"
-                    onClick={handleSavePhase2Targets}
-                    disabled={isSavingPhase2Targets || phase2UseCases.length === 0}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold ${
-                      isSavingPhase2Targets || phase2UseCases.length === 0
-                        ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
-                        : 'bg-wm-accent text-white hover:bg-wm-accent/90'
-                    }`}
-                  >
-                    {isSavingPhase2Targets ? 'Saving...' : 'Save phase 2 targets'}
-                  </button>
+                  {isSavingPhase2Targets && <p className="text-xs text-wm-blue/70">Saving...</p>}
                 </div>
               </div>
             </section>
@@ -3148,97 +4282,10 @@ ${domainSlides}
                         )}
                       </div>
 
-                      <div className="mt-4">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-2">
-                          Upload meeting documents / notes
-                        </label>
-                        <div
-                          onDragOver={(event) => {
-                            event.preventDefault();
-                            setIsFunctionalDropActive(true);
-                          }}
-                          onDragEnter={(event) => {
-                            event.preventDefault();
-                            setIsFunctionalDropActive(true);
-                          }}
-                          onDragLeave={(event) => {
-                            event.preventDefault();
-                            setIsFunctionalDropActive(false);
-                          }}
-                          onDrop={(event) => {
-                            event.preventDefault();
-                            setIsFunctionalDropActive(false);
-                            handleFunctionalMeetingUpload(event.dataTransfer.files);
-                          }}
-                          className={`rounded-lg border-2 border-dashed p-4 transition-colors ${
-                            isFunctionalDropActive
-                              ? 'border-wm-accent bg-wm-accent/5'
-                              : 'border-wm-neutral/30 bg-wm-neutral/5'
-                          }`}
-                        >
-                          <p className="text-sm font-semibold text-wm-blue">Drag and drop files here</p>
-                          <p className="text-xs text-wm-blue/60 mt-1">Supported: .txt, .md, .csv, .json, .pdf, .docx</p>
-                        </div>
-                        <input
-                          type="file"
-                          multiple
-                          accept=".txt,.md,.csv,.json,.pdf,.docx"
-                          onChange={(event) => handleFunctionalMeetingUpload(event.target.files)}
-                          className="mt-3 text-sm text-wm-blue/70"
-                        />
-                      </div>
-
-                      <div className="mt-4">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-2">
-                          Cut and paste meeting notes
-                        </label>
-                        <textarea
-                          value={newFunctionalMeetingNote}
-                          onChange={(event) => setNewFunctionalMeetingNote(event.target.value)}
-                          placeholder="Paste functional high-level meeting notes here..."
-                          className="w-full min-h-[110px] rounded-lg border border-wm-neutral/30 p-3 text-sm text-wm-blue"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleAddFunctionalMeetingNote}
-                          className="mt-2 px-3 py-2 text-xs font-semibold bg-wm-accent text-white rounded-md hover:bg-wm-accent/90"
-                        >
-                          Add notes
-                        </button>
-                      </div>
-
-                      <div className="mt-4">
-                        <h4 className="text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-2">
-                          Added notes/documents ({selectedFunctionalMeeting.notes.length})
-                        </h4>
-                        {selectedFunctionalMeeting.notes.length === 0 ? (
-                          <p className="text-sm text-wm-blue/60">No notes/documents added yet.</p>
-                        ) : (
-                          <ul className="space-y-2">
-                            {selectedFunctionalMeeting.notes.map((note) => (
-                              <li key={note.id} className="rounded-lg border border-wm-neutral/20 p-3">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="text-sm font-semibold text-wm-blue">{note.fileName}</p>
-                                    <p className="text-xs text-wm-blue/60 mt-1">{new Date(note.uploadedAt).toLocaleString()}</p>
-                                    <p className="text-xs text-wm-blue/70 mt-2 line-clamp-3">{note.content}</p>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateSelectedFunctionalMeeting((meeting) => ({
-                                      ...meeting,
-                                      notes: meeting.notes.filter((item) => item.id !== note.id),
-                                      updatedAt: Date.now()
-                                    }))}
-                                    className="text-xs font-semibold text-wm-pink hover:underline"
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
+                      <div className="mt-4 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-3">
+                        <p className="text-sm text-wm-blue/70">
+                          Meeting documents and transcripts are managed in SharePoint. Add files to the configured folder to keep this journey aligned with source artifacts.
+                        </p>
                       </div>
                     </>
                   )}
@@ -3246,21 +4293,12 @@ ${domainSlides}
               </div>
 
               <div className="mt-4 flex items-center justify-end gap-3">
+                {isSavingFunctionalMeetings && (
+                  <p className="text-xs text-wm-blue/70">Saving...</p>
+                )}
                 {functionalMeetingsStatus && (
                   <p className="text-xs text-wm-blue/70">{functionalMeetingsStatus}</p>
                 )}
-                <button
-                  type="button"
-                  onClick={handleSaveFunctionalMeetings}
-                  disabled={isSavingFunctionalMeetings}
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold ${
-                    isSavingFunctionalMeetings
-                      ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
-                      : 'bg-wm-accent text-white hover:bg-wm-accent/90'
-                  }`}
-                >
-                  {isSavingFunctionalMeetings ? 'Saving...' : 'Save functional high-level meetings'}
-                </button>
               </div>
             </section>
           )}
@@ -3378,97 +4416,10 @@ ${domainSlides}
                         )}
                       </div>
 
-                      <div className="mt-4">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-2">
-                          Upload meeting documents / notes
-                        </label>
-                        <div
-                          onDragOver={(event) => {
-                            event.preventDefault();
-                            setIsDeepDiveDropActive(true);
-                          }}
-                          onDragEnter={(event) => {
-                            event.preventDefault();
-                            setIsDeepDiveDropActive(true);
-                          }}
-                          onDragLeave={(event) => {
-                            event.preventDefault();
-                            setIsDeepDiveDropActive(false);
-                          }}
-                          onDrop={(event) => {
-                            event.preventDefault();
-                            setIsDeepDiveDropActive(false);
-                            handleDeepDiveMeetingUpload(event.dataTransfer.files);
-                          }}
-                          className={`rounded-lg border-2 border-dashed p-4 transition-colors ${
-                            isDeepDiveDropActive
-                              ? 'border-wm-accent bg-wm-accent/5'
-                              : 'border-wm-neutral/30 bg-wm-neutral/5'
-                          }`}
-                        >
-                          <p className="text-sm font-semibold text-wm-blue">Drag and drop files here</p>
-                          <p className="text-xs text-wm-blue/60 mt-1">Supported: .txt, .md, .csv, .json, .pdf, .docx</p>
-                        </div>
-                        <input
-                          type="file"
-                          multiple
-                          accept=".txt,.md,.csv,.json,.pdf,.docx"
-                          onChange={(event) => handleDeepDiveMeetingUpload(event.target.files)}
-                          className="mt-3 text-sm text-wm-blue/70"
-                        />
-                      </div>
-
-                      <div className="mt-4">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-2">
-                          Cut and paste meeting notes
-                        </label>
-                        <textarea
-                          value={newDeepDiveMeetingNote}
-                          onChange={(event) => setNewDeepDiveMeetingNote(event.target.value)}
-                          placeholder="Paste functional deep dive meeting notes here..."
-                          className="w-full min-h-[110px] rounded-lg border border-wm-neutral/30 p-3 text-sm text-wm-blue"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleAddDeepDiveMeetingNote}
-                          className="mt-2 px-3 py-2 text-xs font-semibold bg-wm-accent text-white rounded-md hover:bg-wm-accent/90"
-                        >
-                          Add notes
-                        </button>
-                      </div>
-
-                      <div className="mt-4">
-                        <h4 className="text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-2">
-                          Added notes/documents ({selectedDeepDiveMeeting.notes.length})
-                        </h4>
-                        {selectedDeepDiveMeeting.notes.length === 0 ? (
-                          <p className="text-sm text-wm-blue/60">No notes/documents added yet.</p>
-                        ) : (
-                          <ul className="space-y-2">
-                            {selectedDeepDiveMeeting.notes.map((note) => (
-                              <li key={note.id} className="rounded-lg border border-wm-neutral/20 p-3">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="text-sm font-semibold text-wm-blue">{note.fileName}</p>
-                                    <p className="text-xs text-wm-blue/60 mt-1">{new Date(note.uploadedAt).toLocaleString()}</p>
-                                    <p className="text-xs text-wm-blue/70 mt-2 line-clamp-3">{note.content}</p>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateSelectedDeepDiveMeeting((meeting) => ({
-                                      ...meeting,
-                                      notes: meeting.notes.filter((item) => item.id !== note.id),
-                                      updatedAt: Date.now()
-                                    }))}
-                                    className="text-xs font-semibold text-wm-pink hover:underline"
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
+                      <div className="mt-4 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-3">
+                        <p className="text-sm text-wm-blue/70">
+                          Meeting documents and transcripts are managed in SharePoint. Add files to the configured folder to keep this journey aligned with source artifacts.
+                        </p>
                       </div>
                     </>
                   )}
@@ -3476,21 +4427,12 @@ ${domainSlides}
               </div>
 
               <div className="mt-4 flex items-center justify-end gap-3">
+                {isSavingDeepDiveMeetings && (
+                  <p className="text-xs text-wm-blue/70">Saving...</p>
+                )}
                 {deepDiveMeetingsStatus && (
                   <p className="text-xs text-wm-blue/70">{deepDiveMeetingsStatus}</p>
                 )}
-                <button
-                  type="button"
-                  onClick={handleSaveDeepDiveMeetings}
-                  disabled={isSavingDeepDiveMeetings}
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold ${
-                    isSavingDeepDiveMeetings
-                      ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
-                      : 'bg-wm-accent text-white hover:bg-wm-accent/90'
-                  }`}
-                >
-                  {isSavingDeepDiveMeetings ? 'Saving...' : 'Save functional deep dive meetings'}
-                </button>
               </div>
             </section>
           )}
@@ -3527,6 +4469,66 @@ ${domainSlides}
                           <li key={`${item.slice(0, 24)}-${index}`}>{item}</li>
                         ))}
                       </ul>
+                    )}
+                  </div>
+
+                  <div className="mt-5 border-t border-wm-neutral/20 pt-4">
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-wm-blue/60 mb-2">Select one PowerPoint template from SharePoint (optional)</h4>
+                    <p className="text-xs text-wm-blue/60 mb-3">
+                      Load files from the configured SharePoint folder, then choose one PowerPoint deck as the style reference.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleLoadDeepDiveSharePointPresentations}
+                      disabled={isLoadingDeepDiveSharePointPresentations || isSavingDeepDiveTemplateReference}
+                      className={`px-3 py-2 rounded-lg text-xs font-semibold ${
+                        isLoadingDeepDiveSharePointPresentations || isSavingDeepDiveTemplateReference
+                          ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
+                          : 'bg-wm-accent text-white hover:bg-wm-accent/90'
+                      }`}
+                    >
+                      {isLoadingDeepDiveSharePointPresentations ? 'Loading...' : 'Load PowerPoint files from SharePoint'}
+                    </button>
+
+                    {deepDiveSharePointPresentationOptions.length > 0 && (
+                      <ul className="mt-3 space-y-2">
+                        {deepDiveSharePointPresentationOptions.map((doc) => (
+                          <li key={doc.id} className="rounded-lg border border-wm-neutral/20 bg-white p-3 flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-wm-blue">{doc.fileName}</p>
+                              <p className="text-xs text-wm-blue/60">{doc.path || doc.url || 'SharePoint file'}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleUseSharePointPresentationAsDeepDiveTemplate(doc)}
+                              disabled={isSavingDeepDiveTemplateReference}
+                              className="text-xs font-semibold text-wm-accent hover:underline"
+                            >
+                              Use as reference
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {deepDiveTemplateReference && (
+                      <div className="mt-3 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-wm-blue">{deepDiveTemplateReference.fileName}</p>
+                          <p className="text-xs text-wm-blue/60">Selected {new Date(deepDiveTemplateReference.uploadedAt).toLocaleString()}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRemoveDeepDiveTemplateReference}
+                          disabled={isSavingDeepDiveTemplateReference}
+                          className="text-xs font-semibold text-wm-pink hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                    {deepDiveTemplateStatus && (
+                      <p className="mt-2 text-xs text-wm-blue/70">{deepDiveTemplateStatus}</p>
                     )}
                   </div>
 
@@ -3628,34 +4630,87 @@ ${domainSlides}
 
                         return (
                           <div key={domain} className="rounded-lg border border-wm-neutral/20 p-3">
-                            <p className="text-sm font-semibold text-wm-blue mb-2">{domain}</p>
+                            <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
+                              <p className="text-sm font-semibold text-wm-blue">{domain}</p>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCreateUseCaseModal(domain, 'deepDive')}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-md border border-wm-accent/40 text-wm-accent hover:bg-wm-accent/10"
+                              >
+                                + Create use case
+                              </button>
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {domainUseCases.map((scenario) => {
                                 const checked = deepDiveSelectedUseCases.includes(scenario.id);
                                 const isRecommended = deepDiveRecommendedScenarioIds.has(scenario.id);
+                                const fallbackDemoUrl = (scenario as { demoPublishedUrl?: string | null; demoProjectUrl?: string | null }).demoPublishedUrl
+                                  || (scenario as { demoPublishedUrl?: string | null; demoProjectUrl?: string | null }).demoProjectUrl
+                                  || null;
+                                const latestDemoUrl = (scenario.process ? latestDemoUrlByProcess[scenario.process.trim()] : null) || fallbackDemoUrl;
                                 return (
-                                  <label
+                                  <div
                                     key={scenario.id}
-                                    className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                                    onClick={() => handleToggleDeepDiveUseCase(scenario.id)}
+                                    role="checkbox"
+                                    aria-checked={checked}
+                                    tabIndex={0}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault();
+                                        handleToggleDeepDiveUseCase(scenario.id);
+                                      }
+                                    }}
+                                    className={`relative rounded-lg border p-3 cursor-pointer transition-all duration-200 bg-white shadow-sm ${
                                       checked
-                                        ? 'border-wm-accent bg-wm-accent/5'
-                                        : 'border-wm-neutral/30 hover:border-wm-blue/40'
+                                        ? 'border-wm-accent ring-2 ring-wm-accent/20'
+                                        : 'border-wm-neutral/30 hover:border-wm-accent'
                                     }`}
                                   >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => handleToggleDeepDiveUseCase(scenario.id)}
-                                      className="mt-1"
-                                    />
-                                    <div>
-                                      <p className="text-sm font-semibold text-wm-blue">{scenario.title}</p>
-                                      <p className="text-xs text-wm-blue/60 mt-1">{scenario.process || 'General process'}</p>
+                                    <div className="absolute top-2 right-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => handleToggleDeepDiveUseCase(scenario.id)}
+                                        onClick={(event) => event.stopPropagation()}
+                                        className="h-4 w-4"
+                                      />
+                                    </div>
+
+                                    <div className="absolute top-2 left-2 z-10 flex flex-wrap gap-1.5 max-w-[80%]">
+                                      <span className={`text-[11px] leading-tight uppercase tracking-wide px-2 py-1 rounded-full font-semibold ${DOMAIN_COLORS[scenario.domain || 'General'] || DOMAIN_COLORS['General']}`}>
+                                        {scenario.domain || 'General'}
+                                      </span>
+                                      <span className="text-[10px] leading-tight tracking-wide px-2 py-1 rounded-full font-medium bg-wm-accent/10 text-wm-accent border border-wm-accent/20">
+                                        {scenario.process || 'General process'}
+                                      </span>
+                                    </div>
+
+                                    <div className="pt-12">
+                                      <p className="text-sm font-semibold text-wm-blue pr-6 leading-snug">{scenario.title}</p>
+                                      {scenario.description && (
+                                        <p className="text-xs text-wm-blue/60 mt-1 line-clamp-3">{scenario.description}</p>
+                                      )}
                                       {isRecommended && (
-                                        <p className="text-[11px] font-semibold text-wm-accent mt-1">Recommended from functional high-level findings</p>
+                                        <p className="text-[11px] font-semibold text-wm-accent mt-2">Recommended from functional high-level findings</p>
+                                      )}
+                                      {latestDemoUrl && (
+                                        <div className="mt-2">
+                                          <a
+                                            href={latestDemoUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            onClick={(event) => event.stopPropagation()}
+                                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-wm-accent hover:underline"
+                                            title="Open most recent use case demo"
+                                          >
+                                            <Icons.ExternalLink className="w-3.5 h-3.5" />
+                                            Demo
+                                          </a>
+                                        </div>
                                       )}
                                     </div>
-                                  </label>
+                                  </div>
                                 );
                               })}
                             </div>
@@ -3679,18 +4734,7 @@ ${domainSlides}
                   {deepDiveTargetsStatus && (
                     <p className="text-xs text-wm-blue/70">{deepDiveTargetsStatus}</p>
                   )}
-                  <button
-                    type="button"
-                    onClick={handleSaveDeepDiveTargets}
-                    disabled={isSavingDeepDiveTargets || deepDiveUseCases.length === 0}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold ${
-                      isSavingDeepDiveTargets || deepDiveUseCases.length === 0
-                        ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
-                        : 'bg-wm-accent text-white hover:bg-wm-accent/90'
-                    }`}
-                  >
-                    {isSavingDeepDiveTargets ? 'Saving...' : 'Save deep dive targets'}
-                  </button>
+                  {isSavingDeepDiveTargets && <p className="text-xs text-wm-blue/70">Saving...</p>}
                 </div>
               </div>
             </section>
@@ -3726,55 +4770,24 @@ ${domainSlides}
           )}
 
           {hasResearch && selectedStep?.title === 'Company Research' && (
-            <section className="mb-6 rounded-xl border border-wm-neutral/30 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-wm-blue/60">Upload documents</h2>
-              <div className="mt-3 flex flex-col gap-3">
-                <input
-                  type="file"
-                  multiple
-                  accept=".txt,.md,.csv,.json"
-                  onChange={(event) => handleDocumentUpload(event.target.files)}
-                  className="text-sm text-wm-blue/70"
-                />
-                {draftDocuments.length > 0 && (
-                  <ul className="text-sm text-wm-blue/70 list-disc list-inside space-y-1">
-                    {draftDocuments.map((doc) => (
-                      <li key={doc.id}>{doc.fileName}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </section>
+            <div className="mb-6">
+              <CollaborationConfiguration
+                config={collaborationConfig}
+                isLoading={isSavingCollaborationConfig}
+                onSave={handleSaveCollaborationConfig}
+              />
+              {collaborationConfigStatus && (
+                <p className="mt-2 text-xs text-wm-blue/70">{collaborationConfigStatus}</p>
+              )}
+            </div>
           )}
 
-          {hasResearch && selectedStep?.title === 'Company Research' && (
-            <section className="mb-6 rounded-xl border border-wm-neutral/30 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-wm-blue/60">Meeting transcripts</h2>
-              <div className="mt-3">
-                <textarea
-                  value={newTranscript}
-                  onChange={(event) => setNewTranscript(event.target.value)}
-                  placeholder="Paste meeting transcript or notes..."
-                  className="w-full min-h-[120px] rounded-lg border border-wm-neutral/30 p-3 text-sm text-wm-blue"
-                />
-                <div className="mt-2 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleAddTranscript}
-                    className="px-3 py-2 text-xs font-semibold bg-wm-accent text-white rounded-md hover:bg-wm-accent/90"
-                  >
-                    Add transcript
-                  </button>
-                </div>
-                {draftTranscripts.length > 0 && (
-                  <ul className="mt-3 text-sm text-wm-blue/70 list-disc list-inside space-y-1">
-                    {draftTranscripts.map((item, index) => (
-                      <li key={`${item.slice(0, 12)}-${index}`}>Transcript {index + 1}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </section>
+          {isCreateUseCaseModalOpen && (
+            <CreateScenarioForm
+              initialDomain={createUseCaseDomain}
+              onSave={handleCreateUseCase}
+              onClose={() => setIsCreateUseCaseModalOpen(false)}
+            />
           )}
 
           {showKickoffPromptModal && (

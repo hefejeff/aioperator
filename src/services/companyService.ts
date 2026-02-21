@@ -1,15 +1,21 @@
 import { ref, get, push, set, update, remove, query, orderByChild, equalTo } from 'firebase/database';
 import { db } from './firebaseInit';
-import type { Company, CompanyResearch, Meeting, DocumentAnalysis, RfpAnalysis, UploadedDocument, FunctionalHighLevelMeeting, CustomJourneyStep } from '../types';
+import type { Company, CompanyResearch, Meeting, DocumentAnalysis, RfpAnalysis, UploadedDocument, FunctionalHighLevelMeeting, CustomJourneyStep, JourneyCollaborationConfig, JourneyStepSettings } from '../types';
 
 export const updateCompanyJourneyStatus = async (
   companyId: string,
   userId: string,
   journeyUpdate: {
     companyResearchComplete?: boolean;
+    collaborationConfigComplete?: boolean;
+    collaborationConfig?: JourneyCollaborationConfig;
     documentsUploaded?: boolean;
     transcriptsUploaded?: boolean;
     kickoffPresentationUrl?: string;
+    kickoffSelectedDomains?: string[];
+    kickoffSelectedUseCases?: string[];
+    kickoffTemplateReference?: UploadedDocument | null;
+    deepDiveTemplateReference?: UploadedDocument | null;
     kickoffMeetingNotes?: UploadedDocument[];
     phase2SelectedDomains?: string[];
     phase2SelectedUseCases?: string[];
@@ -18,6 +24,8 @@ export const updateCompanyJourneyStatus = async (
     deepDiveSelectedDomains?: string[];
     deepDiveSelectedUseCases?: string[];
     customSteps?: CustomJourneyStep[];
+    journeyStepSettings?: Partial<JourneyStepSettings>;
+    currentStepId?: string;
   },
   journeyId?: string
 ): Promise<void> => {

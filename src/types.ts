@@ -85,7 +85,13 @@ export interface CustomJourneyStep {
   selectedDocumentIds?: string[];
   selectedTranscriptIds?: string[];
   outputType?: 'CHAT_INTERFACE' | 'EXCEL_DOC' | 'PRESENTATION';
+  excelTableTemplate?: 'FIELD_VALUE' | 'KPI_TRACKER' | 'ACTION_REGISTER';
   excelTemplate?: {
+    fileName: string;
+    dataUrl: string;
+    uploadedAt: number;
+  };
+  presentationTemplate?: {
     fileName: string;
     dataUrl: string;
     uploadedAt: number;
@@ -124,9 +130,15 @@ export interface Company {
   journeys?: Record<string, CompanyJourney>;
   journey?: {
     companyResearchComplete?: boolean;
+    collaborationConfigComplete?: boolean;
+    collaborationConfig?: JourneyCollaborationConfig;
     documentsUploaded?: boolean;
     transcriptsUploaded?: boolean;
     kickoffPresentationUrl?: string;
+    kickoffSelectedDomains?: string[];
+    kickoffSelectedUseCases?: string[];
+    kickoffTemplateReference?: UploadedDocument | null;
+    deepDiveTemplateReference?: UploadedDocument | null;
     kickoffMeetingNotes?: UploadedDocument[];
     phase2SelectedDomains?: string[];
     phase2SelectedUseCases?: string[];
@@ -135,10 +147,34 @@ export interface Company {
     deepDiveSelectedDomains?: string[];
     deepDiveSelectedUseCases?: string[];
     customSteps?: CustomJourneyStep[];
+    journeyStepSettings?: Partial<JourneyStepSettings>;
+    currentStepId?: string;
     updatedAt?: number;
   };
   meetings?: Meeting[]; // Array of meetings for this company
   research: CompanyResearch;
+}
+
+export interface TeamsChannelConfig {
+  channelId: string;
+  channelName: string;
+  teamId: string;
+  teamName: string;
+  connectedAt: number;
+}
+
+export interface SharePointFolderConfig {
+  folderId: string;
+  folderPath: string;
+  siteName: string;
+  connectedAt: number;
+}
+
+export interface JourneyCollaborationConfig {
+  teamsChannel?: TeamsChannelConfig;
+  sharePointFolder?: SharePointFolderConfig;
+  configuredAt?: number;
+  configuredBy?: string;
 }
 
 export interface CompanyJourney {
@@ -146,9 +182,15 @@ export interface CompanyJourney {
   createdAt: number;
   updatedAt: number;
   companyResearchComplete?: boolean;
+  collaborationConfigComplete?: boolean;
+  collaborationConfig?: JourneyCollaborationConfig;
   documentsUploaded?: boolean;
   transcriptsUploaded?: boolean;
   kickoffPresentationUrl?: string;
+  kickoffSelectedDomains?: string[];
+  kickoffSelectedUseCases?: string[];
+  kickoffTemplateReference?: UploadedDocument | null;
+  deepDiveTemplateReference?: UploadedDocument | null;
   kickoffMeetingNotes?: UploadedDocument[];
   phase2SelectedDomains?: string[];
   phase2SelectedUseCases?: string[];
@@ -157,6 +199,8 @@ export interface CompanyJourney {
   deepDiveSelectedDomains?: string[];
   deepDiveSelectedUseCases?: string[];
   customSteps?: CustomJourneyStep[];
+  journeyStepSettings?: Partial<JourneyStepSettings>;
+  currentStepId?: string;
 }
 
 export interface FunctionalHighLevelMeeting {

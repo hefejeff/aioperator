@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../i18n';
-import type { CompanyResearch, Scenario, StoredEvaluationResult, Meeting } from '../types';
+import type { CompanyResearch, Scenario, StoredEvaluationResult, Meeting, JourneyCollaborationConfig } from '../types';
 import MeetingsList from './MeetingsList';
-import { saveMeeting, getMeetings, updateMeeting, deleteMeeting, updateCompanySelectedDomains, updateCompanySelectedScenarios, updateCompanyPhaseWorkflows, saveDocuments, getDocuments, deleteDocument } from '../services/companyService';
+import { saveMeeting, getMeetings, updateMeeting, deleteMeeting, updateCompanySelectedDomains, updateCompanySelectedScenarios, updateCompanyPhaseWorkflows, saveDocuments, getDocuments, deleteDocument, updateCompanyJourneyStatus } from '../services/companyService';
 import { analyzeDocumentCategory, analyzeRfpDocument } from '../services/geminiService';
 import { extractTextFromPDF } from '../services/pdfExtractor';
 import { db } from '../services/firebaseInit';
 import { ref, set, query, orderByChild, equalTo, onValue, remove } from 'firebase/database';
+import { CollaborationConfiguration } from './CollaborationConfiguration';
 
 interface CompanyResearchContentProps {
   companyInfo: CompanyResearch;
@@ -30,9 +31,9 @@ interface CompanyResearchContentProps {
   onSelectedDomainsChange?: (domains: string[]) => void;
   selectedScenarios?: string[];
   onSelectedScenariosChange?: (scenarios: string[]) => void;
-  onActiveTabChange?: (tab: 'info' | 'domains' | 'documents' | 'meetings') => void;
+  onActiveTabChange?: (tab: 'info' | 'domains' | 'documents' | 'meetings' | 'collaboration') => void;
   onCreateScenario?: (context?: { companyId?: string; companyName?: string; domain?: string }) => void;
-  initialActiveTab?: 'info' | 'domains' | 'documents' | 'meetings';
+  initialActiveTab?: 'info' | 'domains' | 'documents' | 'meetings' | 'collaboration';
   showTabs?: boolean;
 }
 
@@ -244,7 +245,7 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
       document.body.removeChild(textarea);
     }
   };
-  const [activeTab, setActiveTab] = useState<'info' | 'domains' | 'documents' | 'meetings'>(initialActiveTab || 'info');
+  const [activeTab, setActiveTab] = useState<'info' | 'domains' | 'documents' | 'meetings' | 'collaboration'>(initialActiveTab || 'info');
   const [selectedDomains, setSelectedDomains] = useState<Set<string>>(new Set(initialSelectedDomains));
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [isLoadingMeetings, setIsLoadingMeetings] = useState(false);
@@ -273,6 +274,9 @@ const CompanyResearchContent: React.FC<CompanyResearchContentProps> = ({
   const [currentGenerationId, setCurrentGenerationId] = useState<string | null>(null);
   const [urlModalPublicUrl, setUrlModalPublicUrl] = useState('');
   const [urlModalDevUrl, setUrlModalDevUrl] = useState('');
+  const [collaborationConfig, setCollaborationConfig] = useState<JourneyCollaborationConfig | undefined>(undefined);
+  const [isSavingCollaborationConfig, setIsSavingCollaborationConfig] = useState(false);
+  const [collaborationConfigStatus, setCollaborationConfigStatus] = useState<string | null>(null);
   
   // Initialize phase workflows from company data when available
   useEffect(() => {
@@ -1070,7 +1074,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
     });
   };
 
-  const handleTabChange = (tab: 'info' | 'domains' | 'documents' | 'meetings') => {
+  const handleTabChange = (tab: 'info' | 'domains' | 'documents' | 'meetings' | 'collaboration') => {
     setActiveTab(tab);
     onActiveTabChange?.(tab);
   };
@@ -1080,6 +1084,39 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
       setActiveTab(initialActiveTab);
     }
   }, [initialActiveTab]);
+
+  useEffect(() => {
+    const company = companyInfo as any;
+    const currentJourney = company?.currentJourneyId ? company?.journeys?.[company.currentJourneyId] : undefined;
+    const existingConfig = currentJourney?.collaborationConfig || company?.journey?.collaborationConfig;
+    setCollaborationConfig(existingConfig);
+  }, [companyInfo]);
+
+  const handleSaveCollaborationConfig = async (config: JourneyCollaborationConfig) => {
+    if (!companyId || !userId || isSavingCollaborationConfig) return;
+
+    setIsSavingCollaborationConfig(true);
+    setCollaborationConfigStatus(null);
+
+    try {
+      await updateCompanyJourneyStatus(
+        companyId,
+        userId,
+        {
+          collaborationConfig: config,
+          collaborationConfigComplete: true,
+        }
+      );
+
+      setCollaborationConfig(config);
+      setCollaborationConfigStatus('Collaboration configuration saved.');
+    } catch (error) {
+      console.error('Failed to save collaboration configuration:', error);
+      setCollaborationConfigStatus('Failed to save collaboration configuration. Please try again.');
+    } finally {
+      setIsSavingCollaborationConfig(false);
+    }
+  };
 
   return (
     <>
@@ -1126,6 +1163,16 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
               }`}
             >
               Meetings
+            </button>
+            <button
+              onClick={() => handleTabChange('collaboration')}
+              className={`flex-1 px-6 py-4 font-bold transition-all ${
+                activeTab === 'collaboration'
+                  ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
+                  : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
+              }`}
+            >
+              Collaboration
             </button>
           </div>
         )}
@@ -1208,6 +1255,18 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
               </ul>
             </div>
           </div>
+        </div>
+
+        <div className="border-t border-wm-neutral pt-6">
+          <h3 className="text-wm-blue font-bold mb-4">Collaboration Sources</h3>
+          <CollaborationConfiguration
+            config={collaborationConfig}
+            isLoading={isSavingCollaborationConfig}
+            onSave={handleSaveCollaborationConfig}
+          />
+          {collaborationConfigStatus && (
+            <p className="mt-2 text-xs text-wm-blue/70">{collaborationConfigStatus}</p>
+          )}
         </div>
           </div>
         )}
@@ -1897,6 +1956,24 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
               onDeleteMeeting={handleDeleteMeeting}
               isLoading={isLoadingMeetings}
             />
+          </div>
+        )}
+
+        {/* Collaboration Tab */}
+        {activeTab === 'collaboration' && (
+          <div className="space-y-4">
+            <h3 className="text-wm-blue font-bold">Teams & SharePoint Configuration</h3>
+            <p className="text-sm text-wm-blue/70">
+              Connect a Teams channel and/or SharePoint folder so documents and meeting transcripts can be reused across all journey steps.
+            </p>
+            <CollaborationConfiguration
+              config={collaborationConfig}
+              isLoading={isSavingCollaborationConfig}
+              onSave={handleSaveCollaborationConfig}
+            />
+            {collaborationConfigStatus && (
+              <p className="text-xs text-wm-blue/70">{collaborationConfigStatus}</p>
+            )}
           </div>
         )}
       </div>
