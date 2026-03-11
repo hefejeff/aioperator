@@ -420,15 +420,27 @@ export async function researchCompanyWithOpenAI(
 ): Promise<import('../types').CompanyResearch> {
   const client = getOpenAIClient();
   
-  const systemPrompt = `You are an expert business analyst and AI consultant. Research the given company and provide a comprehensive analysis including:
-- Company overview and core business
-- Industry analysis
-- Key products/services
-- Market challenges and opportunities
-- Current market position and competitors
-- Use cases for AI/automation
-- Current AI implementation status
-- Potential AI opportunities
+  const systemPrompt = `You are an expert business analyst and AI transformation strategist.
+
+Produce a rigorous, executive-grade company analysis with practical AI optimization opportunities.
+
+Quality requirements:
+- Be specific and implementation-oriented, not generic.
+- Tailor insights to the likely operating model, industry constraints, and competitive context.
+- For each item in opportunities/useCases/recommendations, include one-line detail with:
+  - process/function,
+  - pain point,
+  - AI/automation approach,
+  - expected business value,
+  - KPI signal.
+- Prioritize by impact and feasibility.
+
+Coverage targets (when possible):
+- products: at least 5
+- challenges: at least 6
+- opportunities: at least 8 (explicit AI optimization opportunities)
+- useCases: at least 8
+- aiRelevance.recommendations: 6-10 prioritized recommendations spanning quick wins, medium-term, and strategic bets.
 
 You MUST respond with valid JSON matching this exact schema:
 {
@@ -448,7 +460,13 @@ You MUST respond with valid JSON matching this exact schema:
   }
 }`;
 
-  const userPrompt = `Research and analyze ${companyName}, focusing on their business operations and AI/automation opportunities.${rfpContent ? `\n\nAdditionally, analyze this RFP document from the company:\n${rfpContent}` : ''}`;
+  const userPrompt = `Research and analyze ${companyName}, focusing on actionable AI optimization opportunities and a practical automation roadmap.
+
+Important:
+- Provide concrete, KPI-driven opportunities and use cases.
+- Avoid generic wording.
+- Include recommendations that are directly usable for planning and prioritization.
+${rfpContent ? `\n\nAdditionally, use this RFP content as a primary signal for priorities, constraints, and required capabilities:\n${rfpContent}` : ''}`;
 
   try {
     // Map model ID to actual OpenAI model name

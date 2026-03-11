@@ -33,6 +33,54 @@ export const LoadingSpinner: React.FC = () => (
     </div>
 );
 
+type AutoResizeTextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  minRows?: number;
+};
+
+const AutoResizeTextarea = React.forwardRef<HTMLTextAreaElement, AutoResizeTextareaProps>(
+  ({ minRows = 1, onChange, style, value, ...props }, forwardedRef) => {
+    const localRef = useRef<HTMLTextAreaElement | null>(null);
+
+    const setRefs = (node: HTMLTextAreaElement | null) => {
+      localRef.current = node;
+      if (typeof forwardedRef === 'function') {
+        forwardedRef(node);
+      } else if (forwardedRef) {
+        (forwardedRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = node;
+      }
+    };
+
+    const resize = useCallback(() => {
+      const el = localRef.current;
+      if (!el) return;
+      el.style.height = 'auto';
+      const lineHeight = Number.parseFloat(window.getComputedStyle(el).lineHeight || '20') || 20;
+      const minHeight = lineHeight * minRows;
+      el.style.height = `${Math.max(el.scrollHeight, minHeight)}px`;
+    }, [minRows]);
+
+    useEffect(() => {
+      resize();
+    }, [value, resize]);
+
+    return (
+      <textarea
+        {...props}
+        ref={setRefs}
+        rows={minRows}
+        value={value}
+        style={{ ...style, overflow: 'hidden', resize: 'none' }}
+        onChange={(event) => {
+          onChange?.(event);
+          resize();
+        }}
+      />
+    );
+  }
+);
+
+AutoResizeTextarea.displayName = 'AutoResizeTextarea';
+
 const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEvaluationCompleted: _onEvaluationCompleted, onViewWorkflow, companyName, companyId, onNavigateToDashboard, onNavigateToResearch }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -76,18 +124,76 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEva
   const [editableGoal, setEditableGoal] = useState(localizedGoal);
   const [valueDrivers, setValueDrivers] = useState(scenario?.valueDrivers || '');
   const [painPoints, setPainPoints] = useState(scenario?.painPoints || '');
+
+  const normalizeMarkdownToReadableText = useCallback((content: string): string => {
+    if (!content) return '';
+    return content
+      .replace(/^#{1,6}\s*/gm, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/^-\s+/gm, '• ')
+      .replace(/^\s*\n{3,}/gm, '\n\n')
+      .trim();
+  }, []);
+
+  const autoFormatReadableText = useCallback((content: string): string => {
+    if (!content) return '';
+    let formatted = normalizeMarkdownToReadableText(content)
+      .replace(/\r\n/g, '\n')
+      .replace(/\s+(\d+\.)\s+/g, '\n$1 ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    if (/\n\d+\.\s/.test(`\n${formatted}`)) {
+      formatted = formatted
+        .replace(/^\d+\.\s+/gm, '• ')
+        .replace(/^\n+/, '')
+        .replace(/\n{3,}/g, '\n\n');
+    } else if (!formatted.includes('\n') && formatted.length > 220) {
+      formatted = formatted
+        .replace(/\.\s+(?=[A-Z])/g, '.\n')
+        .replace(/;\s+/g, ';\n');
+    }
+
+    return formatted;
+  }, [normalizeMarkdownToReadableText]);
   
   // Update editable fields when scenario changes
   useEffect(() => {
     setEditableTitle(localizedTitle);
-    setEditableDescription(localizedDescription);
-    setEditableGoal(localizedGoal);
-    setValueDrivers(scenario?.valueDrivers || '');
-    setPainPoints(scenario?.painPoints || '');
-  }, [localizedTitle, localizedDescription, localizedGoal, scenario?.valueDrivers, scenario?.painPoints]);
+    setEditableDescription(autoFormatReadableText(localizedDescription));
+    setEditableGoal(autoFormatReadableText(localizedGoal));
+    setValueDrivers(autoFormatReadableText(scenario?.valueDrivers || ''));
+    setPainPoints(autoFormatReadableText(scenario?.painPoints || ''));
+  }, [localizedTitle, localizedDescription, localizedGoal, scenario?.valueDrivers, scenario?.painPoints, autoFormatReadableText]);
   
   // Feature flag for pro users (placeholder: always true)
   const isProOrAbove = true;
+
+  const appendBulletedTemplate = useCallback(
+    (
+      currentValue: string,
+      setValue: React.Dispatch<React.SetStateAction<string>>,
+      template: string
+    ) => {
+      setValue((prev) => {
+        const base = (typeof prev === 'string' ? prev : currentValue).trim();
+        if (!base) return template;
+        return `${base}\n\n${template}`;
+      });
+    },
+    []
+  );
+
+  const workflowTemplate = [
+    '1. Stage 1 (AI):',
+    '2. Stage 2 (Human):',
+    '3. Stage 3 (AI):',
+    '• Inputs:',
+    '• Outputs:',
+    '• Decision points:'
+  ].join('\n');
 
   // File/image handlers (placeholders)
   const handleCurrentImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -173,7 +279,7 @@ const OperatorConsole: React.FC<OperatorConsoleProps> = ({ scenario, user, onEva
     try {
       const ep = await generateElevatorPitch(localizedGoal, workflowExplanation, prdPlatforms);
       const md = elevatorPitchToMarkdown(ep);
-      setPitchMarkdown(md);
+      setPitchMarkdown(normalizeMarkdownToReadableText(md));
       setIsPitchOpen(true);
     } catch (e) {
       console.error('Elevator pitch generation failed:', e);
@@ -247,12 +353,12 @@ ${workflowExplanation}
     }
 
     prompt += `## Requirements for the Demo
-1. Create a functional prototype that demonstrates the key steps of this workflow
+1. Create a functional prototype that demonstrates the key stages of this workflow
 2. Show how AI is integrated at each stage where specified
 3. Include realistic sample data and interactions
 4. Demonstrate the before/after improvement clearly
 5. Make it interactive where possible
-6. Include brief annotations explaining what's happening at each step
+6. Include brief annotations explaining what's happening at each stage
 
 ## Technical Considerations
 - Use appropriate APIs and integrations for the workflow described
@@ -298,7 +404,7 @@ Please provide:
 
 Make this demo impressive, clearly branded for West Monroe, and demonstrate the value proposition of the AI-enhanced workflow in a clear and human way.`;
     
-    setDemoPrompt(prompt);
+    setDemoPrompt(normalizeMarkdownToReadableText(prompt));
     setIsDemoPromptOpen(true);
   };
 
@@ -611,7 +717,7 @@ Make this demo impressive, clearly branded for West Monroe, and demonstrate the 
       setMermaidError(`Failed to render diagram. ${e?.message ? 'Error: ' + e.message : ''} You can still copy the Mermaid code.`);
       // Try to auto-fix using the LLM by asking it to correct syntax
       try {
-        const fixPrompt = `Fix the following Mermaid flowchart so it parses correctly.\nRules:\n- Return Mermaid code only (no backticks).\n- Start with: flowchart TD\n- Define classes if missing:\n  classDef human fill:#fde68a,stroke:#b45309,color:#111827,stroke-width:1px;\n  classDef ai fill:#bfdbfe,stroke:#1d4ed8,color:#111827,stroke-width:1px;\n- Use simple node IDs like A1, B1, C1...\n- Put labels in square brackets, e.g., A1[My Step (AI)].\n- Keep edges like A1 --> B1.\n- Where a label contains (Human), add: class A1 human. Where (AI), add: class A1 ai.\n- Preserve the intent of the diagram.\n\nBroken code:\n${code}`;
+        const fixPrompt = `Fix the following Mermaid flowchart so it parses correctly.\nRules:\n- Return Mermaid code only (no backticks).\n- Start with: flowchart TD\n- Define classes if missing:\n  classDef human fill:#fde68a,stroke:#b45309,color:#111827,stroke-width:1px;\n  classDef ai fill:#bfdbfe,stroke:#1d4ed8,color:#111827,stroke-width:1px;\n- Use simple node IDs like A1, B1, C1...\n- Put labels in square brackets, e.g., A1[My Stage (AI)].\n- Keep edges like A1 --> B1.\n- Where a label contains (Human), add: class A1 human. Where (AI), add: class A1 ai.\n- Preserve the intent of the diagram.\n\nBroken code:\n${code}`;
         const fixedRaw = await generateText(fixPrompt, null, { temperature: 0.1 });
         const fixed = sanitizeMermaid(fixedRaw);
         setMermaidCode(fixed);
@@ -623,7 +729,7 @@ Make this demo impressive, clearly branded for West Monroe, and demonstrate the 
         setMermaidError(null);
       } catch (fixErr) {
         console.error('Auto-fix of Mermaid failed:', fixErr);
-        // Deterministic fallback from step text
+        // Deterministic fallback from stage text
         try {
           const fallback = buildBasicMermaidFromSteps(workflowExplanation);
           setMermaidCode(fallback);
@@ -770,12 +876,12 @@ Make this demo impressive, clearly branded for West Monroe, and demonstrate the 
       .split(/\n+/)
       .map(l => l.trim())
       .filter(l => l.length > 0);
-    const stepLines = lines.filter(l => /^(Step\s*\d+\s*:|\d+\.|\d+\))/i.test(l));
+    const stepLines = lines.filter(l => /^(Step\s*\d+\s*:|Stage\s*\d+\s*:|\d+\.|\d+\))/i.test(l));
     const useLines = stepLines.length > 0 ? stepLines : lines;
     const nodes: string[] = [];
     const ids: string[] = [];
     const idFor = (i: number) => `S${i+1}`;
-    const cleanLabel = (s: string) => s.replace(/^Step\s*\d+\s*:\s*/i,'').replace(/^\d+[\.)]\s*/,'').trim();
+    const cleanLabel = (s: string) => s.replace(/^(Step|Stage)\s*\d+\s*:\s*/i,'').replace(/^\d+[\.)]\s*/,'').trim();
     const esc = (s: string) => s.replace(/"/g, '\\"');
     const classLines: string[] = [];
     useLines.forEach((l, i) => {
@@ -802,7 +908,7 @@ Make this demo impressive, clearly branded for West Monroe, and demonstrate the 
   const handleAiDiagramAssist = useCallback(async () => {
     if (diagramAssistLoading) return;
     if (!workflowExplanation.trim()) {
-      alert('Please write your Step 1 explanation first.');
+      alert('Please write your Stage 1 explanation first.');
       return;
     }
     setDiagramAssistLoading(true);
@@ -814,9 +920,9 @@ Rules:
    classDef human fill:#fde68a,stroke:#b45309,color:#111827,stroke-width:2px
    classDef ai fill:#bfdbfe,stroke:#1d4ed8,color:#111827,stroke-width:2px
 
-2. For each step:
+2. For each stage:
    - Use simple IDs: A1, B1, C1...
-   - Format nodes: A1["Step text (AI)"] or B1["Step text (Human)"]
+  - Format nodes: A1["Stage text (AI)"] or B1["Stage text (Human)"]
    - Keep text under 120 chars
    - After each node with (Human): class A1 human
    - After each node with (AI): class A1 ai
@@ -838,7 +944,7 @@ Rules:
    class B1 human
    A1 --> B1
 
-Steps to convert:
+Stages to convert:
 ${workflowExplanation}`;
       const codeRaw = await generateText(prompt, null, { temperature: 0.3 });
       const code = sanitizeMermaid(codeRaw);
@@ -881,12 +987,12 @@ ${workflowExplanation}`;
 Goal: "${localizedGoal}"
 
 Guidelines:
-- Use numbered steps (Step 1:, Step 2:, ...).
-- Mark each step as (AI) or (Human) explicitly.
-- Keep it direct and practical (6-10 steps max).
+- Use numbered stages (Stage 1:, Stage 2:, ...).
+- Mark each stage as (AI) or (Human) explicitly.
+- Keep it direct and practical (6-10 stages max).
 - If helpful, include brief reasoning in parentheses.
 
-Return only the steps.`;
+Return only the stages.`;
       const imagePart = proposedImage ? { base64: proposedImage.base64, mimeType: proposedImage.mimeType } : null;
       const suggestion = await generateText(prompt, imagePart, { temperature: 0.5 });
       if (!suggestion) {
@@ -1256,7 +1362,7 @@ Return only the steps.`;
                 </svg>
               </div>
               <div>
-                <p className="text-xs font-bold text-wm-accent/70 uppercase tracking-wide">Running scenario for</p>
+                <p className="text-sm font-bold text-wm-accent/70 uppercase tracking-wide">Running scenario for</p>
                 <p className="text-lg font-bold text-wm-accent">{companyName}</p>
               </div>
             </div>
@@ -1264,7 +1370,7 @@ Return only the steps.`;
 
           <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 mb-6 shadow-sm">
             <div className="mb-4">
-              <label className="block text-xs font-bold text-wm-blue/70 mb-1">Title</label>
+              <label className="block text-sm font-bold text-wm-blue/70 mb-1">Title</label>
               <input
                 type="text"
                 value={editableTitle}
@@ -1278,19 +1384,29 @@ Return only the steps.`;
                 <h2 className="font-bold text-wm-accent">{lang === 'es' ? 'Proceso Actual:' : 'Current Process:'}</h2>
                 <button
                   onClick={() => setIsCurrentWorkflowModalOpen(true)}
-                  className="px-3 py-1 text-xs font-bold rounded-md bg-wm-accent text-white hover:bg-wm-accent/90 transition-colors flex items-center gap-1"
+                  className="px-3 py-1 text-sm font-bold rounded-md bg-wm-accent text-white hover:bg-wm-accent/90 transition-colors flex items-center gap-1"
                 >
                   <Icons.Upload />
                   Current Workflow
                 </button>
               </div>
-              <textarea
+              <AutoResizeTextarea
                 value={editableDescription}
                 onChange={(e) => setEditableDescription(e.target.value)}
-                rows={5}
-                className="w-full text-wm-blue/70 bg-white border border-wm-neutral/30 rounded-lg p-3 hover:border-wm-neutral/50 focus:border-wm-accent focus:outline-none transition-colors resize-y"
+                minRows={5}
+                className="w-full text-base leading-7 text-wm-blue bg-white border border-wm-neutral/30 rounded-lg p-3.5 hover:border-wm-neutral/50 focus:border-wm-accent focus:outline-none transition-colors placeholder:text-wm-blue/40"
                 placeholder="Describe the current process"
               />
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-xs text-wm-blue/50">Tip: use bullets for cleaner, scannable process notes.</p>
+                <button
+                  type="button"
+                  onClick={() => setEditableDescription((prev) => autoFormatReadableText(prev))}
+                  className="text-xs font-semibold text-wm-blue/70 hover:underline"
+                >
+                  Auto-format
+                </button>
+              </div>
               {currentImage && (
                 <div className="mt-3 relative">
                   <img src={currentImage.dataUrl} alt="Current workflow" className="max-h-48 rounded-lg shadow-lg" />
@@ -1308,37 +1424,67 @@ Return only the steps.`;
             </div>
             <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-4 mb-4">
               <h2 className="font-bold text-wm-accent mb-2">{lang === 'es' ? 'Resultado Deseado:' : 'Desired Outcome:'}</h2>
-              <textarea
+              <AutoResizeTextarea
                 value={editableGoal}
                 onChange={(e) => setEditableGoal(e.target.value)}
-                rows={5}
-                className="w-full text-wm-blue/70 bg-white border border-wm-neutral/30 rounded-lg p-3 hover:border-wm-neutral/50 focus:border-wm-accent focus:outline-none transition-colors resize-y"
+                minRows={5}
+                className="w-full text-base leading-7 text-wm-blue bg-white border border-wm-neutral/30 rounded-lg p-3.5 hover:border-wm-neutral/50 focus:border-wm-accent focus:outline-none transition-colors placeholder:text-wm-blue/40"
                 placeholder="Enter desired outcome"
               />
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-xs text-wm-blue/50">Tip: call out outcomes and measurable success criteria.</p>
+                <button
+                  type="button"
+                  onClick={() => setEditableGoal((prev) => autoFormatReadableText(prev))}
+                  className="text-xs font-semibold text-wm-blue/70 hover:underline"
+                >
+                  Auto-format
+                </button>
+              </div>
             </div>
             
             {/* Value Drivers */}
             <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-4 mb-4">
               <h2 className="font-bold text-wm-accent mb-2">{lang === 'es' ? 'Generadores de Valor:' : 'Value Drivers:'}</h2>
-              <textarea
+              <AutoResizeTextarea
                 value={valueDrivers}
                 onChange={(e) => setValueDrivers(e.target.value)}
-                rows={5}
-                className="w-full text-wm-blue/70 bg-white border border-wm-neutral/30 rounded-lg p-3 hover:border-wm-neutral/50 focus:border-wm-accent focus:outline-none transition-colors resize-y"
+                minRows={5}
+                className="w-full text-base leading-7 text-wm-blue bg-white border border-wm-neutral/30 rounded-lg p-3.5 hover:border-wm-neutral/50 focus:border-wm-accent focus:outline-none transition-colors placeholder:text-wm-blue/40"
                 placeholder="What business value will this deliver?"
               />
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-xs text-wm-blue/50">Tip: list business value in concise bullets.</p>
+                <button
+                  type="button"
+                  onClick={() => setValueDrivers((prev) => autoFormatReadableText(prev))}
+                  className="text-xs font-semibold text-wm-blue/70 hover:underline"
+                >
+                  Auto-format
+                </button>
+              </div>
             </div>
             
             {/* Pain Points */}
             <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-4">
               <h2 className="font-bold text-wm-accent mb-2">{lang === 'es' ? 'Puntos de Dolor:' : 'Pain Points:'}</h2>
-              <textarea
+              <AutoResizeTextarea
                 value={painPoints}
                 onChange={(e) => setPainPoints(e.target.value)}
-                rows={5}
-                className="w-full text-wm-blue/70 bg-white border border-wm-neutral/30 rounded-lg p-3 hover:border-wm-neutral/50 focus:border-wm-accent focus:outline-none transition-colors resize-y"
+                minRows={5}
+                className="w-full text-base leading-7 text-wm-blue bg-white border border-wm-neutral/30 rounded-lg p-3.5 hover:border-wm-neutral/50 focus:border-wm-accent focus:outline-none transition-colors placeholder:text-wm-blue/40"
                 placeholder="What problems does this solve?"
               />
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-xs text-wm-blue/50">Tip: focus on concrete friction points and risks.</p>
+                <button
+                  type="button"
+                  onClick={() => setPainPoints((prev) => autoFormatReadableText(prev))}
+                  className="text-xs font-semibold text-wm-blue/70 hover:underline"
+                >
+                  Auto-format
+                </button>
+              </div>
             </div>
 
 
@@ -1395,15 +1541,24 @@ Return only the steps.`;
             </div>
 
             <div className="flex flex-col mb-6">
-              <label htmlFor="workflow" className="text-lg font-bold text-wm-blue mb-2">1. {t('operator.explain')}</label>
-              <p className="text-sm text-wm-blue/50 mb-3">{t('operator.explainHelper')}</p>
-              <textarea
+              <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
+                <label htmlFor="workflow" className="text-lg font-bold text-wm-blue">1. {t('operator.explain')}</label>
+                <button
+                  type="button"
+                  onClick={() => appendBulletedTemplate(workflowExplanation, setWorkflowExplanation, workflowTemplate)}
+                  className="text-xs font-semibold text-wm-accent hover:underline"
+                >
+                  Insert workflow template
+                </button>
+              </div>
+              <p className="text-sm text-wm-blue/50 mb-3">{t('operator.explainHelper')} Use numbered stages + bullet points for inputs/outputs.</p>
+              <AutoResizeTextarea
                 id="workflow"
                 value={workflowExplanation}
                 onChange={(e) => setWorkflowExplanation(e.target.value)}
-                placeholder={"e.g., Step 1 (AI): Ingest customer email and categorize intent. Step 2 (Human): Review high-priority tickets..."}
-                className={`flex-grow bg-wm-neutral/10 text-wm-blue placeholder:text-wm-blue/40 border ${highlightEditor ? 'border-wm-yellow ring-2 ring-wm-yellow/60' : 'border-wm-neutral/30'} rounded-lg p-4 focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow w-full`}
-                rows={10}
+                placeholder={"e.g., Stage 1 (AI): Ingest customer email and categorize intent. Stage 2 (Human): Review high-priority tickets..."}
+                className={`flex-grow bg-white text-base leading-7 text-wm-blue placeholder:text-wm-blue/40 border ${highlightEditor ? 'border-wm-yellow ring-2 ring-wm-yellow/60' : 'border-wm-neutral/30'} rounded-lg p-4 focus:ring-2 focus:ring-wm-accent focus:outline-none transition-shadow w-full`}
+                minRows={10}
                 aria-live="polite"
               />
             </div>
@@ -1482,11 +1637,11 @@ Return only the steps.`;
                   {/* Show saved URLs if they exist - always visible */}
                   {(evaluation?.demoProjectUrl || evaluation?.demoPublishedUrl) && (
                     <div className="mb-3">
-                      <span className="text-xs font-bold text-wm-blue/70 block mb-2">Demo Links</span>
+                      <span className="text-sm font-bold text-wm-blue/70 block mb-2">Demo Links</span>
                       <div className="space-y-2">
                         {evaluation.demoProjectUrl && (
                           <div className="bg-gradient-to-r from-wm-accent/10 to-wm-pink/10 border-l-4 border-wm-accent rounded-lg p-3">
-                            <label className="text-xs font-bold text-wm-accent mb-1 flex items-center gap-1">
+                            <label className="text-sm font-bold text-wm-accent mb-1 flex items-center gap-1">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                               </svg>
@@ -1496,7 +1651,7 @@ Return only the steps.`;
                               href={evaluation.demoProjectUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-xs text-wm-blue hover:text-wm-accent underline break-all flex items-center gap-1 font-medium"
+                              className="text-sm text-wm-blue hover:text-wm-accent underline break-all flex items-center gap-1 font-medium"
                             >
                               {evaluation.demoProjectUrl}
                               <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1507,7 +1662,7 @@ Return only the steps.`;
                         )}
                         {evaluation.demoPublishedUrl && (
                           <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500 rounded-lg p-3">
-                            <label className="text-xs font-bold text-green-700 mb-1 flex items-center gap-1">
+                            <label className="text-sm font-bold text-green-700 mb-1 flex items-center gap-1">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                               </svg>
@@ -1517,7 +1672,7 @@ Return only the steps.`;
                               href={evaluation.demoPublishedUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-xs text-wm-blue hover:text-green-700 underline break-all flex items-center gap-1 font-medium"
+                              className="text-sm text-wm-blue hover:text-green-700 underline break-all flex items-center gap-1 font-medium"
                             >
                               {evaluation.demoPublishedUrl}
                               <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1545,19 +1700,19 @@ Return only the steps.`;
                       {showSavedPrompt && (
                         <div className="mt-2 bg-white border border-wm-neutral/30 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-bold text-wm-blue/70">Your Saved Prompt</span>
-                            <span className="text-xs text-wm-blue/50">{evaluation.demoPrompt.length} characters</span>
+                            <span className="text-sm font-bold text-wm-blue/70">Your Saved Prompt</span>
+                            <span className="text-sm text-wm-blue/50">{evaluation.demoPrompt.length} characters</span>
                           </div>
                           <div className="max-h-60 overflow-y-auto bg-wm-neutral/5 rounded p-2">
-                            <pre className="text-xs text-wm-blue/80 whitespace-pre-wrap font-mono">{evaluation.demoPrompt}</pre>
+                            <pre className="text-sm text-wm-blue/80 whitespace-pre-wrap font-mono">{evaluation.demoPrompt}</pre>
                           </div>
                           
                           <button
                             onClick={() => {
-                              setDemoPrompt(evaluation.demoPrompt || '');
+                              setDemoPrompt(normalizeMarkdownToReadableText(evaluation.demoPrompt || ''));
                               setIsDemoPromptOpen(true);
                             }}
-                            className="mt-2 text-xs text-wm-accent hover:text-wm-accent/80 font-bold"
+                            className="mt-2 text-sm text-wm-accent hover:text-wm-accent/80 font-bold"
                           >
                             Edit this prompt →
                           </button>
@@ -1690,7 +1845,7 @@ Return only the steps.`;
             </div>
             <div className="mt-3">
               <label className="block text-wm-blue/70 text-sm mb-1">Mermaid</label>
-              <textarea className="w-full bg-wm-neutral/10 border border-wm-neutral/30 rounded p-2 text-wm-blue text-sm" rows={6} value={mermaidCode} onChange={(e)=>setMermaidCode(e.target.value)} />
+              <AutoResizeTextarea className="w-full bg-white border border-wm-neutral/30 rounded p-3 text-wm-blue text-sm leading-6" minRows={6} value={mermaidCode} onChange={(e)=>setMermaidCode(e.target.value)} />
               <div className="mt-2 flex justify-end">
                 <button onClick={async ()=>{ await renderMermaid(mermaidCode); }} className="text-sm px-3 py-1.5 rounded-md bg-wm-neutral/20 border border-wm-neutral/30 text-wm-blue hover:bg-wm-neutral/30 font-bold">{t('operator.refreshPreview')}</button>
               </div>
@@ -1745,11 +1900,11 @@ Return only the steps.`;
               </button>
             </div>
             <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-3 max-h-[60vh] overflow-auto">
-              <textarea
+              <AutoResizeTextarea
                 value={pitchMarkdown}
                 onChange={(e) => setPitchMarkdown(e.target.value)}
-                className="w-full bg-white border border-wm-neutral/30 rounded p-2 text-wm-blue text-sm"
-                rows={16}
+                className="w-full bg-white border border-wm-neutral/30 rounded p-3 text-wm-blue text-base leading-7"
+                minRows={16}
                 aria-label="Elevator Pitch Markdown"
               />
             </div>
@@ -1767,16 +1922,16 @@ Return only the steps.`;
                           alert('API key cleared. You will be prompted for a new key on next generation.');
                         }
                       }}
-                      className="text-xs text-wm-blue/50 hover:text-wm-blue underline"
+                      className="text-sm text-wm-blue/50 hover:text-wm-blue underline"
                     >
                       Reset API Key
                     </button>
                   )}
                 </div>
-                <p className="text-xs text-wm-blue/50 mb-2">
+                <p className="text-sm text-wm-blue/50 mb-2">
                   Generate a professional PowerPoint presentation from your slide outline using Gamma AI
                 </p>
-                <div className="mb-3 p-2 bg-wm-yellow/20 border border-wm-yellow/50 rounded text-xs text-wm-blue/80">
+                <div className="mb-3 p-2 bg-wm-yellow/20 border border-wm-yellow/50 rounded text-sm text-wm-blue/80">
                   <strong>⚠️ Requires Gamma Pro/Ultra/Teams/Business plan</strong><br/>
                   API access requires a paid Gamma subscription. Get your API key at{' '}
                   <a href="https://gamma.app/settings" target="_blank" rel="noopener noreferrer" className="underline hover:text-wm-accent">
@@ -1805,12 +1960,12 @@ Return only the steps.`;
                 
                 {gammaDownloadUrl && (
                   <div className="mt-3 p-2 bg-wm-accent/10 border border-wm-accent rounded flex items-center justify-between">
-                    <span className="text-xs text-wm-accent font-bold">✓ Presentation ready!</span>
+                    <span className="text-sm text-wm-accent font-bold">✓ Presentation ready!</span>
                     <a
                       href={gammaDownloadUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1 text-xs bg-wm-accent text-white rounded hover:bg-wm-accent/90 font-bold"
+                      className="px-3 py-1 text-sm bg-wm-accent text-white rounded hover:bg-wm-accent/90 font-bold"
                     >
                       Download PPTX
                     </a>
@@ -1819,7 +1974,7 @@ Return only the steps.`;
                 
                 {gammaError && (
                   <div className="mt-3 p-2 bg-wm-pink/10 border border-wm-pink rounded">
-                    <span className="text-xs text-wm-pink">⚠ {gammaError}</span>
+                    <span className="text-sm text-wm-pink">⚠ {gammaError}</span>
                   </div>
                 )}
               </div>
@@ -1858,7 +2013,7 @@ Return only the steps.`;
               type="text"
               value={versionTitleInput}
               onChange={(e)=> setVersionTitleInput(e.target.value)}
-              className="w-full bg-wm-neutral/10 border border-wm-neutral/30 rounded-md px-3 py-2 text-wm-blue text-sm focus:outline-none focus:ring-2 focus:ring-wm-accent"
+              className="w-full bg-white border border-wm-neutral/30 rounded-md px-3 py-2.5 text-wm-blue text-base leading-6 focus:outline-none focus:ring-2 focus:ring-wm-accent"
               placeholder="Version title"
               autoFocus
             />
@@ -1897,24 +2052,24 @@ Return only the steps.`;
             </div>
             <div className="bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
-                <label className="block text-xs font-bold text-wm-blue/70">Edit Your Prompt</label>
+                <label className="block text-sm font-bold text-wm-blue/70">Edit Your Prompt</label>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={copyDemoPromptToClipboard}
-                    className="text-xs text-wm-accent hover:text-wm-accent/80 font-bold flex items-center gap-1 transition-colors"
+                    className="text-sm text-wm-accent hover:text-wm-accent/80 font-bold flex items-center gap-1 transition-colors"
                     title="Copy to clipboard"
                   >
                     <Icons.Copy className="w-4 h-4" />
                     Copy
                   </button>
-                  <span className="text-xs text-wm-blue/50">{demoPrompt.length} characters</span>
+                  <span className="text-sm text-wm-blue/50">{demoPrompt.length} characters</span>
                 </div>
               </div>
-              <textarea
+              <AutoResizeTextarea
                 value={demoPrompt}
                 onChange={(e) => setDemoPrompt(e.target.value)}
-                className="w-full bg-white border border-wm-neutral/30 rounded-md p-3 text-sm text-wm-blue font-mono focus:outline-none focus:ring-2 focus:ring-wm-accent resize-y"
-                rows={20}
+                className="w-full bg-white border border-wm-neutral/30 rounded-md p-3.5 text-base leading-7 text-wm-blue font-mono focus:outline-none focus:ring-2 focus:ring-wm-accent"
+                minRows={20}
                 placeholder="Your demo prompt will appear here..."
               />
             </div>
@@ -1922,26 +2077,26 @@ Return only the steps.`;
             {/* Demo URLs Section */}
             <div className="mt-4 p-4 bg-wm-neutral/10 border border-wm-neutral/30 rounded-lg">
               <h4 className="text-sm font-bold text-wm-blue mb-3">Save Your Demo</h4>
-              <p className="text-xs text-wm-blue/60 mb-3">Save your edited prompt and demo URLs for future reference.</p>
+              <p className="text-sm text-wm-blue/60 mb-3">Save your edited prompt and demo URLs for future reference.</p>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs text-wm-blue/70 mb-1">Google AI Studio Project URL</label>
+                  <label className="block text-sm text-wm-blue/70 mb-1">Google AI Studio Project URL</label>
                   <input
                     type="url"
                     value={demoProjectUrl}
                     onChange={(e) => setDemoProjectUrl(e.target.value)}
                     placeholder="https://aistudio.google.com/app/prompts/..."
-                    className="w-full bg-white border border-wm-neutral/30 rounded-md px-3 py-2 text-sm text-wm-blue focus:outline-none focus:ring-2 focus:ring-wm-accent"
+                    className="w-full bg-white border border-wm-neutral/30 rounded-md px-3 py-2.5 text-base text-wm-blue focus:outline-none focus:ring-2 focus:ring-wm-accent"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-wm-blue/70 mb-1">Published Demo URL</label>
+                  <label className="block text-sm text-wm-blue/70 mb-1">Published Demo URL</label>
                   <input
                     type="url"
                     value={demoPublishedUrl}
                     onChange={(e) => setDemoPublishedUrl(e.target.value)}
                     placeholder="https://your-demo-url.com"
-                    className="w-full bg-white border border-wm-neutral/30 rounded-md px-3 py-2 text-sm text-wm-blue focus:outline-none focus:ring-2 focus:ring-wm-accent"
+                    className="w-full bg-white border border-wm-neutral/30 rounded-md px-3 py-2.5 text-base text-wm-blue focus:outline-none focus:ring-2 focus:ring-wm-accent"
                   />
                 </div>
                 <button

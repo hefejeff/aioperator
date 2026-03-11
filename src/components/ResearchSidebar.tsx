@@ -129,7 +129,7 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
               <h3 className="text-sm font-bold text-wm-blue">{t('research.selectedScenarios')}</h3>
             </div>
             {selectedScenarios.length === 0 ? (
-              <div className="text-xs text-wm-blue/50">{t('research.noSelectedScenarios')}</div>
+              <div className="text-sm text-wm-blue/50">{t('research.noSelectedScenarios')}</div>
             ) : (
               <div className="space-y-2">
                 {relatedScenarios
@@ -141,7 +141,7 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
                     >
                       <button
                         onClick={() => onSelectScenario?.(scenario)}
-                        className="text-xs text-wm-blue truncate hover:text-wm-accent transition-colors text-left flex-1"
+                        className="text-sm text-wm-blue truncate hover:text-wm-accent transition-colors text-left flex-1"
                       >
                         {scenario.title}
                       </button>
@@ -149,7 +149,7 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
                         onClick={() => {
                           onToggleScenario?.(scenario.id);
                         }}
-                        className="text-xs text-wm-pink hover:text-wm-pink/80 transition-colors ml-2"
+                        className="text-sm text-wm-pink hover:text-wm-pink/80 transition-colors ml-2"
                       >
                         {t('research.removeFromSelected')}
                       </button>
@@ -165,7 +165,7 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <Icons.Search className="w-8 h-8 text-wm-blue/30 mb-3" />
                 <div className="text-sm text-wm-blue/60 mb-2">{t('research.noScenariosYet')}</div>
-                <div className="text-xs text-wm-blue/40 px-8">{t('research.searchCompanyFirst')}</div>
+                <div className="text-sm text-wm-blue/40 px-8">{t('research.searchCompanyFirst')}</div>
               </div>
             ) : (
               <div className="space-y-3 overflow-y-auto h-full pr-2">
@@ -205,17 +205,17 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
                           </div>
                         </div>
                         <div className="shrink-0">
-                          <span className="bg-wm-accent/10 text-wm-accent px-2 py-1 rounded text-xs font-bold">
+                          <span className="bg-wm-accent/10 text-wm-accent px-2 py-1 rounded text-sm font-bold">
                             {Math.round(scenario.relevanceScore * 10)}% {t('research.relevanceMatch')}
                           </span>
                         </div>
                       </div>
                       
-                      <p className="text-xs text-wm-blue/70 leading-relaxed mb-3">
+                      <p className="text-sm text-wm-blue/70 leading-relaxed mb-3">
                         {scenario.description}
                       </p>
                       
-                      <p className="text-xs italic text-wm-blue/50">
+                      <p className="text-sm italic text-wm-blue/50">
                         {scenario.relevanceReason}
                       </p>
                     </div>
@@ -223,7 +223,7 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
                     {/* Workflow Examples */}
                     {expandedScenario === scenario.id && workflowExamples[scenario.id]?.length > 0 && (
                       <div className="border-t border-wm-neutral p-4">
-                        <h4 className="text-xs font-bold text-wm-blue mb-3">{t('research.workflowExamples')}</h4>
+                        <h4 className="text-sm font-bold text-wm-blue mb-3">{t('research.workflowExamples')}</h4>
                         <div className="space-y-3">
                           {workflowExamples[scenario.id].map((workflow) => (
                             <div
@@ -232,16 +232,16 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
                               className="p-3 rounded bg-wm-neutral/30 hover:bg-wm-neutral/50 cursor-pointer transition-colors border border-wm-neutral group"
                             >
                               <div className="flex items-center justify-between gap-2 mb-2">
-                                <h5 className="text-xs font-bold text-wm-accent">
+                                <h5 className="text-sm font-bold text-wm-accent">
                                   {workflow.versionTitle || t('research.workflowVersion')}
                                 </h5>
                                 {workflow.evaluationScore && (
-                                  <span className="text-xs bg-wm-accent/10 text-wm-accent px-2 py-0.5 rounded font-bold">
+                                  <span className="text-sm bg-wm-accent/10 text-wm-accent px-2 py-0.5 rounded font-bold">
                                     {t('research.score')}: {workflow.evaluationScore}
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs text-wm-blue/60 line-clamp-2">
+                              <p className="text-sm text-wm-blue/60 line-clamp-2">
                                 {workflow.workflowExplanation}
                               </p>
                             </div>
@@ -254,7 +254,7 @@ const ResearchSidebar: React.FC<ResearchSidebarProps> = ({
                     <div className="border-t border-wm-neutral p-3">
                       <button
                         onClick={() => onSelectScenario?.(scenario)}
-                        className="w-full text-xs text-wm-accent font-bold hover:text-wm-accent/80 transition-colors flex items-center justify-center gap-1"
+                        className="w-full text-sm text-wm-accent font-bold hover:text-wm-accent/80 transition-colors flex items-center justify-center gap-1"
                       >
                         <Icons.ChevronLeft className="w-4 h-4 transform rotate-180" />
                         {t('research.viewScenario')}

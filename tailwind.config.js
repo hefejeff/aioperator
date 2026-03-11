@@ -13,10 +13,18 @@ export default {
         'wm-yellow': '#E8DF00',    // Highlight Yellow - spotlights (slightly deeper)
         'wm-accent': '#0036CC',    // Accent Blue - subheads, links (higher contrast)
         'wm-pink': '#F500A0',      // Accent Pink - stats, emphasis
-        'wm-neutral': '#A9B5C4',   // Support Neutral - borders/background support (higher contrast)
+        'wm-neutral': '#5F7390',   // Support Neutral - punchier contrast for borders/backgrounds
       },
       fontFamily: {
         'sans': ['Arial', 'sans-serif'],
+      },
+      fontSize: {
+        sm: ['0.95rem', { lineHeight: '1.4rem' }],
+      },
+      boxShadow: {
+        sm: '0 3px 10px rgb(0 0 34 / 0.14), 0 1px 4px rgb(0 0 34 / 0.10)',
+        md: '0 10px 24px rgb(0 0 34 / 0.16), 0 3px 10px rgb(0 0 34 / 0.12)',
+        lg: '0 18px 36px rgb(0 0 34 / 0.18), 0 6px 16px rgb(0 0 34 / 0.14)',
       },
       keyframes: {
         'fade-in': {

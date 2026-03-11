@@ -416,7 +416,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
           {isCanvasEditing && !isEditing && (
             <button
               onClick={() => startEditingSection(sectionKey)}
-              className="text-white/60 hover:text-white text-xs flex items-center gap-1"
+              className="text-white/60 hover:text-white text-sm flex items-center gap-1"
             >
               <Icons.Edit />
               {t('canvas.editSection')}
@@ -437,7 +437,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
             
             {currentSection.subItems && (
               <div className="space-y-2">
-                <div className="text-xs text-white/60">Sub-items:</div>
+                <div className="text-sm text-white/60">Sub-items:</div>
                 {currentSection.subItems.map((item: string, idx: number) => (
                   <div key={idx} className="flex items-center gap-2">
                     <input
@@ -447,7 +447,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                         newSubItems[idx] = e.target.value;
                         updateCanvasSection(sectionKey, 'subItems', newSubItems);
                       }}
-                      className="flex-1 bg-black/20 text-white text-xs p-1 rounded border border-white/20"
+                      className="flex-1 bg-black/20 text-white text-sm p-1 rounded border border-white/20"
                       autoComplete="off"
                     />
                     <button
@@ -463,7 +463,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                     value={newSubItemInputs[sectionKey] || ''}
                     onChange={(e) => updateNewSubItemInput(sectionKey, e.target.value)}
                     placeholder="Add new item..."
-                    className="flex-1 bg-black/20 text-white text-xs p-1 rounded border border-white/20"
+                    className="flex-1 bg-black/20 text-white text-sm p-1 rounded border border-white/20"
                     autoComplete="off"
                     onKeyPress={(e) => {
                       if (e.key === 'Enter') {
@@ -485,7 +485,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
             <div className="flex items-center gap-2 pt-2">
               <button
                 onClick={cancelEditingSection}
-                className="text-xs px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded"
+                className="text-sm px-2 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded"
               >
                 {t('canvas.cancelSection')}
               </button>
@@ -504,7 +504,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                   {hasMore && (
                     <button
                       onClick={() => toggleSectionExpansion(sectionKey)}
-                      className="text-xs text-white/50 hover:text-white/80 mt-1 flex items-center gap-1 transition-colors"
+                      className="text-sm text-white/50 hover:text-white/80 mt-1 flex items-center gap-1 transition-colors"
                     >
                       {isExpanded ? (
                         <>
@@ -528,7 +528,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                 {currentSection.subItems.map((item: string, idx: number) => (
                   <div 
                     key={idx}
-                    className="bg-black/20 backdrop-blur-sm border border-white/10 rounded-md px-3 py-2 text-xs text-white/70 hover:text-white/90 hover:border-white/20 transition-all"
+                    className="bg-black/20 backdrop-blur-sm border border-white/10 rounded-md px-3 py-2 text-sm text-white/70 hover:text-white/90 hover:border-white/20 transition-all"
                   >
                     {item}
                   </div>
@@ -549,7 +549,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                     }
                   }}
                   placeholder={t('canvas.addSubItem')}
-                  className="flex-1 bg-transparent border-none outline-none text-xs text-white/70 placeholder-white/40"
+                  className="flex-1 bg-transparent border-none outline-none text-sm text-white/70 placeholder-white/40"
                   autoComplete="off"
                 />
                 <button
@@ -850,7 +850,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
               {t('workflowDetail.scenario')}: {scenario?.title || workflow.scenarioId}
             </p>
             {scenario?.description && (
-              <p className="text-wm-blue/50 text-xs mt-1 line-clamp-2">
+              <p className="text-wm-blue/50 text-sm mt-1 line-clamp-2">
                 {scenario.description}
               </p>
             )}
@@ -1115,7 +1115,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                     })()}
                     
                     {workflow.sourceEvaluationId && (
-                      <div className="text-xs text-wm-blue/50 mt-2">
+                      <div className="text-sm text-wm-blue/50 mt-2">
                         {t('workflowDetail.evaluationId')}: {workflow.sourceEvaluationId}
                       </div>
                     )}
@@ -1146,7 +1146,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                             </div>
                           </div>
                           
-                          <div className="text-xs text-wm-blue/50">
+                          <div className="text-sm text-wm-blue/50">
                             {t('workflowDetail.evaluationId')}: {evaluation.id}
                           </div>
                         </div>
@@ -1265,15 +1265,15 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                                 <div className="text-sm font-medium text-wm-blue flex items-center gap-2">
                                   {member.displayName || member.email}
                                   {member.userId === userId && (
-                                    <span className="px-2 py-0.5 text-xs bg-wm-accent/20 text-wm-accent rounded-full">
+                                    <span className="px-2 py-0.5 text-sm bg-wm-accent/20 text-wm-accent rounded-full">
                                       Owner
                                     </span>
                                   )}
                                 </div>
                                 {member.displayName && (
-                                  <div className="text-xs text-wm-blue/60">{member.email}</div>
+                                  <div className="text-sm text-wm-blue/60">{member.email}</div>
                                 )}
-                                <div className="text-xs text-wm-blue/50">
+                                <div className="text-sm text-wm-blue/50">
                                   Added {new Date(member.addedAt).toLocaleDateString()}
                                 </div>
                               </div>
@@ -1281,7 +1281,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                             <div className="flex items-center gap-2">
                               {member.userId === userId ? (
                                 // Show owner badge instead of dropdown for workflow owner
-                                <span className="px-2 py-1 text-xs rounded-full bg-wm-accent/20 text-wm-accent border border-wm-accent/30">
+                                <span className="px-2 py-1 text-sm rounded-full bg-wm-accent/20 text-wm-accent border border-wm-accent/30">
                                   OWNER
                                 </span>
                               ) : (
@@ -1291,7 +1291,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                                     value={member.role}
                                     onChange={(e) => handleUpdateTeamMemberRole(member.userId, e.target.value as TeamRole)}
                                     disabled={updatingRoles.has(member.userId)}
-                                    className={`px-2 py-1 text-xs rounded-full border focus:outline-none transition-colors ${
+                                    className={`px-2 py-1 text-sm rounded-full border focus:outline-none transition-colors ${
                                       member.role === 'EDITOR'
                                         ? 'bg-wm-yellow/20 text-wm-blue border-wm-yellow/30 focus:border-wm-yellow'
                                         : 'bg-wm-accent/20 text-wm-accent border-wm-accent/30 focus:border-wm-accent'
@@ -1371,7 +1371,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                                     {userItem.displayName || userItem.email}
                                   </div>
                                   {userItem.displayName && (
-                                    <div className="text-xs text-wm-blue/60">{userItem.email}</div>
+                                    <div className="text-sm text-wm-blue/60">{userItem.email}</div>
                                   )}
                                 </div>
                               </div>
@@ -1414,7 +1414,7 @@ const WorkflowDetailView: React.FC<WorkflowDetailViewProps> = ({ workflowId, use
                     <p className="text-sm text-wm-blue/60 mb-2">
                       {t('workflowDetail.teamCollaborationDesc')}
                     </p>
-                    <div className="text-xs text-wm-blue/50 space-y-1">
+                    <div className="text-sm text-wm-blue/50 space-y-1">
                       <div><strong>VIEWER:</strong> Can view the workflow but cannot make changes</div>
                       <div><strong>EDITOR:</strong> Can view and edit the workflow content</div>
                       <div><strong>OWNER:</strong> Full control over the workflow and team management</div>

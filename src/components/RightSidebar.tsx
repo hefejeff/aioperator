@@ -107,7 +107,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({ user, onSelectWorkflow, isO
                 <div className="flex flex-col items-center justify-center py-8 text-center">
                   <Icons.Document />
                   <div className="text-sm text-wm-blue/60 mb-2">No workflows yet</div>
-                  <div className="text-xs text-wm-blue/40">Create your first workflow to get started</div>
+                  <div className="text-sm text-wm-blue/40">Create your first workflow to get started</div>
                 </div>
               ) : (
                 <div className="space-y-3 overflow-y-auto h-full pr-2">
@@ -123,7 +123,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({ user, onSelectWorkflow, isO
                         }}
                         className="p-4 rounded-lg bg-wm-neutral/20 hover:bg-wm-neutral/40 cursor-pointer transition-colors border border-wm-neutral hover:border-wm-accent/30"
                       >
-                        <div className="text-xs text-wm-blue/60 mb-2">
+                        <div className="text-sm text-wm-blue/60 mb-2">
                           {new Date(workflow.timestamp).toLocaleDateString()}
                         </div>
                         
@@ -132,7 +132,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({ user, onSelectWorkflow, isO
                         </div>
                         
                         {scenario && (
-                          <div className="text-xs text-wm-blue/70 leading-relaxed">
+                          <div className="text-sm text-wm-blue/70 leading-relaxed">
                             {truncateDescription(`${scenario.title}: ${scenario.description}`, 120)}
                           </div>
                         )}

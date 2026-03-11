@@ -18,7 +18,6 @@ import PublicLanding from './components/PublicLanding';
 import LoadingScreen from './components/LoadingScreen';
 import AdminDashboard from './components/AdminDashboard';
 import WorkflowDetailView from './components/WorkflowDetailView';
-import CompanyResearch from './components/CompanyResearch';
 import CompanyResearchV2 from './components/CompanyResearchV2';
 import ChatInterface from './components/ChatInterface';
 import Dashboard2 from './components/Dashboard2';
@@ -227,12 +226,18 @@ const App: React.FC = () => {
     setActiveCompanyName(null);
     if (newView === 'RESEARCH' && companyId) {
       setSelectedCompanyId(companyId);
-      navigate(`/research/${companyId}`);
+      navigate(`/company2?companyId=${companyId}`);
+      setView('COMPANY_V2');
     } else {
       setSelectedCompanyId(null);
-      navigate(viewToPath[newView]);
+      if (newView === 'RESEARCH') {
+        navigate('/company2');
+        setView('COMPANY_V2');
+      } else {
+        navigate(viewToPath[newView]);
+        setView(newView);
+      }
     }
-    setView(newView);
   }, [view, navigate]);
 
   const handleStartTraining = useCallback((scenario?: Scenario) => {
@@ -301,6 +306,21 @@ const App: React.FC = () => {
     }
   }, [user?.uid, view, navigate]);
 
+  useEffect(() => {
+    if (!user) return;
+    if (!location.pathname.startsWith('/scenario/')) return;
+
+    const scenarioIdFromPath = location.pathname.split('/')[2] || '';
+    if (!scenarioIdFromPath) return;
+
+    const scenarioFromPath = scenarios.find((s) => s.id === scenarioIdFromPath) || null;
+    if (!scenarioFromPath) return;
+
+    if (!activeScenario || activeScenario.id !== scenarioFromPath.id) {
+      setActiveScenario(scenarioFromPath);
+    }
+  }, [location.pathname, scenarios, activeScenario, user]);
+
   const handleBack = useCallback(() => {
     setActiveScenario(null);
     setActiveWorkflowId(null);
@@ -314,7 +334,7 @@ const App: React.FC = () => {
     }
     // For scenarios, go back to where we came from (could be TRAINING or RESEARCH)
     else if (view === 'SCENARIO') {
-      const targetView = previousView === 'RESEARCH' ? 'RESEARCH' : 'TRAINING';
+      const targetView = previousView === 'RESEARCH' || previousView === 'COMPANY_V2' ? 'COMPANY_V2' : 'TRAINING';
       navigate(viewToPath[targetView]);
       setView(targetView);
     }
@@ -328,8 +348,8 @@ const App: React.FC = () => {
   const handleScenarioCreated = (newScenario: Scenario) => {
     setScenarios(prevScenarios => [...prevScenarios, newScenario]);
     if (scenarioCreationContext?.source === 'RESEARCH') {
-      navigate('/research');
-      setView('RESEARCH');
+      navigate('/company2');
+      setView('COMPANY_V2');
     } else {
       navigate('/training');
       setView('TRAINING');
@@ -504,41 +524,7 @@ const App: React.FC = () => {
         return null;
       case 'RESEARCH':
         if (user) {
-          // Extract company ID and tab from URL if present (e.g., /research/companyId/domains)
-          const pathParts = location.pathname.split('/').filter(Boolean);
-          const companyIdFromUrl = pathParts.length > 1 ? pathParts[1] : null;
-          const tabFromUrl = pathParts.length > 2 ? pathParts[2] as 'info' | 'domains' | 'documents' | 'meetings' : null;
-          
-          // Also check localStorage as fallback
-          const lastViewedCompany = !companyIdFromUrl ? localStorage.getItem('lastViewedCompany') : null;
-          const initialCompanyId = companyIdFromUrl || lastViewedCompany;
-          
-          return <CompanyResearch 
-                    user={user}
-                    userId={user.uid} 
-                    initialCompany={initialCompanyId || undefined}
-                    initialTab={tabFromUrl || undefined}
-                    startWithNewForm={!initialCompanyId}
-                    onSelectScenario={handleSelectScenario}
-                    onCreateScenario={(ctx) => openScenarioCreator({
-                      source: 'RESEARCH',
-                      companyId: ctx?.companyId,
-                      companyName: ctx?.companyName,
-                      domain: ctx?.domain
-                    })}
-                    onViewWorkflow={handleSelectWorkflow}
-                    onCompanyChange={(companyId, tab) => {
-                      // Update URL and localStorage when company or tab changes
-                      if (companyId) {
-                        const url = tab ? `/research/${companyId}/${tab}` : `/research/${companyId}`;
-                        navigate(url, { replace: true });
-                        localStorage.setItem('lastViewedCompany', companyId);
-                      } else {
-                        navigate('/research', { replace: true });
-                        localStorage.removeItem('lastViewedCompany');
-                      }
-                    }}
-                  />;
+          return <CompanyResearchV2 user={user} />;
         }
         return null;
       case 'COMPANY_V2':
@@ -555,7 +541,7 @@ const App: React.FC = () => {
 
   return (
     <I18nProvider initial={initialLang}>
-    <div className="min-h-screen bg-wm-white font-sans text-wm-blue">
+    <div className="min-h-screen bg-gray-100 font-sans text-wm-blue">
             <Header 
         onNavigate={setView}
         user={user} 
@@ -574,9 +560,9 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-      <div className="container mx-auto px-4 sm:px-6 md:px-8 py-4 sm:py-6 md:py-8">
-        {user ? (
-          <div className="flex flex-col lg:flex-row gap-8 items-start">
+      {user ? (
+        <div className="w-full px-3 sm:px-4 md:px-5 py-3 sm:py-4 md:py-5">
+          <div className="flex flex-col lg:flex-row gap-4 items-start">
             <main className={`flex-1 w-full ${error ? 'pt-0' : ''}`}>
               {renderAppContent()}
               {isCreatingScenario && (
@@ -594,15 +580,13 @@ const App: React.FC = () => {
                 />
               )}
             </main>
-            <div className="w-full lg:w-auto lg:shrink-0">
-            </div>
           </div>
-        ) : (
-          <main className={`${error ? 'pt-0' : ''}`}>
-            <PublicLanding />
-          </main>
-        )}
-      </div>
+        </div>
+      ) : (
+        <main className={`${error ? 'pt-0' : ''}`}>
+          <PublicLanding />
+        </main>
+      )}
       {isChatOpen && (
         <ChatInterface onClose={() => setIsChatOpen(false)} />
       )}

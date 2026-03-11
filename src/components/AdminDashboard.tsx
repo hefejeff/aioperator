@@ -27,7 +27,7 @@ const JOURNEY_STEP_DEFINITIONS: Array<{ key: JourneyStepKey; label: string; phas
 
 const RoleBadge: React.FC<{ role?: Role | null }> = ({ role }) => {
   const color = role === 'SUPER_ADMIN' ? 'bg-wm-pink' : role === 'ADMIN' ? 'bg-wm-accent' : role === 'PRO_USER' ? 'bg-green-600' : 'bg-wm-neutral';
-  return <span className={`text-xs ${color} text-white px-2 py-0.5 rounded font-bold`}>{role || 'USER'}</span>;
+  return <span className={`text-sm ${color} text-white px-2 py-0.5 rounded font-bold`}>{role || 'USER'}</span>;
 };
 
 const UsersTab: React.FC<{
@@ -123,7 +123,7 @@ const UsersTab: React.FC<{
                     <button
                       onClick={() => onDeleteUser(u.uid, u.email || u.displayName || 'Unknown User')}
                       disabled={deleting === u.uid || u.uid === currentUser.uid}
-                      className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-xs flex items-center gap-1"
+                      className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed text-white px-3 py-1 rounded text-sm flex items-center gap-1"
                       title={u.uid === currentUser.uid ? "Cannot delete your own account" : "Delete user and all their data"}
                     >
                       {deleting === u.uid ? (
@@ -158,9 +158,9 @@ const JourneyStepsTab: React.FC<{
   <div className="bg-white border border-wm-neutral/30 rounded-xl p-6 shadow-sm">
     <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
       <div>
-        <h2 className="text-xl font-bold text-wm-blue">Journey Steps</h2>
+        <h2 className="text-xl font-bold text-wm-blue">Journey Stages</h2>
         <p className="text-sm text-wm-blue/60 mt-1">
-          Control which steps are active across company journeys. Company Research is always active and first.
+          Control which stages are active across company journeys. Company Research is always active and first.
         </p>
       </div>
       <button
@@ -172,7 +172,7 @@ const JourneyStepsTab: React.FC<{
             : 'bg-wm-accent hover:bg-wm-accent/90 text-white'
         }`}
       >
-        {saving ? 'Saving...' : 'Save Journey Steps'}
+        {saving ? 'Saving...' : 'Save Journey Stages'}
       </button>
     </div>
 
@@ -183,7 +183,7 @@ const JourneyStepsTab: React.FC<{
           <label key={step.key} className="flex items-center justify-between gap-3 rounded-lg border border-wm-neutral/20 px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-wm-blue">{index + 1}. {step.label}</p>
-              <p className="text-xs text-wm-blue/60 mt-1">{step.phase}</p>
+              <p className="text-sm text-wm-blue/60 mt-1">{step.phase}</p>
             </div>
             <div className="flex items-center gap-2">
               {step.alwaysOn && (
@@ -291,7 +291,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
         companyResearch: true
       });
     } catch (e) {
-      setError('Could not save journey steps settings.');
+      setError('Could not save journey stage settings.');
     } finally {
       setIsSavingJourneySteps(false);
     }
@@ -373,7 +373,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
       // Reset form and close modal
       setNewUserForm({ email: '', password: '', displayName: '', role: 'USER' });
       setShowCreateUserModal(false);
-      alert('User created successfully! A password reset email has been sent to the user.');
+      if (result.passwordResetEmailSent) {
+        alert('User created successfully! A password reset email has been sent to the user.');
+      } else {
+        alert('User created successfully, but password reset email could not be sent. Please use Forgot Password on the sign-in page.');
+      }
     } catch (e: any) {
       setError(e.message || 'Could not create user.');
     } finally {
@@ -467,7 +471,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
                   }`}
                 >
                   <Icons.Workflow />
-                  Journey Steps
+                  Journey Stages
                 </button>
               </nav>
             </div>
@@ -549,7 +553,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
                     </svg>
                   </button>
                 </div>
-                <p className="text-xs text-wm-blue/50 mt-1">Auto-generated. User will receive a password reset email.</p>
+                <p className="text-sm text-wm-blue/50 mt-1">Auto-generated. User will receive a password reset email.</p>
               </div>
 
               <div>

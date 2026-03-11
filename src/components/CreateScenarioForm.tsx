@@ -356,7 +356,7 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
                 type="button"
                 onClick={handleGenerateExample}
                 disabled={!domain || generatingExample}
-                className="text-xs px-2 py-1 rounded-md bg-wm-accent text-white disabled:opacity-40 hover:bg-wm-accent/90 transition-colors font-bold"
+                className="text-sm px-2 py-1 rounded-md bg-wm-accent text-white disabled:opacity-40 hover:bg-wm-accent/90 transition-colors font-bold"
               >
                 {generatingExample ? t('loading') : t('aiExample.button')}
               </button>
@@ -415,7 +415,7 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
                   <button
                     type="button"
                     onClick={() => setIsCustomProcess(true)}
-                    className="text-xs text-wm-accent hover:text-wm-accent/80 font-bold"
+                    className="text-sm text-wm-accent hover:text-wm-accent/80 font-bold"
                   >
                     + Add custom sub-domain
                   </button>
@@ -566,7 +566,7 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                     <p className="mb-2 text-sm text-wm-blue/60">{t('form.dragToUpload')}</p>
-                    <p className="text-xs text-wm-blue/40">{t('form.imageTypes')}</p>
+                    <p className="text-sm text-wm-blue/40">{t('form.imageTypes')}</p>
                   </div>
                   <input
                     id="workflow-image"
@@ -583,7 +583,7 @@ Make this example specific to ${domain} with realistic details, metrics, and bus
           <div>
             {domain && (
               <div className="mt-2">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-wm-accent/20 text-wm-accent">{domain}</span>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-bold bg-wm-accent/20 text-wm-accent">{domain}</span>
               </div>
             )}
           </div>

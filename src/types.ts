@@ -75,13 +75,47 @@ export type JourneyStepKey =
 
 export type JourneyStepSettings = Record<JourneyStepKey, boolean>;
 
+export interface PromptVersion {
+  version: number;
+  prompt: string;
+  updatedAt: number;
+  updatedBy?: string;
+}
+
+export interface CustomStageChildStep {
+  id: string;
+  title: string;
+  description?: string;
+  aiModelId?: string;
+  prompt?: string;
+  desiredOutput?: string;
+  selectedDocumentIds?: string[];
+  selectedTranscriptIds?: string[];
+  outputType?: 'CHAT_INTERFACE' | 'EXCEL_DOC' | 'PRESENTATION';
+  excelTemplate?: {
+    fileName: string;
+    dataUrl: string;
+    uploadedAt: number;
+  };
+  presentationTemplate?: {
+    fileName: string;
+    dataUrl: string;
+    uploadedAt: number;
+  };
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface CustomJourneyStep {
   id: string;
   title: string;
+  authorId?: string;
   description?: string;
   phase?: string;
   aiModelId?: string;
   prompt?: string;
+  promptVersions?: PromptVersion[];
+  steps?: CustomStageChildStep[];
   selectedDocumentIds?: string[];
   selectedTranscriptIds?: string[];
   outputType?: 'CHAT_INTERFACE' | 'EXCEL_DOC' | 'PRESENTATION';
@@ -98,6 +132,11 @@ export interface CustomJourneyStep {
   };
   createdAt: number;
   updatedAt: number;
+}
+
+export interface CustomStepReference {
+  id: string;
+  authorId: string;
 }
 
 // Meeting types
@@ -147,8 +186,11 @@ export interface Company {
     deepDiveSelectedDomains?: string[];
     deepDiveSelectedUseCases?: string[];
     customSteps?: CustomJourneyStep[];
+    customStepIds?: string[];
+    customStepRefs?: CustomStepReference[];
     journeyStepSettings?: Partial<JourneyStepSettings>;
     currentStepId?: string;
+    stepOrder?: string[];
     updatedAt?: number;
   };
   meetings?: Meeting[]; // Array of meetings for this company
@@ -199,8 +241,11 @@ export interface CompanyJourney {
   deepDiveSelectedDomains?: string[];
   deepDiveSelectedUseCases?: string[];
   customSteps?: CustomJourneyStep[];
+  customStepIds?: string[];
+  customStepRefs?: CustomStepReference[];
   journeyStepSettings?: Partial<JourneyStepSettings>;
   currentStepId?: string;
+  stepOrder?: string[];
 }
 
 export interface FunctionalHighLevelMeeting {

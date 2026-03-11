@@ -290,18 +290,38 @@ Remember: Project structure and relationships are the TOP priority.`,
 }
 
 export async function researchCompany({ companyName, rfpContent, model = 'gemini-2.5-pro' }: ResearchCompanyParams): Promise<CompanyResearch> {
-  const systemInstruction = `You are an expert business analyst and AI consultant. Research the given company and provide a comprehensive analysis including:
-- Company overview and core business
-- Industry analysis
-- Key products/services
-- Market challenges and opportunities
-- Current market position and competitors
-- Use cases for AI/automation
-- Current AI implementation status
-- Potential AI opportunities
-Format the response as structured JSON matching the specified schema.`;
+  const systemInstruction = `You are an expert business analyst and AI transformation strategist.
 
-  const prompt = `Research and analyze ${companyName}, focusing on their business operations and AI/automation opportunities.${rfpContent ? `\n\nAdditionally, analyze this RFP document from the company:\n${rfpContent}` : ''}`;
+Return a rigorous, executive-grade company analysis with practical AI optimization opportunities.
+
+Quality requirements:
+- Be specific, not generic. Tailor to the company's industry, operating model, and likely tech stack.
+- Emphasize AI optimization opportunities across core workflows (revenue, operations, support, finance, risk/compliance, and knowledge work where applicable).
+- For each item in opportunities/useCases/recommendations, include concrete detail in one line:
+  - process or function,
+  - current pain point,
+  - AI/automation intervention,
+  - expected business outcome,
+  - measurable KPI signal.
+- Prioritize by business impact and implementation feasibility.
+- If information is uncertain, state assumptions briefly and keep them realistic.
+
+Coverage requirements:
+- products: at least 5 when possible
+- challenges: at least 6 when possible
+- opportunities: at least 8 when possible (include AI optimization opportunities explicitly)
+- useCases: at least 8 when possible
+- aiRelevance.recommendations: 6-10 prioritized recommendations including quick wins (0-90 days), medium-term (3-9 months), and strategic bets (9+ months).
+
+Output must be valid JSON matching the provided schema.`;
+
+  const prompt = `Research and analyze ${companyName} with a focus on actionable AI optimization opportunities and automation roadmap recommendations.
+
+Important:
+- Ground insights in plausible company context, industry realities, and known patterns.
+- Prioritize high-value opportunities with clear KPI-oriented outcomes.
+- Avoid vague statements; provide implementation-oriented specificity.
+${rfpContent ? `\n\nAdditionally, incorporate this RFP content as a primary signal for priorities, constraints, and required capabilities:\n${rfpContent}` : ''}`;
 
   try {
     const modelConfig = AI_MODELS.find(m => m.id === model);
@@ -527,7 +547,7 @@ Return a ranked list of relevant scenarios with explanations. Prioritize scenari
 export async function generateText(prompt: string, image: ImagePart | null, opts?: { temperature?: number; candidateCount?: number; }): Promise<string> {
   try {
     const systemInstruction = `You are an AI workflow assistant. Your task is to help explain workflow processes clearly and comprehensively. If a workflow diagram is provided, carefully analyze it and incorporate its details into your explanation. Pay special attention to:
-- The sequence and dependencies between steps
+- The sequence and dependencies between stages
 - Decision points and conditional flows
 - Integration points between AI and human tasks
 - Data flows and handoffs between systems
@@ -613,7 +633,7 @@ Please provide your evaluation based on the criteria in your instructions.`;
             },
             feedback: {
               type: Type.STRING,
-              description: "Constructive feedback on the user's workflow, critiquing their choices about AI automation vs. human steps, and providing suggestions for improvement."
+              description: "Constructive feedback on the user's workflow, critiquing their choices about AI automation vs. human stages, and providing suggestions for improvement."
             }
           },
           required: ["score", "feedback"],
@@ -691,9 +711,9 @@ export async function generatePRD(
     `${index + 1}. ${p}: ${platformGuidance[p]}`
   ).join('\n');
 
-  const systemInstruction = `You are a senior product manager. Produce a crisp, complete Product Requirements Document (PRD) based on the user goal, steps, and optional Mermaid flowchart. Keep scope pragmatic and shippable in 2-3 iterations. Use clear bullet points. ${multiPlatformGuidance}`;
+  const systemInstruction = `You are a senior product manager. Produce a crisp, complete Product Requirements Document (PRD) based on the user goal, stages, and optional Mermaid flowchart. Keep scope pragmatic and shippable in 2-3 iterations. Use clear bullet points. ${multiPlatformGuidance}`;
 
-  const userContent = `Inputs:\n- Goal: ${goal}\n- Steps:\n${stepsText}\n${mermaidCode ? `- Mermaid Flowchart:\n${mermaidCode}` : ''}\n- Target Platforms:\n${platformsList}`;
+  const userContent = `Inputs:\n- Goal: ${goal}\n- Stages:\n${stepsText}\n${mermaidCode ? `- Mermaid Flowchart:\n${mermaidCode}` : ''}\n- Target Platforms:\n${platformsList}`;
 
   try {
     const response = await ai.models.generateContent({
@@ -801,7 +821,7 @@ export interface ElevatorPitch {
   targetAudience: string;    // Who it's for
   differentiation: string[]; // Why it's better / unique
   outcomes: string[];        // Tangible benefits/impact
-  callToAction: string;      // Ask or next step
+  callToAction: string;      // Ask or next stage
   pitches: {
     seconds30: string;       // 30s version
     seconds90: string;       // 90s version
@@ -827,18 +847,18 @@ export async function generateElevatorPitch(
     ? `Target Platform: This solution is designed for ${platforms[0]}.`
     : '';
 
-  const systemInstruction = `You are a pitch coach. Create a punchy, credible elevator pitch from the user's goal and workflow steps.
+  const systemInstruction = `You are a pitch coach. Create a punchy, credible elevator pitch from the user's goal and workflow stages.
 Rules:
 - Be specific and concrete. Avoid fluff.
 - Highlight audience, problem, solution, differentiation, and outcomes.
 - Produce two variants: 30s and 90s.
 - Keep jargon minimal.
 - Include a professional slide presentation outline (8-12 slides) suitable for a business pitch deck.
-- The slide deck should follow standard pitch deck structure: Title/Hook, Problem, Solution, How It Works, Market/Audience, Competition/Differentiation, Outcomes/Benefits, Business Model (if applicable), Roadmap/Next Steps, Call to Action, and optional Q&A slide.
+- The slide deck should follow standard pitch deck structure: Title/Hook, Problem, Solution, How It Works, Market/Audience, Competition/Differentiation, Outcomes/Benefits, Business Model (if applicable), Roadmap/Next Stages, Call to Action, and optional Q&A slide.
 - Each slide should have a clear title, 3-5 bullet points or key content items, and optional speaker notes for the presenter.
 ${multiPlatformGuidance}`;
 
-  const userContent = `Inputs:\n- Goal: ${goal}\n- Steps:\n${stepsText}${platforms ? `\n- Target Platforms: ${platforms.join(', ')}` : ''}`;
+  const userContent = `Inputs:\n- Goal: ${goal}\n- Stages:\n${stepsText}${platforms ? `\n- Target Platforms: ${platforms.join(', ')}` : ''}`;
 
   try {
     const response = await ai.models.generateContent({

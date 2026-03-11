@@ -109,7 +109,7 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
           <h3 id="tools-docs-heading" className="text-sm font-bold tracking-wide text-wm-blue uppercase">
             {t('toolsDocs.title') || 'Tools & Docs'}
           </h3>
-          <p className="text-xs text-wm-blue/60">
+          <p className="text-sm text-wm-blue/60">
             {t('aiActions.subtitle').replace('{platform}', getPlatformDisplayNames())}
           </p>
         </div>
@@ -197,7 +197,7 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
               <button
                 type="button"
                 onClick={onOpenLastPrd}
-                className="group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-wm-accent/10 hover:bg-wm-accent/20 text-wm-accent hover:text-wm-accent text-xs font-bold border border-wm-accent/30 hover:border-wm-accent/50 transition"
+                className="group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-wm-accent/10 hover:bg-wm-accent/20 text-wm-accent hover:text-wm-accent text-sm font-bold border border-wm-accent/30 hover:border-wm-accent/50 transition"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"/><path d="M8 10h4v1H8v-1zm0 2h4v1H8v-1z"/></svg>
                 <span>{t('toolsDocs.latestPrd') || 'Latest PRD'}</span>
@@ -208,7 +208,7 @@ const AIActionsPanel: React.FC<AIActionsPanelProps> = ({
               <button
                 type="button"
                 onClick={onOpenLastPitch}
-                className="group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-wm-pink/10 hover:bg-wm-pink/20 text-wm-pink hover:text-wm-pink text-xs font-bold border border-wm-pink/30 hover:border-wm-pink/50 transition"
+                className="group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-wm-pink/10 hover:bg-wm-pink/20 text-wm-pink hover:text-wm-pink text-sm font-bold border border-wm-pink/30 hover:border-wm-pink/50 transition"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6"/></svg>
                 <span>{t('toolsDocs.latestPitch') || 'Latest Pitch'}</span>

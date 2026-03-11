@@ -225,7 +225,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
               <h2 className="text-lg font-semibold text-white">
                 {selectedAgent ? selectedAgent.name : 'AI Assistant'}
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-sm text-slate-400">
                 {selectedAgent ? selectedAgent.description : 'Powered by Gemini 2.0'}
               </p>
             </div>
@@ -295,7 +295,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                   {message.files && message.files.length > 0 && (
                     <div className="mt-2 space-y-1">
                       {message.files.map((file, idx) => (
-                        <div key={idx} className="flex items-center gap-2 text-xs bg-slate-700/50 rounded px-2 py-1">
+                        <div key={idx} className="flex items-center gap-2 text-sm bg-slate-700/50 rounded px-2 py-1">
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
                           </svg>
@@ -306,7 +306,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                   )}
                   
                   <div
-                    className={`text-xs mt-2 ${
+                    className={`text-sm mt-2 ${
                       message.role === 'user' ? 'text-violet-200' : 'text-slate-500'
                     }`}
                   >
@@ -358,7 +358,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                       <svg className="w-4 h-4 text-slate-400" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
                       </svg>
-                      <span className="text-xs text-slate-300 truncate max-w-[120px]">{file.name}</span>
+                      <span className="text-sm text-slate-300 truncate max-w-[120px]">{file.name}</span>
                       <button
                         onClick={() => removeFile(idx)}
                         className="ml-1 text-red-400 hover:text-red-300"
@@ -416,7 +416,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                 )}
               </button>
             </form>
-            <p className="text-xs text-slate-500 mt-2">
+            <p className="text-sm text-slate-500 mt-2">
               📎 Attach images & documents • Press Enter to send • Shift+Enter for new line • ESC to close
             </p>
           </div>
@@ -431,7 +431,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-white">AI Agents</h3>
-                <p className="text-xs text-slate-400 mt-1">Select an agent to chat with</p>
+                <p className="text-sm text-slate-400 mt-1">Select an agent to chat with</p>
               </div>
               {isLoadingAgents && (
                 <div className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
@@ -464,7 +464,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold">Default AI</div>
-                  <div className="text-xs opacity-80 truncate">Gemini 2.0 Flash</div>
+                  <div className="text-sm opacity-80 truncate">Gemini 2.0 Flash</div>
                 </div>
               </div>
             </button>
@@ -497,7 +497,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold">{agent.name}</div>
-                    <div className="text-xs opacity-80 truncate">{agent.description}</div>
+                    <div className="text-sm opacity-80 truncate">{agent.description}</div>
                   </div>
                 </div>
               </button>

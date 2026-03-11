@@ -295,7 +295,7 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
               <div className="flex gap-2">
                 <button
                   onClick={handleAddDomain}
-                  className="flex-1 px-3 py-1.5 text-xs font-bold bg-wm-accent text-white rounded hover:bg-wm-accent/90 transition-colors"
+                  className="flex-1 px-3 py-1.5 text-sm font-bold bg-wm-accent text-white rounded hover:bg-wm-accent/90 transition-colors"
                 >
                   Save
                 </button>
@@ -304,7 +304,7 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
                     setIsAdding(false);
                     setNewDomain('');
                   }}
-                  className="flex-1 px-3 py-1.5 text-xs font-bold text-wm-blue/70 hover:bg-wm-neutral/20 rounded transition-colors"
+                  className="flex-1 px-3 py-1.5 text-sm font-bold text-wm-blue/70 hover:bg-wm-neutral/20 rounded transition-colors"
                 >
                   Cancel
                 </button>
@@ -330,13 +330,13 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
                   <div className="flex gap-2">
                     <button
                       onClick={handleSaveEdit}
-                      className="flex-1 px-2 py-1 text-xs font-bold bg-wm-accent text-white rounded hover:bg-wm-accent/90 transition-colors"
+                      className="flex-1 px-2 py-1 text-sm font-bold bg-wm-accent text-white rounded hover:bg-wm-accent/90 transition-colors"
                     >
                       Save
                     </button>
                     <button
                       onClick={handleCancelEdit}
-                      className="flex-1 px-2 py-1 text-xs font-bold text-wm-blue/70 hover:bg-wm-neutral/20 rounded transition-colors"
+                      className="flex-1 px-2 py-1 text-sm font-bold text-wm-blue/70 hover:bg-wm-neutral/20 rounded transition-colors"
                     >
                       Cancel
                     </button>
@@ -347,7 +347,7 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-wm-blue text-sm">{domain.name}</span>
-                      <span className="text-xs text-wm-blue/40 bg-wm-neutral/20 px-1.5 py-0.5 rounded">
+                      <span className="text-sm text-wm-blue/40 bg-wm-neutral/20 px-1.5 py-0.5 rounded">
                         {useCases.filter(uc => uc.domain === domain.name).length} workflows
                       </span>
                     </div>
@@ -373,7 +373,7 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
                   <button
                     onClick={() => handleGenerateWorkflows(index)}
                     disabled={generatingForDomain === index}
-                    className="w-full mb-2 px-3 py-2 text-xs font-bold bg-gradient-to-r from-wm-accent/10 to-wm-pink/10 text-wm-accent rounded hover:from-wm-accent/20 hover:to-wm-pink/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full mb-2 px-3 py-2 text-sm font-bold bg-gradient-to-r from-wm-accent/10 to-wm-pink/10 text-wm-accent rounded hover:from-wm-accent/20 hover:to-wm-pink/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {generatingForDomain === index ? (
                       <>
@@ -395,7 +395,7 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
                   
                   <button
                     onClick={() => setExpandedDomain(expandedDomain === index ? null : index)}
-                    className="w-full text-left text-xs text-wm-blue/50 hover:text-wm-accent transition-colors flex items-center gap-1"
+                    className="w-full text-left text-sm text-wm-blue/50 hover:text-wm-accent transition-colors flex items-center gap-1"
                   >
                     <svg className={`w-3 h-3 transition-transform ${expandedDomain === index ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -408,10 +408,10 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
                       {domain.examples.map((example, exIdx) => {
                         const count = getProcessCount(domain.name, example);
                         return (
-                          <div key={exIdx} className="flex items-center justify-between text-xs bg-wm-neutral/10 rounded px-2 py-1.5 group/example">
+                          <div key={exIdx} className="flex items-center justify-between text-sm bg-wm-neutral/10 rounded px-2 py-1.5 group/example">
                             <div className="flex items-center gap-2">
                               <span className="text-wm-blue">{example}</span>
-                              <span className="text-xs text-wm-blue/40 bg-wm-accent/10 px-1.5 py-0.5 rounded font-bold">
+                              <span className="text-sm text-wm-blue/40 bg-wm-accent/10 px-1.5 py-0.5 rounded font-bold">
                                 {count}
                               </span>
                             </div>
@@ -434,12 +434,12 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
                             onChange={(e) => setNewExample(e.target.value)}
                             onKeyPress={(e) => e.key === 'Enter' && handleAddExample(index)}
                             placeholder="Example sub-domain name"
-                            className="flex-1 bg-white border border-wm-neutral/30 rounded px-2 py-1 text-xs text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none"
+                            className="flex-1 bg-white border border-wm-neutral/30 rounded px-2 py-1 text-sm text-wm-blue focus:ring-2 focus:ring-wm-accent focus:outline-none"
                             autoFocus
                           />
                           <button
                             onClick={() => handleAddExample(index)}
-                            className="px-2 py-1 text-xs font-bold bg-wm-accent text-white rounded hover:bg-wm-accent/90"
+                            className="px-2 py-1 text-sm font-bold bg-wm-accent text-white rounded hover:bg-wm-accent/90"
                           >
                             Add
                           </button>
@@ -448,7 +448,7 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
                               setAddingExampleTo(null);
                               setNewExample('');
                             }}
-                            className="px-2 py-1 text-xs font-bold text-wm-blue/70 hover:bg-wm-neutral/20 rounded"
+                            className="px-2 py-1 text-sm font-bold text-wm-blue/70 hover:bg-wm-neutral/20 rounded"
                           >
                             Cancel
                           </button>
@@ -456,7 +456,7 @@ Make each use case specific to ${domainName} with realistic details, metrics, an
                       ) : (
                         <button
                           onClick={() => setAddingExampleTo(index)}
-                          className="w-full text-xs text-wm-accent hover:text-wm-accent/80 font-bold flex items-center gap-1 px-2 py-1.5 hover:bg-wm-accent/5 rounded transition-colors"
+                          className="w-full text-sm text-wm-accent hover:text-wm-accent/80 font-bold flex items-center gap-1 px-2 py-1.5 hover:bg-wm-accent/5 rounded transition-colors"
                         >
                           <Icons.Plus className="w-3 h-3" />
                           Add sub-domain

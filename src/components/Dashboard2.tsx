@@ -306,14 +306,14 @@ const CompaniesTableWithScenarios: React.FC<CompaniesTableProps> = ({
                                           <div className="min-w-0">
                                             <p className="font-medium text-wm-blue text-sm">{scenario.title}</p>
                                             {scenario.domain && (
-                                              <span className="text-xs text-wm-blue/50">{scenario.domain}</span>
+                                              <span className="text-sm text-wm-blue/50">{scenario.domain}</span>
                                             )}
                                           </div>
                                         </div>
                                         {onStartTraining && (
                                           <button
                                             onClick={() => onStartTraining(scenario)}
-                                            className="px-3 py-1 text-xs bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 transition-colors flex-shrink-0 ml-2"
+                                            className="px-3 py-1 text-sm bg-wm-accent text-white rounded-lg hover:bg-wm-accent/90 transition-colors flex-shrink-0 ml-2"
                                           >
                                             Run Scenario
                                           </button>
@@ -329,10 +329,10 @@ const CompaniesTableWithScenarios: React.FC<CompaniesTableProps> = ({
                                           <div className="flex items-center gap-2">
                                             <Icons.CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
                                             <div className="flex-1 min-w-0">
-                                              <p className="text-xs font-medium text-green-800 group-hover:underline truncate">
+                                              <p className="text-sm font-medium text-green-800 group-hover:underline truncate">
                                                 {latestVersion.versionTitle || 'Latest Version'}
                                               </p>
-                                              <p className="text-xs text-green-600">
+                                              <p className="text-sm text-green-600">
                                                 Saved {new Date(latestVersion.timestamp).toLocaleDateString()}
                                                 {latestVersion.evaluationScore !== null && (
                                                   <span className="ml-2">• Score: {latestVersion.evaluationScore}/100</span>
@@ -344,7 +344,7 @@ const CompaniesTableWithScenarios: React.FC<CompaniesTableProps> = ({
                                         </button>
                                       ) : (
                                         <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                                          <p className="text-xs text-gray-500">No saved versions yet</p>
+                                          <p className="text-sm text-gray-500">No saved versions yet</p>
                                         </div>
                                       )}
                                     </div>
@@ -386,14 +386,14 @@ const CompaniesTableWithScenarios: React.FC<CompaniesTableProps> = ({
                                         <p className="font-medium text-wm-blue text-sm">{doc.fileName}</p>
                                         <div className="flex items-center gap-2 mt-0.5">
                                           {doc.isRfp && (
-                                            <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">RFP</span>
+                                            <span className="text-sm bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">RFP</span>
                                           )}
                                           {doc.documentAnalysis?.category && (
-                                            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                                            <span className="text-sm bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
                                               {doc.documentAnalysis.category}
                                             </span>
                                           )}
-                                          <span className="text-xs text-wm-blue/40">
+                                          <span className="text-sm text-wm-blue/40">
                                             {new Date(doc.uploadedAt).toLocaleDateString()}
                                           </span>
                                         </div>
@@ -401,7 +401,7 @@ const CompaniesTableWithScenarios: React.FC<CompaniesTableProps> = ({
                                     </div>
                                     <div className="flex items-center gap-2">
                                       {doc.analysis && (
-                                        <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                                        <span className="text-sm bg-green-100 text-green-700 px-2 py-1 rounded">
                                           Analyzed
                                         </span>
                                       )}
@@ -410,7 +410,7 @@ const CompaniesTableWithScenarios: React.FC<CompaniesTableProps> = ({
                                           href={doc.url}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="px-3 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                          className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                         >
                                           View
                                         </a>
@@ -434,10 +434,10 @@ const CompaniesTableWithScenarios: React.FC<CompaniesTableProps> = ({
                                     </div>
                                     <span className="font-medium text-wm-blue text-sm">Presentations</span>
                                   </div>
-                                  <p className="text-xs text-wm-blue/50 mb-3">Generated sales decks and demos</p>
+                                  <p className="text-sm text-wm-blue/50 mb-3">Generated sales decks and demos</p>
                                   <button
                                     onClick={() => onNavigateToResearch(company.id)}
-                                    className="w-full px-3 py-1.5 text-xs bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+                                    className="w-full px-3 py-1.5 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
                                   >
                                     Create Presentation
                                   </button>
@@ -451,10 +451,10 @@ const CompaniesTableWithScenarios: React.FC<CompaniesTableProps> = ({
                                     </div>
                                     <span className="font-medium text-wm-blue text-sm">Use Cases</span>
                                   </div>
-                                  <p className="text-xs text-wm-blue/50 mb-3">Automation use cases created</p>
+                                  <p className="text-sm text-wm-blue/50 mb-3">Automation use cases created</p>
                                   <button
                                     onClick={() => onNavigateToResearch(company.id)}
-                                    className="w-full px-3 py-1.5 text-xs bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                                    className="w-full px-3 py-1.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
                                   >
                                     View Use Cases
                                   </button>
@@ -468,10 +468,10 @@ const CompaniesTableWithScenarios: React.FC<CompaniesTableProps> = ({
                                     </div>
                                     <span className="font-medium text-wm-blue text-sm">Reports</span>
                                   </div>
-                                  <p className="text-xs text-wm-blue/50 mb-3">Analysis and ROI reports</p>
+                                  <p className="text-sm text-wm-blue/50 mb-3">Analysis and ROI reports</p>
                                   <button
                                     onClick={() => onNavigateToResearch(company.id)}
-                                    className="w-full px-3 py-1.5 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                                    className="w-full px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                                   >
                                     Generate Report
                                   </button>
@@ -599,13 +599,13 @@ WORKING DEMO FOR ${scenario.title.toUpperCase()}:
 Create an INTERACTIVE DEMO section for this solution that includes:
 
 1. **Live Input Form**: Create a realistic input form where users can enter sample data relevant to this workflow. Include:
-   - Appropriate input fields based on the workflow steps
+  - Appropriate input fields based on the workflow stages
    - Placeholder text showing example values
    - A "Run Demo" button
 
 2. **Simulated Processing Animation**: When the demo runs, show:
-   - A step-by-step progress indicator matching the workflow steps
-   - Brief animated transitions between steps (1-2 seconds each)
+  - A stage-by-stage progress indicator matching the workflow stages
+  - Brief animated transitions between stages (1-2 seconds each)
    - Visual indicators showing AI vs Human decision points
 
 3. **Sample Output Display**: After the "processing" completes, display:
@@ -628,7 +628,7 @@ Please structure the presentation to include:
    c. **WORKING INTERACTIVE DEMO** (as specified above)
    d. Expected ROI and metrics
 3. Implementation Roadmap
-4. Next Steps
+4. Next Stages
 
 CRITICAL: Each solution MUST have its own fully functional interactive demo.`;
 
@@ -730,12 +730,12 @@ CRITICAL: Each solution MUST have its own fully functional interactive demo.`;
                           </div>
                           <div>
                             <span className="font-semibold text-wm-blue">{scenario.title}</span>
-                            <p className="text-xs text-wm-blue/50">{versions.length} version{versions.length !== 1 ? 's' : ''}</p>
+                            <p className="text-sm text-wm-blue/50">{versions.length} version{versions.length !== 1 ? 's' : ''}</p>
                           </div>
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="inline-block px-2 py-1 bg-wm-blue/10 text-wm-blue text-xs rounded">
+                        <span className="inline-block px-2 py-1 bg-wm-blue/10 text-wm-blue text-sm rounded">
                           {scenario.domain || 'General'}
                         </span>
                       </td>
@@ -747,7 +747,7 @@ CRITICAL: Each solution MUST have its own fully functional interactive demo.`;
                       </td>
                       <td className="py-3 px-4 text-right">
                         {selectedCount > 0 && (
-                          <span className="text-xs text-wm-accent font-medium">
+                          <span className="text-sm text-wm-accent font-medium">
                             {selectedCount} selected
                           </span>
                         )}
@@ -1160,16 +1160,16 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-auto bg-wm-neutral/5">
-        <div className="p-6 h-full flex flex-col">
+        <div className="p-3 sm:p-4 h-full flex flex-col">
           {/* Overview Section - Companies Table and Scenarios/Versions */}
           {activeSection === 'overview' && (
-            <div className="space-y-8">
-              <div className="text-center space-y-4">
+            <div className="space-y-4">
+              <div className="text-center space-y-2">
                 <h2 className="text-2xl font-semibold text-wm-blue">
                   Company Research Center
                 </h2>
                 <div className="flex items-center justify-center">
-                  <div className="relative w-full max-w-2xl">
+                  <div className="relative w-full">
                     <SearchInput
                       type="text"
                       value={companySearchQuery}
@@ -1183,7 +1183,7 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                       <div className="absolute top-full mt-2 w-full bg-white border-2 border-wm-accent/30 rounded-xl shadow-xl max-h-96 overflow-y-auto z-50">
                         {filteredCompanies.length > 0 && (
                           <div className="p-2">
-                            <p className="text-xs text-wm-blue/50 px-4 py-2 uppercase font-medium">Your Companies</p>
+                            <p className="text-sm text-wm-blue/50 px-4 py-2 uppercase font-medium">Your Companies</p>
                             {filteredCompanies.slice(0, 5).map((company) => (
                               <button
                                 key={company.id}
@@ -1209,7 +1209,7 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
 
                         {(otherUsersCompanies.length > 0 || isSearchingOthers) && (
                           <div className="border-t border-wm-neutral/10 p-2">
-                            <p className="text-xs text-wm-blue/50 px-4 py-2 uppercase font-medium flex items-center gap-2">
+                            <p className="text-sm text-wm-blue/50 px-4 py-2 uppercase font-medium flex items-center gap-2">
                               <Icons.Users className="w-3 h-3" />
                               Other Users' Research
                               {isSearchingOthers && <span className="text-wm-accent">...</span>}
@@ -1227,7 +1227,7 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                                   <Icons.Building className="w-4 h-4 text-purple-400" />
                                   <div className="flex-1 min-w-0">
                                     <span className="text-wm-blue">{company.name}</span>
-                                    <span className="ml-2 text-xs text-purple-500 bg-purple-100 px-1.5 py-0.5 rounded">shared</span>
+                                    <span className="ml-2 text-sm text-purple-500 bg-purple-100 px-1.5 py-0.5 rounded">shared</span>
                                   </div>
                                 </div>
                               </button>
@@ -1270,8 +1270,8 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <section className="lg:col-span-2 bg-white rounded-xl border border-wm-neutral/20 shadow-sm p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <section className="lg:col-span-2 bg-white rounded-xl border border-wm-neutral/20 shadow-sm p-4">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="text-lg font-semibold text-wm-blue">Recent Companies</h3>
@@ -1281,55 +1281,68 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                   {companies.length === 0 ? (
                     <div className="text-center py-10 text-wm-blue/60">No companies yet.</div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {[...companies]
-                        .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0))
-                        .slice(0, 6)
-                        .map((company) => (
-                          <div
-                            key={company.id}
-                            className="w-full text-left border border-wm-neutral/20 rounded-lg p-4 hover:shadow-sm hover:border-wm-blue/30 transition"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <button
-                                onClick={() => handleNavigate?.('RESEARCH', company.id)}
-                                className="text-left flex-1"
+                    <div className="overflow-x-auto border border-wm-neutral/20 rounded-lg">
+                      <table className="w-full text-sm">
+                        <thead className="bg-wm-neutral/5 border-b border-wm-neutral/20">
+                          <tr>
+                            <th className="text-left py-2 px-3 font-semibold text-wm-blue/70">Company</th>
+                            <th className="text-left py-2 px-3 font-semibold text-wm-blue/70">Industry</th>
+                            <th className="text-center py-2 px-3 font-semibold text-wm-blue/70">Processes</th>
+                            <th className="text-left py-2 px-3 font-semibold text-wm-blue/70">Updated</th>
+                            <th className="text-right py-2 px-3 font-semibold text-wm-blue/70">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-wm-neutral/10">
+                          {[...companies]
+                            .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0))
+                            .slice(0, 6)
+                            .map((company) => (
+                              <tr
+                                key={company.id}
+                                className="hover:bg-wm-neutral/5 transition-colors"
                               >
-                                <p className="text-sm font-semibold text-wm-blue">{company.name}</p>
-                                <p className="text-xs text-wm-blue/50 mt-1">
-                                  {company.research?.currentResearch?.industry || 'Industry not specified'}
-                                </p>
-                              </button>
-                              {isAdminUser && (
-                                <button
-                                  type="button"
-                                  onClick={async (event) => {
-                                    event.stopPropagation();
-                                    if (!window.confirm(`Delete ${company.name}? This cannot be undone.`)) {
-                                      return;
-                                    }
-                                    try {
-                                      await deleteCompany(company.id, user.uid);
-                                      setCompanies((prev) => prev.filter((item) => item.id !== company.id));
-                                    } catch (error) {
-                                      console.error('Failed to delete company:', error);
-                                      const message = error instanceof Error ? error.message : 'Unknown error';
-                                      alert(`Failed to delete company: ${message}`);
-                                    }
-                                  }}
-                                  className="p-2 rounded-md text-wm-pink hover:bg-wm-pink/10"
-                                  aria-label={`Delete ${company.name}`}
-                                  title="Delete company"
-                                >
-                                  <Icons.Trash className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                            <div className="mt-3 text-xs text-wm-blue/50">
-                              {company.selectedScenarios?.length || 0} processes • Updated {company.lastUpdated ? new Date(company.lastUpdated).toLocaleDateString() : '—'}
-                            </div>
-                          </div>
-                        ))}
+                                <td className="py-2 px-3 font-medium text-wm-blue">{company.name}</td>
+                                <td className="py-2 px-3 text-wm-blue/60">{company.research?.currentResearch?.industry || 'Industry not specified'}</td>
+                                <td className="py-2 px-3 text-center text-wm-blue/70">{company.selectedScenarios?.length || 0}</td>
+                                <td className="py-2 px-3 text-wm-blue/60">{company.lastUpdated ? new Date(company.lastUpdated).toLocaleDateString() : '—'}</td>
+                                <td className="py-2 px-3">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button
+                                      onClick={() => handleNavigate?.('RESEARCH', company.id)}
+                                      className="px-2.5 py-1 text-xs text-wm-blue hover:bg-wm-blue/10 rounded-md transition-colors"
+                                    >
+                                      Open
+                                    </button>
+                                    {isAdminUser && (
+                                      <button
+                                        type="button"
+                                        onClick={async (event) => {
+                                          event.stopPropagation();
+                                          if (!window.confirm(`Delete ${company.name}? This cannot be undone.`)) {
+                                            return;
+                                          }
+                                          try {
+                                            await deleteCompany(company.id, user.uid);
+                                            setCompanies((prev) => prev.filter((item) => item.id !== company.id));
+                                          } catch (error) {
+                                            console.error('Failed to delete company:', error);
+                                            const message = error instanceof Error ? error.message : 'Unknown error';
+                                            alert(`Failed to delete company: ${message}`);
+                                          }
+                                        }}
+                                        className="p-1.5 rounded-md text-wm-pink hover:bg-wm-pink/10"
+                                        aria-label={`Delete ${company.name}`}
+                                        title="Delete company"
+                                      >
+                                        <Icons.Trash className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </section>
@@ -1417,11 +1430,11 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                                     >
                                       {scenario?.title || latestRun.scenarioTitle || 'Untitled process'}
                                     </a>
-                                    <p className="text-xs text-wm-blue/50">
+                                    <p className="text-sm text-wm-blue/50">
                                       {scenario?.domain || 'General'}
                                     </p>
                                     {latestRun ? (
-                                      <p className="text-xs text-wm-blue/50">
+                                      <p className="text-sm text-wm-blue/50">
                                         Latest run:{' '}
                                         {latestRun.workflowId ? (
                                           <a
@@ -1442,7 +1455,7 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                                         )}
                                       </p>
                                     ) : (
-                                      <p className="text-xs text-wm-blue/50">
+                                      <p className="text-sm text-wm-blue/50">
                                         No runs yet
                                       </p>
                                     )}
@@ -1458,7 +1471,7 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                                           [group.scenarioId]: !prev[group.scenarioId]
                                         }))
                                       }
-                                      className="text-xs text-wm-accent hover:text-wm-accent/80"
+                                      className="text-sm text-wm-accent hover:text-wm-accent/80"
                                     >
                                       {isExpanded ? 'Hide' : 'Show'} {remainingRuns.length} previous run{remainingRuns.length === 1 ? '' : 's'}
                                     </button>
@@ -1478,12 +1491,12 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                                                     event.stopPropagation();
                                                     onViewWorkflow?.(run.workflowId as string);
                                                   }}
-                                                  className="text-xs font-medium text-wm-blue hover:text-wm-accent underline truncate block"
+                                                  className="text-sm font-medium text-wm-blue hover:text-wm-accent underline truncate block"
                                                 >
                                                   {(run.companyName || 'Unknown company')} • {new Date(run.timestamp).toLocaleDateString()}
                                                 </a>
                                               ) : (
-                                                <span className="text-xs font-medium text-wm-blue truncate block">
+                                                <span className="text-sm font-medium text-wm-blue truncate block">
                                                   {(run.companyName || 'Unknown company')} • {new Date(run.timestamp).toLocaleDateString()}
                                                 </span>
                                               )}
@@ -1512,11 +1525,11 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
           {activeSection === 'companies' && (
             <div className="space-y-6">
               <div className="bg-white rounded-xl border border-wm-neutral/20 shadow-sm">
-                <div className="p-6 border-b border-wm-neutral/20">
-                  <div className="text-center space-y-4">
+                <div className="p-4 border-b border-wm-neutral/20">
+                  <div className="text-center space-y-2">
                     <h3 className="text-xl font-semibold text-wm-blue">All Companies</h3>
                     <div className="flex items-center justify-center">
-                      <div className="relative w-full max-w-2xl">
+                      <div className="relative w-full">
                         <SearchInput
                           type="text"
                           value={companySearchQuery}
@@ -1531,7 +1544,7 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                             {/* Your Companies Section */}
                             {filteredCompanies.length > 0 && (
                               <div className="p-2">
-                                <p className="text-xs text-wm-blue/50 px-4 py-2 uppercase font-medium">Your Companies</p>
+                                <p className="text-sm text-wm-blue/50 px-4 py-2 uppercase font-medium">Your Companies</p>
                                 {filteredCompanies.slice(0, 5).map((company) => (
                                   <button
                                     key={company.id}
@@ -1558,7 +1571,7 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                             {/* Other Users' Research Section */}
                             {(otherUsersCompanies.length > 0 || isSearchingOthers) && (
                               <div className="border-t border-wm-neutral/10 p-2">
-                                <p className="text-xs text-wm-blue/50 px-4 py-2 uppercase font-medium flex items-center gap-2">
+                                <p className="text-sm text-wm-blue/50 px-4 py-2 uppercase font-medium flex items-center gap-2">
                                   <Icons.Users className="w-3 h-3" />
                                   Other Users' Research
                                   {isSearchingOthers && <span className="text-wm-accent">...</span>}
@@ -1576,7 +1589,7 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                                       <Icons.Building className="w-4 h-4 text-purple-400" />
                                       <div className="flex-1 min-w-0">
                                         <div className="font-bold text-wm-blue">{company.name}</div>
-                                        <div className="text-xs text-purple-500 bg-purple-100 inline-block mt-1 px-1.5 py-0.5 rounded">
+                                        <div className="text-sm text-purple-500 bg-purple-100 inline-block mt-1 px-1.5 py-0.5 rounded">
                                           shared
                                         </div>
                                       </div>
@@ -1649,31 +1662,31 @@ const Dashboard2: React.FC<Dashboard2Props> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {filteredCompanies.map((company) => (
-                        <div 
-                          key={company.id}
-                          className="p-4 border border-wm-neutral/20 rounded-lg hover:border-wm-blue/30 hover:shadow-md cursor-pointer transition-all"
-                          onClick={() => handleNavigate?.('RESEARCH', company.id)}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="w-12 h-12 bg-wm-blue/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                              <Icons.Building className="w-6 h-6 text-wm-blue" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-wm-blue truncate">{company.name}</h4>
-                              <p className="text-sm text-wm-blue/60 mt-1">
-                                {company.research?.currentResearch?.industry || 'Industry not specified'}
-                              </p>
-                              <div className="flex items-center gap-2 mt-2">
-                                <span className="text-xs bg-wm-neutral/10 text-wm-blue/70 px-2 py-1 rounded">
-                                  {company.selectedScenarios?.length || 0} scenarios
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="overflow-x-auto border border-wm-neutral/20 rounded-lg">
+                      <table className="w-full text-sm">
+                        <thead className="bg-wm-neutral/5 border-b border-wm-neutral/20">
+                          <tr>
+                            <th className="text-left py-2 px-3 font-semibold text-wm-blue/70">Company</th>
+                            <th className="text-left py-2 px-3 font-semibold text-wm-blue/70">Industry</th>
+                            <th className="text-center py-2 px-3 font-semibold text-wm-blue/70">Scenarios</th>
+                            <th className="text-left py-2 px-3 font-semibold text-wm-blue/70">Updated</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-wm-neutral/10">
+                          {filteredCompanies.map((company) => (
+                            <tr
+                              key={company.id}
+                              className="cursor-pointer hover:bg-wm-neutral/5 transition-colors"
+                              onClick={() => handleNavigate?.('RESEARCH', company.id)}
+                            >
+                              <td className="py-2 px-3 font-medium text-wm-blue">{company.name}</td>
+                              <td className="py-2 px-3 text-wm-blue/60">{company.research?.currentResearch?.industry || 'Industry not specified'}</td>
+                              <td className="py-2 px-3 text-center text-wm-blue/70">{company.selectedScenarios?.length || 0}</td>
+                              <td className="py-2 px-3 text-wm-blue/60">{company.lastUpdated ? new Date(company.lastUpdated).toLocaleDateString() : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>

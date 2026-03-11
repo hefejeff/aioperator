@@ -101,7 +101,7 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({
             <p className="text-slate-400 text-sm line-clamp-3 mb-4 leading-relaxed">
               {scenario.description}
             </p>
-            <div className="flex items-center gap-3 text-xs">
+            <div className="flex items-center gap-3 text-sm">
               <span className={`px-3 py-1.5 rounded-lg font-medium backdrop-blur-sm ${
                 scenario.type === 'TRAINING' 
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
@@ -160,8 +160,8 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({
         <div className="flex items-center justify-between mb-6">
           <h4 className="text-sm font-semibold text-slate-200 uppercase tracking-wider">{t('dashboard.workflowHistory')}</h4>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">{workflowVersions.length}</span>
-            <span className="text-xs text-slate-400 font-medium">{t('dashboard.workflows').toLowerCase()}</span>
+            <span className="text-sm text-slate-500">{workflowVersions.length}</span>
+            <span className="text-sm text-slate-400 font-medium">{t('dashboard.workflows').toLowerCase()}</span>
           </div>
         </div>
         
@@ -180,12 +180,12 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({
                       {workflow.versionTitle || t('workflowDetail.untitled')}
                     </div>
                     <div className="flex-shrink-0">
-                      <span className={`px-2.5 py-1 text-xs rounded-md font-medium ${getPlatformColor(inferPlatform(workflow.prdMarkdown))} bg-slate-800/50 backdrop-blur-sm`}>
+                      <span className={`px-2.5 py-1 text-sm rounded-md font-medium ${getPlatformColor(inferPlatform(workflow.prdMarkdown))} bg-slate-800/50 backdrop-blur-sm`}>
                         {inferPlatform(workflow.prdMarkdown)}
                       </span>
                     </div>
                   </div>
-                  <div className="text-xs text-slate-400 flex items-center gap-2">
+                  <div className="text-sm text-slate-400 flex items-center gap-2">
                     <Icons.Star />
                     <span>{formatLastActivity(workflow.timestamp)}</span>
                   </div>
@@ -201,7 +201,7 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({
               <div className="text-center pt-2">
                 <button
                   onClick={() => onViewDetails(scenario.id)}
-                  className="text-xs text-sky-400 hover:text-sky-300 transition-colors font-medium px-3 py-2 rounded-lg hover:bg-sky-500/10 border border-transparent hover:border-sky-500/20"
+                  className="text-sm text-sky-400 hover:text-sky-300 transition-colors font-medium px-3 py-2 rounded-lg hover:bg-sky-500/10 border border-transparent hover:border-sky-500/20"
                 >
                   {t('dashboard.viewAllWorkflows', { count: workflowVersions.length })}
                 </button>

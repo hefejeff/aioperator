@@ -368,10 +368,10 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
                               <div className="text-sm text-wm-blue/60 line-clamp-1">{scenario.description}</div>
                               <div className="flex gap-2 mt-1">
                                 {scenario.domain && (
-                                  <span className="text-xs px-2 py-0.5 bg-wm-accent/10 text-wm-accent rounded-full">{scenario.domain}</span>
+                                  <span className="text-sm px-2 py-0.5 bg-wm-accent/10 text-wm-accent rounded-full">{scenario.domain}</span>
                                 )}
                                 {scenario.process && (
-                                  <span className="text-xs px-2 py-0.5 bg-wm-blue/10 text-wm-blue rounded-full">{scenario.process}</span>
+                                  <span className="text-sm px-2 py-0.5 bg-wm-blue/10 text-wm-blue rounded-full">{scenario.process}</span>
                                 )}
                               </div>
                             </div>
@@ -423,7 +423,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
           <div className="flex items-center space-x-3">
           {/* Star Filter Toggle */}
           <div className="flex items-center gap-4">
-            <span className="text-xs font-bold text-wm-blue/70">Filters</span>
+            <span className="text-sm font-bold text-wm-blue/70">Filters</span>
             <button
               onClick={() => setShowStarredOnly(!showStarredOnly)}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-200 font-bold ${
@@ -441,7 +441,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
               >
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
               </svg>
-              <span className="text-xs font-bold">
+              <span className="text-sm font-bold">
                 {showStarredOnly ? 'Starred' : 'All'}
               </span>
             </button>
@@ -449,7 +449,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
           
           {/* Industry Filter */}
           <div className="flex items-center space-x-2">
-            <label className="text-xs text-wm-blue/70 font-bold">Industry</label>
+            <label className="text-sm text-wm-blue/70 font-bold">Industry</label>
             <select value={industryFilter} onChange={(e) => setIndustryFilter(e.target.value)} className="bg-white border border-wm-neutral/30 rounded-md px-2 py-1.5 text-sm text-wm-blue">
               <option value="All">All Industries</option>
               {['Healthcare', 'Finance', 'Retail', 'Manufacturing', 'Technology', 'Education', 'Real Estate', 'Hospitality', 'Transportation', 'Energy', 'Telecommunications', 'Media & Entertainment', 'Government', 'Non-Profit', 'Professional Services', 'Other'].map(i => (
@@ -460,7 +460,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
 
           {/* Domain Filter */}
           <div className="flex items-center space-x-2">
-            <label className="text-xs text-wm-blue/70 font-bold">{t('training.filter')}</label>
+            <label className="text-sm text-wm-blue/70 font-bold">{t('training.filter')}</label>
             <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} className="bg-white border border-wm-neutral/30 rounded-md px-2 py-1.5 text-sm text-wm-blue">
               <option value="All">{t('filter.all')}</option>
               {['Sales','HR','Finance','Operations','Logistics','Healthcare','Manufacturing','Legal','Procurement','Marketing','IT','Customer Support','General'].map(d => (
@@ -471,7 +471,7 @@ const TrainingView: React.FC<TrainingViewProps> = ({ scenarios, onSelectScenario
 
           {/* Subdomain Filter */}
           <div className="flex items-center space-x-2">
-            <label className="text-xs text-wm-blue/70 font-bold">Sub-domain</label>
+            <label className="text-sm text-wm-blue/70 font-bold">Sub-domain</label>
             <select 
               value={subdomainFilter} 
               onChange={(e) => setSubdomainFilter(e.target.value)} 

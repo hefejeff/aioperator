@@ -28,6 +28,11 @@
         ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')"
       }
     },
+    "companyResearch": {
+      "$uid": {
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')"
+      }
+    },
     "scenarios": {
       ".indexOn": ["userId", "type"],
       "$scenarioId": {
@@ -67,6 +72,14 @@
         ".write": "auth != null && (!data.exists() || auth.uid === data.child('createdBy').val())",
         "selectedScenarios": {
           ".write": "auth != null && auth.uid === root.child('companies').child($companyId).child('createdBy').val()"
+        }
+      }
+    },
+
+    "customStages": {
+      "$uid": {
+        "$companyId": {
+          ".write": "auth != null && auth.uid === $uid && auth.uid === root.child('companies').child($companyId).child('createdBy').val()"
         }
       }
     },

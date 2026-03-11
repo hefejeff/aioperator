@@ -741,7 +741,7 @@ ${companyInfo.currentResearch.aiRelevance.recommendations.map(rec => `- ${rec}`)
 
 ---
 
-## Next Steps
+## Next Stages
 
 1. Prioritize domains based on value, feasibility, and readiness scores
 2. Begin pilot implementations with highest-scoring workflows
@@ -751,7 +751,7 @@ ${companyInfo.currentResearch.aiRelevance.recommendations.map(rec => `- ${rec}`)
 
 ---
 
-## Next Steps & Contact
+## Next Stages & Contact
 
 For more information about AI automation solutions and implementation support, please contact your account team.
 
@@ -966,7 +966,7 @@ Real-time visibility into all key metrics with automated alerting
 
 ---
 
-## Next Steps - Action Plan
+## Next Stages - Action Plan
 
 1. **Executive Approval:** Secure budget and resource commitment
 2. **Team Assembly:** Assign project team members
@@ -1128,7 +1128,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
               onClick={() => handleTabChange('info')}
               className={`flex-1 px-6 py-4 font-bold transition-all ${
                 activeTab === 'info'
-                  ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
+                  ? 'text-wm-blue border-b-2 border-gray-400 bg-gray-200'
                   : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
               }`}
             >
@@ -1138,7 +1138,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
               onClick={() => handleTabChange('domains')}
               className={`flex-1 px-6 py-4 font-bold transition-all ${
                 activeTab === 'domains'
-                  ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
+                  ? 'text-wm-blue border-b-2 border-gray-400 bg-gray-200'
                   : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
               }`}
             >
@@ -1148,7 +1148,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
               onClick={() => handleTabChange('documents')}
               className={`flex-1 px-6 py-4 font-bold transition-all ${
                 activeTab === 'documents'
-                  ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
+                  ? 'text-wm-blue border-b-2 border-gray-400 bg-gray-200'
                   : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
               }`}
             >
@@ -1158,7 +1158,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
               onClick={() => handleTabChange('meetings')}
               className={`flex-1 px-6 py-4 font-bold transition-all ${
                 activeTab === 'meetings'
-                  ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
+                  ? 'text-wm-blue border-b-2 border-gray-400 bg-gray-200'
                   : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
               }`}
             >
@@ -1168,7 +1168,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
               onClick={() => handleTabChange('collaboration')}
               className={`flex-1 px-6 py-4 font-bold transition-all ${
                 activeTab === 'collaboration'
-                  ? 'text-wm-accent border-b-2 border-wm-accent bg-wm-accent/5'
+                  ? 'text-wm-blue border-b-2 border-gray-400 bg-gray-200'
                   : 'text-wm-blue/60 hover:text-wm-blue hover:bg-wm-neutral/10'
               }`}
             >
@@ -1265,7 +1265,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
             onSave={handleSaveCollaborationConfig}
           />
           {collaborationConfigStatus && (
-            <p className="mt-2 text-xs text-wm-blue/70">{collaborationConfigStatus}</p>
+            <p className="mt-2 text-sm text-wm-blue/70">{collaborationConfigStatus}</p>
           )}
         </div>
           </div>
@@ -1288,11 +1288,11 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div>
                       <h3 className="text-sm font-bold text-wm-blue">Phase Workflow Selection</h3>
-                      <p className="text-xs text-wm-blue/60 mt-1">
-                        Step 1: Choose target domains. Step 2: Use the Phase 1 / Phase 2 checkboxes on each workflow card below.
+                      <p className="text-sm text-wm-blue/60 mt-1">
+                        Stage 1: Choose target domains. Stage 2: Use the Phase 1 / Phase 2 checkboxes on each workflow card below.
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-wm-blue/60">
+                    <div className="flex items-center gap-2 text-sm text-wm-blue/60">
                       <span className="px-2 py-1 rounded-full bg-wm-pink/10 text-wm-pink font-semibold border border-wm-pink/20">
                         Phase 1: {phase1Workflows.length}
                       </span>
@@ -1308,7 +1308,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                       onClick={() => {
                         setPhase1Workflows((prev) => Array.from(new Set([...prev, ...visibleWorkflowIds])));
                       }}
-                      className="px-3 py-2 text-xs font-bold rounded-lg bg-wm-pink/10 text-wm-pink border border-wm-pink/20 hover:bg-wm-pink/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-2 text-sm font-bold rounded-lg bg-wm-pink/10 text-wm-pink border border-wm-pink/20 hover:bg-wm-pink/20 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Add visible to Phase 1
                     </button>
@@ -1318,7 +1318,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                       onClick={() => {
                         setPhase2Workflows((prev) => Array.from(new Set([...prev, ...visibleWorkflowIds])));
                       }}
-                      className="px-3 py-2 text-xs font-bold rounded-lg bg-wm-accent/10 text-wm-accent border border-wm-accent/20 hover:bg-wm-accent/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-2 text-sm font-bold rounded-lg bg-wm-accent/10 text-wm-accent border border-wm-accent/20 hover:bg-wm-accent/20 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Add visible to Phase 2
                     </button>
@@ -1329,7 +1329,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                         setPhase1Workflows((prev) => prev.filter((id) => !visibleWorkflowIds.includes(id)));
                         setPhase2Workflows((prev) => prev.filter((id) => !visibleWorkflowIds.includes(id)));
                       }}
-                      className="px-3 py-2 text-xs font-bold rounded-lg bg-wm-neutral/10 text-wm-blue/70 border border-wm-neutral/20 hover:bg-wm-neutral/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-2 text-sm font-bold rounded-lg bg-wm-neutral/10 text-wm-blue/70 border border-wm-neutral/20 hover:bg-wm-neutral/20 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Clear visible selections
                     </button>
@@ -1358,7 +1358,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                     >
                       {domain}
                       {workflowCount > 0 && (
-                        <span className="ml-1.5 text-xs opacity-70">
+                        <span className="ml-1.5 text-sm opacity-70">
                           ({workflowCount})
                         </span>
                       )}
@@ -1374,7 +1374,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                       onSelectedDomainsChange([]);
                     }
                   }}
-                  className="mt-3 text-xs text-wm-accent hover:text-wm-accent/80 font-bold"
+                  className="mt-3 text-sm text-wm-accent hover:text-wm-accent/80 font-bold"
                 >
                   Clear selection
                 </button>
@@ -1471,7 +1471,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                               {/* Phase Selection Checkboxes */}
                               <div className="flex items-center gap-3 mb-2 pb-2 border-b border-wm-neutral/20">
                                 <label 
-                                  className="flex items-center gap-1.5 text-xs font-medium cursor-pointer hover:text-wm-pink"
+                                  className="flex items-center gap-1.5 text-sm font-medium cursor-pointer hover:text-wm-pink"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <input
@@ -1489,7 +1489,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                                   <span>Phase 1</span>
                                 </label>
                                 <label 
-                                  className="flex items-center gap-1.5 text-xs font-medium cursor-pointer hover:text-wm-accent"
+                                  className="flex items-center gap-1.5 text-sm font-medium cursor-pointer hover:text-wm-accent"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <input
@@ -1518,19 +1518,19 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                                     </svg>
                                   )}
                                   {hasRuns && (
-                                    <div className="px-2 py-0.5 bg-wm-accent text-white text-xs font-bold rounded-full">
+                                    <div className="px-2 py-0.5 bg-wm-accent text-white text-sm font-bold rounded-full">
                                       {scenarioRuns[workflow.id].length}
                                     </div>
                                   )}
                                 </div>
                               </div>
                               {workflow.description && (
-                                <div className="text-xs text-wm-blue/60 line-clamp-2">
+                                <div className="text-sm text-wm-blue/60 line-clamp-2">
                                   {workflow.description}
                                 </div>
                               )}
                               {workflow.process && (
-                                <div className="mt-2 text-xs text-wm-accent font-bold">
+                                <div className="mt-2 text-sm text-wm-accent font-bold">
                                   {workflow.process}
                                 </div>
                               )}
@@ -1538,7 +1538,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                               {scenarioRuns[workflow.id] && scenarioRuns[workflow.id].length > 0 && (
                                 <div className="mt-3 pt-3 border-t border-wm-neutral/20 space-y-1.5">
                                   {scenarioRuns[workflow.id].slice(0, 2).map((evaluation) => (
-                                    <div key={evaluation.id} className="flex items-center gap-2 text-xs flex-wrap">
+                                    <div key={evaluation.id} className="flex items-center gap-2 text-sm flex-wrap">
                                       {evaluation.demoProjectUrl && (
                                         <a
                                           href={evaluation.demoProjectUrl}
@@ -1659,7 +1659,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                             <p className="text-sm text-gray-600 mb-1">
                               {presentation.phase || 'Workflow Implementation & Opportunities'}
                             </p>
-                            <div className="flex items-center gap-2 text-xs">
+                            <div className="flex items-center gap-2 text-sm">
                               <span className="text-gray-500">
                                 {new Date(presentation.createdAt).toLocaleDateString('en-US', {
                                   year: 'numeric',
@@ -1795,10 +1795,10 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                       <div className="flex-1 min-w-0">
                         <h3 className="text-xl font-bold text-slate-900 mb-2">{selectedDocument.title}</h3>
                         <div className="flex items-center gap-3">
-                          <span className="inline-block px-2.5 py-1 bg-wm-accent text-white font-bold text-xs rounded">
+                          <span className="inline-block px-2.5 py-1 bg-wm-accent text-white font-bold text-sm rounded">
                             {selectedDocument.type}
                           </span>
-                          <span className="text-xs text-slate-600">
+                          <span className="text-sm text-slate-600">
                             {new Date(selectedDocument.uploadedAt).toLocaleDateString('en-US', {
                               year: 'numeric',
                               month: 'short',
@@ -1812,7 +1812,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                       <div className="flex items-center gap-2">
                         <button
                           onClick={handleCopyModalContent}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 border border-slate-200 rounded hover:bg-slate-100 transition-colors"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-semibold text-slate-700 border border-slate-200 rounded hover:bg-slate-100 transition-colors"
                           title="Copy for Word/Confluence"
                           type="button"
                         >
@@ -1862,58 +1862,58 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
                         <h4 className="text-sm font-bold text-slate-700">RFP Analysis</h4>
                         <div className="grid grid-cols-1 gap-4">
                           <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                            <p className="text-xs font-semibold text-slate-600 mb-1">Project Structure</p>
+                            <p className="text-sm font-semibold text-slate-600 mb-1">Project Structure</p>
                             {renderMarkdown(selectedDocument.analysis.projectStructure)}
                           </div>
                           <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                            <p className="text-xs font-semibold text-slate-600 mb-1">Detailed Analysis</p>
+                            <p className="text-sm font-semibold text-slate-600 mb-1">Detailed Analysis</p>
                             {renderMarkdown(selectedDocument.analysis.detailedAnalysis)}
                           </div>
                           <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                            <p className="text-xs font-semibold text-slate-600 mb-1">Requirements</p>
+                            <p className="text-sm font-semibold text-slate-600 mb-1">Requirements</p>
                             {renderMarkdown(selectedDocument.analysis.requirements)}
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                              <p className="text-xs font-semibold text-slate-600 mb-1">Timeline</p>
+                              <p className="text-sm font-semibold text-slate-600 mb-1">Timeline</p>
                               {renderMarkdown(selectedDocument.analysis.timeline)}
                             </div>
                             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                              <p className="text-xs font-semibold text-slate-600 mb-1">Budget</p>
+                              <p className="text-sm font-semibold text-slate-600 mb-1">Budget</p>
                               {renderMarkdown(selectedDocument.analysis.budget)}
                             </div>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                              <p className="text-xs font-semibold text-slate-600 mb-1">Stakeholders</p>
+                              <p className="text-sm font-semibold text-slate-600 mb-1">Stakeholders</p>
                               {renderMarkdown(selectedDocument.analysis.stakeholders)}
                             </div>
                             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                              <p className="text-xs font-semibold text-slate-600 mb-1">Success Criteria</p>
+                              <p className="text-sm font-semibold text-slate-600 mb-1">Success Criteria</p>
                               {renderMarkdown(selectedDocument.analysis.successCriteria)}
                             </div>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                              <p className="text-xs font-semibold text-slate-600 mb-1">Risks</p>
+                              <p className="text-sm font-semibold text-slate-600 mb-1">Risks</p>
                               {renderMarkdown(selectedDocument.analysis.risks)}
                             </div>
                             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                              <p className="text-xs font-semibold text-slate-600 mb-1">Constraints</p>
+                              <p className="text-sm font-semibold text-slate-600 mb-1">Constraints</p>
                               {renderMarkdown(selectedDocument.analysis.constraints)}
                             </div>
                           </div>
                           <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                            <p className="text-xs font-semibold text-slate-600 mb-1">AI Recommendations</p>
+                            <p className="text-sm font-semibold text-slate-600 mb-1">AI Recommendations</p>
                             {renderMarkdown(selectedDocument.analysis.aiRecommendations)}
                           </div>
                           <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                            <p className="text-xs font-semibold text-slate-600 mb-1">AI Capabilities</p>
+                            <p className="text-sm font-semibold text-slate-600 mb-1">AI Capabilities</p>
                             {renderMarkdown(selectedDocument.analysis.aiCapabilities)}
                           </div>
                           {selectedDocument.analysis.clarificationNeeded ? (
                             <div className="bg-amber-50 rounded-lg p-4 border border-amber-200">
-                              <p className="text-xs font-semibold text-amber-700 mb-1">Clarification Needed</p>
+                              <p className="text-sm font-semibold text-amber-700 mb-1">Clarification Needed</p>
                               {renderMarkdown(selectedDocument.analysis.clarificationNeeded)}
                             </div>
                           ) : null}
@@ -1964,7 +1964,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
           <div className="space-y-4">
             <h3 className="text-wm-blue font-bold">Teams & SharePoint Configuration</h3>
             <p className="text-sm text-wm-blue/70">
-              Connect a Teams channel and/or SharePoint folder so documents and meeting transcripts can be reused across all journey steps.
+              Connect a Teams channel and/or SharePoint folder so documents and meeting transcripts can be reused across all journey stages.
             </p>
             <CollaborationConfiguration
               config={collaborationConfig}
@@ -1972,7 +1972,7 @@ Ready to transform your operations with AI automation. Let's discuss the impleme
               onSave={handleSaveCollaborationConfig}
             />
             {collaborationConfigStatus && (
-              <p className="text-xs text-wm-blue/70">{collaborationConfigStatus}</p>
+              <p className="text-sm text-wm-blue/70">{collaborationConfigStatus}</p>
             )}
           </div>
         )}

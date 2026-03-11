@@ -234,10 +234,10 @@ const RfpUploadField: React.FC<RfpUploadFieldProps> = ({
         <label className="text-sm font-bold text-wm-blue">
           {t('research.documentUpload')}
         </label>
-        <div className="text-xs text-wm-blue/50">
+        <div className="text-sm text-wm-blue/50">
           {t('research.documentUploadHint')}
         </div>
-        <div className="text-xs text-wm-blue/60">
+        <div className="text-sm text-wm-blue/60">
           {t('research.documentsCount', { count: documents.length })}
         </div>
       </div>
@@ -271,7 +271,7 @@ const RfpUploadField: React.FC<RfpUploadFieldProps> = ({
                     </>
                   ) : (
                     <>
-                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${config.bgColor} ${config.color}`}>
+                      <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${config.bgColor} ${config.color}`}>
                         {config.label}
                       </span>
                       <span className="text-sm font-medium truncate max-w-[150px]">
@@ -334,7 +334,7 @@ const RfpUploadField: React.FC<RfpUploadFieldProps> = ({
               <span className="font-medium text-wm-accent">{t('research.documentClickToUpload')}</span>
               {' '}{t('research.documentOrDragDrop')}
             </div>
-            <div className="text-xs text-wm-blue/50">
+            <div className="text-sm text-wm-blue/50">
               PDF, DOC, DOCX, TXT
             </div>
           </div>

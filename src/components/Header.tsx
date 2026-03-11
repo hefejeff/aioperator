@@ -42,7 +42,6 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
   const { t, lang, setLang } = useTranslation();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [activeApp, setActiveApp] = useState<'intellio-agent' | 'nigel' | 'intellio-advantage'>('intellio-agent');
   
   // Helper to check if current path matches
   const isActive = (path: string) => location.pathname.startsWith(path);
@@ -121,18 +120,8 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
                 <img src={brainIcon} alt="Logo" className="h-8 w-8 object-contain drop-shadow" />
               </Link>
 
-              {/* App Family Selector */}
-              <div className="hidden md:block">
-                <select
-                  value={activeApp}
-                  onChange={(e) => setActiveApp(e.target.value as 'intellio-agent' | 'nigel' | 'intellio-advantage')}
-                  className="bg-wm-white/10 border border-wm-white/30 text-wm-white rounded-lg px-3 py-2 text-sm font-semibold"
-                  aria-label="Select app"
-                >
-                  <option value="intellio-agent">Intellio Agent</option>
-                  <option value="nigel">Nigel</option>
-                  <option value="intellio-advantage">Intellio Advantage</option>
-                </select>
+              <div className="hidden md:block text-wm-white text-lg font-extrabold tracking-wide drop-shadow-sm">
+                Intellio Agent
               </div>
               
             </div>
@@ -213,12 +202,6 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, user, userRole }) => {
                   <option value="English">English</option>
                   <option value="Spanish">Spanish</option>
                 </select>
-                <button
-                  onClick={() => { setAuthMode('signup'); setIsAuthOpen(true); }}
-                  className="px-3 py-2 rounded-md bg-wm-accent text-wm-white text-sm font-bold hover:bg-wm-accent/90 transition-colors"
-                >
-                  {t('auth.signUp')}
-                </button>
                 <button
                   onClick={() => { setAuthMode('login'); setIsAuthOpen(true); }}
                   className="px-3 py-2 rounded-md bg-wm-white/10 text-wm-white text-sm font-bold border border-wm-white/30 hover:bg-wm-white/20 transition-colors"

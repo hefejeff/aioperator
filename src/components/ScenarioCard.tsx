@@ -91,7 +91,7 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({
         <div className="mb-2 pt-12">
           <h3 className="text-lg font-bold text-wm-accent pr-4 leading-snug">{localizedTitle}</h3>
         </div>
-        <p className="text-wm-blue/60 text-xs mb-3 line-clamp-3">{localizedDescription}</p>
+        <p className="text-wm-blue/60 text-sm mb-3 line-clamp-3">{localizedDescription}</p>
       </div>
 
       <div className="mt-2 flex items-center justify-between gap-2">

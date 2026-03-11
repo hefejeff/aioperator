@@ -1,7 +1,7 @@
 /**
  * Journey Collaboration Configuration UI
  * Allows users to configure Teams Channel and SharePoint folder for a journey
- * Makes documents/transcripts available to all journey steps
+ * Makes documents/transcripts available to all journey stages
  */
 
 import React, { useState } from 'react';
@@ -67,7 +67,7 @@ export const CollaborationConfiguration: React.FC<CollaborationConfigurationProp
       }
 
       await onSave(newConfig);
-      setSuccessMessage('Collaboration configuration saved. Documents and transcripts will now be available to all journey steps.');
+      setSuccessMessage('Collaboration configuration saved. Documents and transcripts will now be available to all journey stages.');
       setIsExpanded(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save collaboration configuration');
@@ -101,7 +101,7 @@ export const CollaborationConfiguration: React.FC<CollaborationConfigurationProp
         </div>
         <div className="flex items-center gap-2">
           {hasConfig && (
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
               Connected
             </span>
           )}
@@ -115,7 +115,7 @@ export const CollaborationConfiguration: React.FC<CollaborationConfigurationProp
           {/* Info Box */}
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-900">
-              <strong>After company research is complete,</strong> connect a Teams Channel and/or SharePoint folder to make all documents and meeting transcripts available to all subsequent journey steps.
+              <strong>After company research is complete,</strong> connect a Teams Channel and/or SharePoint folder to make all documents and meeting transcripts available to all subsequent journey stages.
             </p>
           </div>
 

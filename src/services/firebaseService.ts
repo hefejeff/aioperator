@@ -1,7 +1,9 @@
 import { db, storage, auth } from './firebaseInit';
+import { initializeApp, deleteApp } from 'firebase/app';
 import { ref, get, push, set, update, remove, query, orderByChild, equalTo } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendPasswordResetEmail, getAuth, signOut } from 'firebase/auth';
+import { firebaseConfig } from '../firebaseConfig';
 import type { 
   WorkflowVersion,
   TeamMember, 
@@ -36,6 +38,36 @@ export const DEFAULT_JOURNEY_STEP_SETTINGS: JourneyStepSettings = {
   functionalDeepDive: true,
   designIntegrationStrategy: true,
   createDevelopmentDocumentation: true
+};
+
+const getFunctionBaseUrl = (): string => {
+  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'ai-operator-pro';
+  const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true' && window.location.hostname === 'localhost';
+  if (useEmulator) {
+    return `http://localhost:5001/${projectId}/us-central1`;
+  }
+  return `https://us-central1-${projectId}.cloudfunctions.net`;
+};
+
+const deleteAuthUserByAdmin = async (targetUserId: string): Promise<void> => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Not authenticated');
+  }
+  const idToken = await currentUser.getIdToken();
+  const response = await fetch(`${getFunctionBaseUrl()}/deleteAuthUser`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ targetUserId }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to delete auth user (${response.status})`);
+  }
 };
 
 export const getJourneyStepSettings = async (): Promise<JourneyStepSettings> => {
@@ -687,9 +719,13 @@ export const saveUserScenario = async (userId: string, scenario: Omit<Scenario, 
   try {
     const scenariosRef = ref(db, 'scenarios');
     const newScenarioRef = push(scenariosRef);
+
+    const scenarioWithoutUndefined = Object.fromEntries(
+      Object.entries(scenario).filter(([, value]) => value !== undefined)
+    ) as Omit<Scenario, 'id' | 'type'>;
     
     const scenarioData = {
-      ...scenario,
+      ...scenarioWithoutUndefined,
       userId,
       type: 'TRAINING' as const,
       favoritedBy: {}
@@ -1599,12 +1635,17 @@ export const deleteUser = async (adminUserId: string, targetUserId: string): Pro
       throw new Error('Not authorized');
     }
 
+    // Delete Firebase Authentication account via secure backend function.
+    await deleteAuthUserByAdmin(targetUserId);
+
     // Delete user's data
-    const batch = [
+    const requiredBatch: Array<Promise<void>> = [
       remove(ref(db, `users/${targetUserId}`)),
       remove(ref(db, `evaluations/${targetUserId}`)),
       remove(ref(db, `workflowVersions/${targetUserId}`)),
-      remove(ref(db, `userScenarioOverrides/${targetUserId}`)),
+      remove(ref(db, `userScenarioOverrides/${targetUserId}`))
+    ];
+    const optionalBatch: Array<Promise<void>> = [
       remove(ref(db, `companyResearch/${targetUserId}`))
     ];
 
@@ -1615,16 +1656,22 @@ export const deleteUser = async (adminUserId: string, targetUserId: string): Pro
       const scenarios = scenariosSnap.val();
       for (const [scenarioId, scenario] of Object.entries<any>(scenarios)) {
         if (scenario.favoritedBy?.[targetUserId]) {
-          batch.push(remove(ref(db, `scenarios/${scenarioId}/favoritedBy/${targetUserId}`)));
+          requiredBatch.push(remove(ref(db, `scenarios/${scenarioId}/favoritedBy/${targetUserId}`)));
         }
         // If scenario was created by this user, delete it
         if (scenario.userId === targetUserId) {
-          batch.push(remove(ref(db, `scenarios/${scenarioId}`)));
+          requiredBatch.push(remove(ref(db, `scenarios/${scenarioId}`)));
         }
       }
     }
 
-    await Promise.all(batch);
+    await Promise.all(requiredBatch);
+    const optionalResults = await Promise.allSettled(optionalBatch);
+    optionalResults.forEach((result) => {
+      if (result.status === 'rejected') {
+        console.warn('Optional cleanup failed during user delete:', result.reason);
+      }
+    });
     return true;
   } catch (error) {
     console.error('Failed to delete user:', error);
@@ -1692,7 +1739,9 @@ export const createNewUser = async (
   password: string, 
   displayName: string,
   role: Role = 'USER'
-): Promise<{ success: boolean; uid?: string; error?: string }> => {
+): Promise<{ success: boolean; uid?: string; error?: string; passwordResetEmailSent?: boolean }> => {
+  let secondaryApp: ReturnType<typeof initializeApp> | null = null;
+  let secondaryAuth: ReturnType<typeof getAuth> | null = null;
   try {
     // First verify admin permissions
     const adminRef = ref(db, `users/${adminUserId}`);
@@ -1703,8 +1752,10 @@ export const createNewUser = async (
       throw new Error('Not authorized');
     }
 
-    // Create user with Firebase Auth
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    // Create user with Firebase Auth using a temporary secondary app so we don't switch the current admin session.
+    secondaryApp = initializeApp(firebaseConfig, `user-create-${Date.now()}`);
+    secondaryAuth = getAuth(secondaryApp);
+    const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
     const newUser = userCredential.user;
 
     // Create user profile in database
@@ -1720,13 +1771,27 @@ export const createNewUser = async (
     });
 
     // Send password reset email so user can set their own password
+    let passwordResetEmailSent = false;
     try {
-      await sendPasswordResetEmail(auth, email);
+      const continueUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/`
+        : 'https://ai-operator-pro.web.app/';
+
+      await sendPasswordResetEmail(auth, email, {
+        url: continueUrl,
+      });
+      passwordResetEmailSent = true;
     } catch (emailError) {
       console.warn('Failed to send password reset email:', emailError);
     }
 
-    return { success: true, uid: newUser.uid };
+    // Clean up temporary auth app/session.
+    await signOut(secondaryAuth);
+    await deleteApp(secondaryApp);
+    secondaryAuth = null;
+    secondaryApp = null;
+
+    return { success: true, uid: newUser.uid, passwordResetEmailSent };
   } catch (error: any) {
     console.error('Failed to create user:', error);
     return { 
@@ -1735,6 +1800,21 @@ export const createNewUser = async (
         ? 'Email already in use' 
         : error.message || 'Failed to create user'
     };
+  } finally {
+    if (secondaryAuth) {
+      try {
+        await signOut(secondaryAuth);
+      } catch {
+        // no-op
+      }
+    }
+    if (secondaryApp) {
+      try {
+        await deleteApp(secondaryApp);
+      } catch {
+        // no-op
+      }
+    }
   }
 };
 

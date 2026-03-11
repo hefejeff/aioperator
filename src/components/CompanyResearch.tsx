@@ -197,12 +197,12 @@ const CompanyResearch: React.FC<CompanyResearchProps> = ({ user, userId, initial
                         >
                           <div className="flex items-center justify-between">
                             <p className="text-sm font-semibold text-wm-blue">Journey {index + 1}</p>
-                            <span className="text-xs text-wm-blue/50">
+                            <span className="text-sm text-wm-blue/50">
                               {new Date(journey.createdAt).toLocaleDateString()}
                             </span>
                           </div>
-                          <p className="text-xs text-wm-blue/50 mt-2">Updated {new Date(journey.updatedAt).toLocaleDateString()}</p>
-                          <p className="text-xs mt-2 font-semibold text-wm-accent">
+                          <p className="text-sm text-wm-blue/50 mt-2">Updated {new Date(journey.updatedAt).toLocaleDateString()}</p>
+                          <p className="text-sm mt-2 font-semibold text-wm-accent">
                             {journey.companyResearchComplete ? 'Research complete' : 'Research pending'}
                           </p>
                         </button>
@@ -891,13 +891,13 @@ WORKING DEMO FOR ${scenario.title.toUpperCase()}:
 Create an INTERACTIVE DEMO section for this solution that includes:
 
 1. **Live Input Form**: Create a realistic input form where users can enter sample data relevant to this workflow. Include:
-   - Appropriate input fields based on the workflow steps
+  - Appropriate input fields based on the workflow stages
    - Placeholder text showing example values
    - A "Run Demo" button
 
 2. **Simulated Processing Animation**: When the demo runs, show:
-   - A step-by-step progress indicator matching the workflow steps
-   - Brief animated transitions between steps (1-2 seconds each)
+  - A stage-by-stage progress indicator matching the workflow stages
+  - Brief animated transitions between stages (1-2 seconds each)
    - Visual indicators showing AI vs Human decision points
 
 3. **Sample Output Display**: After the "processing" completes, display:
@@ -928,7 +928,7 @@ Please structure the website presentation to include:
    d. Expected ROI and metrics
 4. Implementation Roadmap - Phased approach with timeline
 5. Investment & Returns - Total cost of ownership and payback period
-6. Next Steps - Clear call to action
+6. Next Stages - Clear call to action
 
 CRITICAL REQUIREMENTS:
 - Each solution MUST have its own fully functional interactive demo
@@ -1284,7 +1284,7 @@ The tone should be professional, consultative, and focused on digital transforma
                     </option>
                   ))}
                 </select>
-                <span className="text-xs text-wm-blue/50">
+                <span className="text-sm text-wm-blue/50">
                   {AI_MODELS.find(m => m.id === selectedAIModel)?.description}
                 </span>
               </div>
@@ -1491,7 +1491,7 @@ The tone should be professional, consultative, and focused on digital transforma
                   <span>{showCopiedMessage ? 'Prompt Copied! Paste in AI Studio' : 'Continue in Google AI Studio'}</span>
                   {!showCopiedMessage && <Icons.ExternalLink className="w-4 h-4 text-wm-blue/50" />}
                 </a>
-                <p className="text-xs text-wm-blue/50 text-center">
+                <p className="text-sm text-wm-blue/50 text-center">
                   The prompt will be automatically copied to your clipboard.
                 </p>
               </div>

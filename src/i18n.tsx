@@ -19,7 +19,7 @@ export const resources: Record<string, Record<string, string>> = {
     'profile.save': 'Save',
 
     // App
-    'app.title': 'Intellio Agent',
+    'app.title': 'AI Builder Pro',
     'dashboard.training': 'Training',
     'dashboard.workflowHistory': 'Workflow History',
   'dashboard.workflows': 'AI Workflows',
@@ -184,7 +184,7 @@ export const resources: Record<string, Record<string, string>> = {
   'operator.back': 'Back to Use Cases',
   'operator.aiAssist': 'AI Assist',
   'operator.explain': 'Explain the workflow',
-  'operator.explainHelper': 'Describe the steps so the AI can evaluate your process.',
+  'operator.explainHelper': 'Describe the stages so the AI can evaluate your process.',
   'operator.visual': 'Add a visual reference',
   'operator.aiDiagramAssist': 'AI Diagram Assist',
   'operator.uploadHint': 'Upload a screenshot or diagram of your current workflow',
@@ -330,7 +330,7 @@ export const resources: Record<string, Record<string, string>> = {
   'canvas.currentSolutions': 'Current solutions',
   'canvas.manualProcesses': 'Manual processes',
   'canvas.solution': 'Solution',
-  'canvas.automatedSteps': 'Automated steps',
+  'canvas.automatedSteps': 'Automated stages',
   'canvas.aiIntegration': 'AI integration points',
   'canvas.processOptimization': 'Process optimization',
   'canvas.keyMetrics': 'Key metrics',
@@ -416,7 +416,7 @@ export const resources: Record<string, Record<string, string>> = {
   'landing.highlights.3.desc': 'Connect goals, metrics, and AI recommendations so stakeholders stay in sync.',
   'landing.how.title': 'How it works',
   'landing.how.step1.title': 'Share your challenge',
-  'landing.how.step1.desc': 'Describe the problem, the current steps, and what success looks like.',
+  'landing.how.step1.desc': 'Describe the problem, the current stages, and what success looks like.',
   'landing.how.step2.title': 'Get AI-generated deliverables',
   'landing.how.step2.desc': 'We draft optimized workflows, PRDs, and pitches tailored to your platform.',
   'landing.how.step3.title': 'Refine and activate',
@@ -424,7 +424,7 @@ export const resources: Record<string, Record<string, string>> = {
   'landing.preview.title': 'Preview your AI workflow package',
   'landing.preview.subtitle': "Here's a sample of the assets we'll generate from your description.",
   'landing.preview.exampleTitle': "You'll receive",
-  'landing.preview.step1': 'Step-by-step workflow plan',
+  'landing.preview.step1': 'Stage-by-stage workflow plan',
   'landing.preview.step2': 'Implementation guidance for your platform',
   'landing.preview.step3': 'Product requirements draft',
   'landing.preview.step4': 'Executive-ready elevator pitch',
@@ -503,7 +503,7 @@ export const resources: Record<string, Record<string, string>> = {
     'profile.save': 'Guardar',
 
     // App
-    'app.title': 'Intellio Agent',
+    'app.title': 'AI Builder Pro',
     'dashboard.training': 'Entrenamiento',
     'dashboard.workflowHistory': 'Historial de Flujos de Trabajo',
   'dashboard.workflows': 'Flujos de Trabajo de IA',

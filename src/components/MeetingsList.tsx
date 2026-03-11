@@ -70,7 +70,7 @@ const MeetingsList: React.FC<MeetingsListProps> = ({
       const prompt = `You are a meeting analyst. Create a concise bullet-point summary tailored to the meeting type: ${formData.type || 'Unknown'}.
 
     If the type is:
-    - Project Kickoff: summarize goals, scope, timeline, roles/owners, risks, and next steps.
+    - Project Kickoff: summarize goals, scope, timeline, roles/owners, risks, and next stages.
     - Functional High Level Overview: summarize processes, pain points, opportunities, systems, and success metrics.
     - Functional Deep Dive Session: summarize detailed requirements, edge cases, data inputs/outputs, integrations, constraints, and acceptance criteria.
     - DSU: summarize progress since last update, blockers, plans for next 24 hours, and risks.
@@ -112,7 +112,7 @@ const MeetingsList: React.FC<MeetingsListProps> = ({
     - summary: Bullet-point summary tailored to the meeting type
 
     Type-specific summary guidance:
-    - Project Kickoff: goals, scope, timeline, roles/owners, risks, next steps
+    - Project Kickoff: goals, scope, timeline, roles/owners, risks, next stages
     - Functional High Level Overview: processes, pain points, opportunities, systems, success metrics
     - Functional Deep Dive Session: detailed requirements, edge cases, data inputs/outputs, integrations, constraints, acceptance criteria
     - DSU: progress, blockers, plan, risks
@@ -237,7 +237,7 @@ const MeetingsList: React.FC<MeetingsListProps> = ({
                 <div>
                   <h3 className="text-2xl font-bold text-wm-blue mb-2">{selectedMeeting.title}</h3>
                   {selectedMeeting.type && (
-                    <span className="inline-block px-3 py-1 bg-wm-pink/10 text-wm-pink text-xs font-bold rounded-full mb-2">
+                    <span className="inline-block px-3 py-1 bg-wm-pink/10 text-wm-pink text-sm font-bold rounded-full mb-2">
                       {selectedMeeting.type}
                     </span>
                   )}
@@ -254,7 +254,7 @@ const MeetingsList: React.FC<MeetingsListProps> = ({
                     {selectedMeeting.participants.map((participant, idx) => (
                       <span
                         key={idx}
-                        className="px-3 py-1 bg-wm-accent/10 text-wm-accent text-xs font-bold rounded-full"
+                        className="px-3 py-1 bg-wm-accent/10 text-wm-accent text-sm font-bold rounded-full"
                       >
                         {participant}
                       </span>
@@ -290,7 +290,7 @@ const MeetingsList: React.FC<MeetingsListProps> = ({
                     setIsSummarizing(true);
                     try {
                       const mod = await import('../services/geminiService');
-                      const prompt = `You are a meeting analyst. Create a concise bullet-point summary tailored to the meeting type: ${selectedMeeting.type || 'Unknown'}.\n\nIf the type is:\n- Project Kickoff: summarize goals, scope, timeline, roles/owners, risks, and next steps.\n- Functional High Level Overview: summarize processes, pain points, opportunities, systems, and success metrics.\n- Functional Deep Dive Session: summarize detailed requirements, edge cases, data inputs/outputs, integrations, constraints, and acceptance criteria.\n- DSU: summarize progress since last update, blockers, plans for next 24 hours, and risks.\n- Other types: summarize key decisions, action items, and takeaways.\n\nTRANSCRIPT:\n${selectedMeeting.transcript}\n\nProvide only the summary, formatted as bullet points with clear labels when relevant.`;
+                      const prompt = `You are a meeting analyst. Create a concise bullet-point summary tailored to the meeting type: ${selectedMeeting.type || 'Unknown'}.\n\nIf the type is:\n- Project Kickoff: summarize goals, scope, timeline, roles/owners, risks, and next stages.\n- Functional High Level Overview: summarize processes, pain points, opportunities, systems, and success metrics.\n- Functional Deep Dive Session: summarize detailed requirements, edge cases, data inputs/outputs, integrations, constraints, and acceptance criteria.\n- DSU: summarize progress since last update, blockers, plans for next 24 hours, and risks.\n- Other types: summarize key decisions, action items, and takeaways.\n\nTRANSCRIPT:\n${selectedMeeting.transcript}\n\nProvide only the summary, formatted as bullet points with clear labels when relevant.`;
 
                       const response = await mod.generateText(prompt, null, { temperature: 0.3 });
                       
@@ -387,9 +387,9 @@ const MeetingsList: React.FC<MeetingsListProps> = ({
                 >
                   <h4 className="font-bold text-wm-blue text-sm truncate">{meeting.title}</h4>
                   {meeting.type && (
-                    <p className="text-xs text-wm-pink font-semibold mt-1">{meeting.type}</p>
+                    <p className="text-sm text-wm-pink font-semibold mt-1">{meeting.type}</p>
                   )}
-                  <p className="text-xs text-wm-blue/60 mt-1">
+                  <p className="text-sm text-wm-blue/60 mt-1">
                     {new Date(`${meeting.date}T${meeting.time}`).toLocaleDateString()}
                   </p>
                 </button>
@@ -528,7 +528,7 @@ const MeetingsList: React.FC<MeetingsListProps> = ({
                   <button
                     onClick={generateSummary}
                     disabled={isSummarizing || !formData.transcript.trim()}
-                    className="text-xs px-2 py-1 bg-wm-accent/10 text-wm-accent font-bold rounded hover:bg-wm-accent/20 transition-colors disabled:opacity-50 flex items-center gap-1"
+                    className="text-sm px-2 py-1 bg-wm-accent/10 text-wm-accent font-bold rounded hover:bg-wm-accent/20 transition-colors disabled:opacity-50 flex items-center gap-1"
                   >
                     {isSummarizing && <span className="inline-block w-3 h-3 border-2 border-wm-accent border-t-transparent rounded-full animate-spin" />}
                     {isSummarizing ? 'Generating...' : 'Generate'}

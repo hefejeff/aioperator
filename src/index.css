@@ -9,7 +9,17 @@
   --wm-yellow: #E8DF00;
   --wm-accent: #0036CC;
   --wm-pink: #F500A0;
-  --wm-neutral: #A9B5C4;
+  --wm-neutral: #5F7390;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background-color: rgb(243 244 246);
 }
 
 /* Global scrollbar styling */

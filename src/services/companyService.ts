@@ -1,6 +1,110 @@
 import { ref, get, push, set, update, remove, query, orderByChild, equalTo } from 'firebase/database';
 import { db } from './firebaseInit';
-import type { Company, CompanyResearch, Meeting, DocumentAnalysis, RfpAnalysis, UploadedDocument, FunctionalHighLevelMeeting, CustomJourneyStep, JourneyCollaborationConfig, JourneyStepSettings } from '../types';
+import type { Company, CompanyResearch, Meeting, DocumentAnalysis, RfpAnalysis, UploadedDocument, FunctionalHighLevelMeeting, CustomJourneyStep, CustomStepReference, JourneyCollaborationConfig, JourneyStepSettings } from '../types';
+
+const sanitizeCustomStageForSave = (stage: CustomJourneyStep): CustomJourneyStep => {
+  const sanitized: CustomJourneyStep = {
+    id: stage.id,
+    title: stage.title,
+    createdAt: stage.createdAt,
+    updatedAt: stage.updatedAt,
+    selectedDocumentIds: Array.isArray(stage.selectedDocumentIds) ? [...stage.selectedDocumentIds] : [],
+    selectedTranscriptIds: Array.isArray(stage.selectedTranscriptIds) ? [...stage.selectedTranscriptIds] : []
+  };
+
+  if (typeof stage.description !== 'undefined') {
+    sanitized.description = stage.description;
+  }
+
+  if (typeof stage.phase !== 'undefined') {
+    sanitized.phase = stage.phase;
+  }
+
+  if (typeof stage.aiModelId !== 'undefined') {
+    sanitized.aiModelId = stage.aiModelId;
+  }
+
+  if (typeof stage.prompt !== 'undefined') {
+    sanitized.prompt = stage.prompt;
+  }
+
+  if (Array.isArray(stage.promptVersions)) {
+    sanitized.promptVersions = stage.promptVersions
+      .filter((entry) => entry && typeof entry.prompt === 'string')
+      .map((entry, index) => ({
+        version: Number.isFinite(entry.version) ? entry.version : index + 1,
+        prompt: entry.prompt,
+        updatedAt: Number.isFinite(entry.updatedAt) ? entry.updatedAt : Date.now(),
+        ...(entry.updatedBy ? { updatedBy: entry.updatedBy } : {})
+      }));
+  }
+
+  if (Array.isArray(stage.steps)) {
+    sanitized.steps = stage.steps
+      .filter((child) => child && typeof child.id === 'string' && typeof child.title === 'string')
+      .map((child, index) => ({
+        id: child.id || `child-step-${index + 1}`,
+        title: child.title,
+        ...(typeof child.description !== 'undefined' ? { description: child.description } : {}),
+        ...(typeof child.aiModelId !== 'undefined' ? { aiModelId: child.aiModelId } : {}),
+        ...(typeof child.prompt !== 'undefined' ? { prompt: child.prompt } : {}),
+        ...(typeof child.desiredOutput !== 'undefined' ? { desiredOutput: child.desiredOutput } : {}),
+        ...(Array.isArray(child.selectedDocumentIds) ? { selectedDocumentIds: [...child.selectedDocumentIds] } : {}),
+        ...(Array.isArray(child.selectedTranscriptIds) ? { selectedTranscriptIds: [...child.selectedTranscriptIds] } : {}),
+        ...(typeof child.outputType !== 'undefined' ? { outputType: child.outputType } : {}),
+        ...(child.excelTemplate
+          ? {
+              excelTemplate: {
+                fileName: child.excelTemplate.fileName,
+                dataUrl: child.excelTemplate.dataUrl,
+                uploadedAt: child.excelTemplate.uploadedAt,
+              }
+            }
+          : {}),
+        ...(child.presentationTemplate
+          ? {
+              presentationTemplate: {
+                fileName: child.presentationTemplate.fileName,
+                dataUrl: child.presentationTemplate.dataUrl,
+                uploadedAt: child.presentationTemplate.uploadedAt,
+              }
+            }
+          : {}),
+        createdAt: Number.isFinite(child.createdAt) ? child.createdAt : Date.now(),
+        updatedAt: Number.isFinite(child.updatedAt) ? child.updatedAt : Date.now()
+      }));
+  }
+
+  if (typeof stage.outputType !== 'undefined') {
+    sanitized.outputType = stage.outputType;
+  }
+
+  if (typeof stage.excelTableTemplate !== 'undefined') {
+    sanitized.excelTableTemplate = stage.excelTableTemplate;
+  }
+
+  if (typeof stage.authorId !== 'undefined') {
+    sanitized.authorId = stage.authorId;
+  }
+
+  if (stage.excelTemplate) {
+    sanitized.excelTemplate = {
+      fileName: stage.excelTemplate.fileName,
+      dataUrl: stage.excelTemplate.dataUrl,
+      uploadedAt: stage.excelTemplate.uploadedAt
+    };
+  }
+
+  if (stage.presentationTemplate) {
+    sanitized.presentationTemplate = {
+      fileName: stage.presentationTemplate.fileName,
+      dataUrl: stage.presentationTemplate.dataUrl,
+      uploadedAt: stage.presentationTemplate.uploadedAt
+    };
+  }
+
+  return sanitized;
+};
 
 export const updateCompanyJourneyStatus = async (
   companyId: string,
@@ -24,8 +128,10 @@ export const updateCompanyJourneyStatus = async (
     deepDiveSelectedDomains?: string[];
     deepDiveSelectedUseCases?: string[];
     customSteps?: CustomJourneyStep[];
+    customStepRefs?: CustomStepReference[];
     journeyStepSettings?: Partial<JourneyStepSettings>;
     currentStepId?: string;
+    stepOrder?: string[];
   },
   journeyId?: string
 ): Promise<void> => {
@@ -48,9 +154,71 @@ export const updateCompanyJourneyStatus = async (
     const resolvedJourneyId = journeyId || company.currentJourneyId || `journey-${currentTime}`;
     const existingJourneys = company.journeys || {};
     const existingJourney = existingJourneys[resolvedJourneyId] || company.journey || {};
-    const nextJourney = {
-      ...existingJourney,
-      ...journeyUpdate,
+    const hasCustomStepsUpdate = Object.prototype.hasOwnProperty.call(journeyUpdate, 'customSteps');
+    const sanitizedCustomStages = hasCustomStepsUpdate
+      ? (journeyUpdate.customSteps || []).map((stage) => {
+          const sanitizedStage = sanitizeCustomStageForSave(stage);
+          return {
+            ...sanitizedStage,
+            authorId: sanitizedStage.authorId || userId
+          };
+        })
+      : null;
+    let useLegacyCustomStepsStorage = false;
+
+    if (hasCustomStepsUpdate && sanitizedCustomStages) {
+      try {
+        const stageWrites = sanitizedCustomStages.reduce((acc, stage) => {
+          acc[stage.id] = stage;
+          return acc;
+        }, {} as Record<string, CustomJourneyStep>);
+        await update(ref(db, `customStages/${userId}/${companyId}`), stageWrites);
+      } catch (writeError: any) {
+        const code = typeof writeError?.code === 'string' ? writeError.code : '';
+        const message = typeof writeError?.message === 'string' ? writeError.message : '';
+        const isPermissionDenied = code.includes('PERMISSION_DENIED') || message.includes('PERMISSION_DENIED');
+
+        if (!isPermissionDenied) {
+          throw writeError;
+        }
+
+        console.warn(
+          'Top-level customStages write was denied. Falling back to legacy companies/{companyId}/journeys/{journeyId}/customSteps storage until database rules are deployed.'
+        );
+        useLegacyCustomStepsStorage = true;
+      }
+    }
+
+    const { customSteps: _legacyCustomSteps, ...existingJourneyWithoutCustomSteps } = existingJourney;
+    const { customSteps: _ignoredCustomSteps, customStepRefs: _ignoredCustomStepRefs, ...journeyUpdateWithoutCustomSteps } = journeyUpdate;
+    const existingJourneyBase = hasCustomStepsUpdate ? existingJourneyWithoutCustomSteps : existingJourney;
+    const journeyUpdateBase = hasCustomStepsUpdate ? journeyUpdateWithoutCustomSteps : journeyUpdate;
+    const nextJourneyBase = {
+      ...existingJourneyBase,
+      ...journeyUpdateBase
+    };
+
+    const nextJourney: any = {
+      ...nextJourneyBase,
+      ...(hasCustomStepsUpdate && useLegacyCustomStepsStorage
+        ? {
+            customSteps: sanitizedCustomStages || [],
+            customStepIds: (sanitizedCustomStages || []).map((stage) => stage.id),
+            customStepRefs: (sanitizedCustomStages || []).map((stage) => ({
+              id: stage.id,
+              authorId: stage.authorId || userId
+            }))
+          }
+        : {}),
+      ...(hasCustomStepsUpdate && !useLegacyCustomStepsStorage
+        ? {
+            customStepIds: (sanitizedCustomStages || []).map((stage) => stage.id),
+            customStepRefs: (sanitizedCustomStages || []).map((stage) => ({
+              id: stage.id,
+              authorId: stage.authorId || userId
+            }))
+          }
+        : {}),
       id: resolvedJourneyId,
       createdAt: existingJourney.createdAt || currentTime,
       updatedAt: currentTime
@@ -67,6 +235,64 @@ export const updateCompanyJourneyStatus = async (
     });
   } catch (error) {
     console.error('Failed to update company journey status:', error);
+    throw error;
+  }
+};
+
+export const deleteCompanyJourney = async (
+  companyId: string,
+  userId: string,
+  journeyId: string
+): Promise<{ nextJourneyId: string | null; journeys: Record<string, any> }> => {
+  try {
+    const companyRef = ref(db, `companies/${companyId}`);
+    const snapshot = await get(companyRef);
+
+    if (!snapshot.exists()) {
+      throw new Error('Company not found');
+    }
+
+    const company = snapshot.val() as Company;
+    if (company.createdBy !== userId) {
+      throw new Error('Not authorized to update this company');
+    }
+
+    const existingJourneys = company.journeys || {};
+    if (!existingJourneys[journeyId]) {
+      throw new Error('Journey not found');
+    }
+
+    const journeyIds = Object.keys(existingJourneys);
+    if (journeyIds.length <= 1) {
+      throw new Error('At least one journey must remain');
+    }
+
+    const nextJourneys = { ...existingJourneys };
+    delete nextJourneys[journeyId];
+
+    const sortedRemaining = Object.entries(nextJourneys)
+      .sort(([, a]: any, [, b]: any) => (b?.createdAt || 0) - (a?.createdAt || 0))
+      .map(([id]) => id);
+
+    const nextCurrentJourneyId = nextJourneys[company.currentJourneyId || '']
+      ? (company.currentJourneyId as string)
+      : (sortedRemaining[0] || null);
+
+    const nextCurrentJourney = nextCurrentJourneyId ? nextJourneys[nextCurrentJourneyId] : null;
+
+    await update(companyRef, {
+      journeys: nextJourneys,
+      currentJourneyId: nextCurrentJourneyId,
+      journey: nextCurrentJourney,
+      lastUpdated: Date.now()
+    });
+
+    return {
+      nextJourneyId: nextCurrentJourneyId,
+      journeys: nextJourneys
+    };
+  } catch (error) {
+    console.error('Failed to delete company journey:', error);
     throw error;
   }
 };
@@ -305,6 +531,151 @@ export const getCompany = async (companyIdOrName: string, userId?: string): Prom
 
     console.log('Found company:', { companyId, companyData });
 
+    const resolvedCurrentJourneyId = companyData.currentJourneyId;
+    const ownerUserId = companyData.createdBy || userId;
+    const referencedAuthorIds = new Set<string>();
+
+    const maybeCollectAuthorIds = (journeyLike: any) => {
+      if (!journeyLike || typeof journeyLike !== 'object') return;
+      if (Array.isArray(journeyLike.customStepRefs)) {
+        journeyLike.customStepRefs.forEach((refItem: any) => {
+          if (refItem && typeof refItem.authorId === 'string' && refItem.authorId.length > 0) {
+            referencedAuthorIds.add(refItem.authorId);
+          }
+        });
+      }
+      if (Array.isArray(journeyLike.customSteps)) {
+        journeyLike.customSteps.forEach((stage: any) => {
+          if (stage && typeof stage.authorId === 'string' && stage.authorId.length > 0) {
+            referencedAuthorIds.add(stage.authorId);
+          }
+        });
+      }
+    };
+
+    maybeCollectAuthorIds(companyData.journey);
+    if (companyData.journeys && typeof companyData.journeys === 'object') {
+      Object.values(companyData.journeys).forEach((journey) => maybeCollectAuthorIds(journey));
+    }
+    if (ownerUserId) {
+      referencedAuthorIds.add(ownerUserId);
+    }
+
+    const legacyCustomStagesSnapshot = await get(ref(db, `customStages/${companyId}`));
+
+    const customStageLibraryByAuthor: Record<string, Record<string, CustomJourneyStep>> = {};
+    const legacyCustomStagesByJourney: Record<string, CustomJourneyStep[]> = {};
+
+    const upsertStage = (authorId: string, stageLike: any, fallbackId: string) => {
+      const normalized = sanitizeCustomStageForSave({
+        ...stageLike,
+        id: stageLike?.id || fallbackId,
+        title: stageLike?.title || 'Untitled Stage',
+        createdAt: typeof stageLike?.createdAt === 'number' ? stageLike.createdAt : Date.now(),
+        updatedAt: typeof stageLike?.updatedAt === 'number' ? stageLike.updatedAt : Date.now(),
+        authorId: stageLike?.authorId || authorId
+      });
+      if (!customStageLibraryByAuthor[normalized.authorId || authorId]) {
+        customStageLibraryByAuthor[normalized.authorId || authorId] = {};
+      }
+      customStageLibraryByAuthor[normalized.authorId || authorId][normalized.id] = normalized;
+    };
+
+    for (const authorId of referencedAuthorIds) {
+      const userScopedSnapshot = await get(ref(db, `customStages/${authorId}/${companyId}`));
+      const userScopedStages = userScopedSnapshot.exists() ? userScopedSnapshot.val() : {};
+      Object.entries(userScopedStages || {}).forEach(([stageId, stageValue]: [string, any]) => {
+        if (stageValue && typeof stageValue === 'object' && !Array.isArray(stageValue)) {
+          upsertStage(authorId, stageValue, stageId);
+        }
+      });
+    }
+
+    const rawCustomStages = legacyCustomStagesSnapshot?.exists() ? legacyCustomStagesSnapshot.val() : {};
+
+    Object.entries(rawCustomStages || {}).forEach(([key, value]: [string, any]) => {
+      if (Array.isArray(value)) {
+        legacyCustomStagesByJourney[key] = value
+          .filter(Boolean)
+          .map((stage: any, index: number) => sanitizeCustomStageForSave({ ...stage, id: stage?.id || `${key}-legacy-${index}` }));
+        return;
+      }
+
+      if (value && typeof value === 'object') {
+        const hasStageShape = typeof value.title === 'string' || typeof value.createdAt === 'number';
+        if (hasStageShape) {
+          upsertStage(ownerUserId || userId || 'unknown-author', value, key);
+        }
+      }
+    });
+
+    const resolveJourneyCustomSteps = (journeyId: string, journeyValue: any): CustomJourneyStep[] => {
+      const referencedRefs = Array.isArray(journeyValue?.customStepRefs)
+        ? journeyValue.customStepRefs.filter((refItem: unknown): refItem is CustomStepReference => {
+            return Boolean(
+              refItem
+              && typeof (refItem as CustomStepReference).id === 'string'
+              && (refItem as CustomStepReference).id.length > 0
+              && typeof (refItem as CustomStepReference).authorId === 'string'
+              && (refItem as CustomStepReference).authorId.length > 0
+            );
+          })
+        : [];
+
+      if (referencedRefs.length > 0) {
+        return referencedRefs
+          .map((refItem) => customStageLibraryByAuthor[refItem.authorId]?.[refItem.id])
+          .filter((stage): stage is CustomJourneyStep => Boolean(stage));
+      }
+
+      const referencedIds = Array.isArray(journeyValue?.customStepIds)
+        ? journeyValue.customStepIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+        : [];
+
+      if (referencedIds.length > 0) {
+        const defaultAuthorId = ownerUserId || userId || '';
+        return referencedIds
+          .map((id) => customStageLibraryByAuthor[defaultAuthorId]?.[id]
+            || Object.values(customStageLibraryByAuthor).find((bucket) => Boolean(bucket[id]))?.[id])
+          .filter((stage): stage is CustomJourneyStep => Boolean(stage));
+      }
+
+      if (Array.isArray(journeyValue?.customSteps)) {
+        return journeyValue.customSteps;
+      }
+
+      if (Array.isArray(legacyCustomStagesByJourney[journeyId])) {
+        return legacyCustomStagesByJourney[journeyId];
+      }
+
+      return [];
+    };
+
+    const hydratedJourneys = companyData.journeys
+      ? Object.entries(companyData.journeys).reduce((acc, [journeyId, journeyValue]: [string, any]) => {
+          const resolvedCustomSteps = resolveJourneyCustomSteps(journeyId, journeyValue);
+          acc[journeyId] = {
+            ...(journeyValue || {}),
+            customSteps: resolvedCustomSteps
+          };
+          return acc;
+        }, {} as Record<string, any>)
+      : undefined;
+
+    const activeJourneyId = resolvedCurrentJourneyId
+      || (hydratedJourneys ? Object.keys(hydratedJourneys)[0] : undefined);
+    const activeJourneyFromMap = activeJourneyId && hydratedJourneys
+      ? hydratedJourneys[activeJourneyId]
+      : undefined;
+    const activeJourneyCustomSteps = activeJourneyId
+      ? resolveJourneyCustomSteps(activeJourneyId, companyData.journeys?.[activeJourneyId] || companyData.journey)
+      : undefined;
+
+    const hydratedJourney = {
+      ...(companyData.journey || activeJourneyFromMap || {}),
+      ...(activeJourneyCustomSteps ? { customSteps: activeJourneyCustomSteps } : {})
+    };
+
     const company = {
       id: companyId,
       name: companyData.name,
@@ -314,8 +685,8 @@ export const getCompany = async (companyIdOrName: string, userId?: string): Prom
       selectedScenarios: companyData.selectedScenarios || [],
       selectedDomains: companyData.selectedDomains || [],
       research: companyData.research || null,
-      journey: companyData.journey,
-      journeys: companyData.journeys,
+      journey: hydratedJourney,
+      journeys: hydratedJourneys,
       currentJourneyId: companyData.currentJourneyId
     } as Company;
 

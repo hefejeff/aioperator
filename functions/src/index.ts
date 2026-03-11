@@ -3,3 +3,4 @@
  */
 
 export { generateGammaPresentation } from './gammaProxy';
+export { deleteAuthUser } from './userAdmin';
