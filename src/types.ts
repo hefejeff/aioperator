@@ -82,6 +82,17 @@ export interface PromptVersion {
   updatedBy?: string;
 }
 
+export interface SkillMarkdownFile {
+  id: string;
+  title: string;
+  fileName: string;
+  markdown: string;
+  description?: string;
+  createdAt: number;
+  updatedAt: number;
+  updatedBy?: string | null;
+}
+
 export interface CustomStageChildStep {
   id: string;
   title: string;
@@ -91,6 +102,7 @@ export interface CustomStageChildStep {
   desiredOutput?: string;
   selectedDocumentIds?: string[];
   selectedTranscriptIds?: string[];
+  selectedSkillIds?: string[];
   outputType?: 'CHAT_INTERFACE' | 'EXCEL_DOC' | 'PRESENTATION';
   excelTemplate?: {
     fileName: string;
@@ -118,6 +130,7 @@ export interface CustomJourneyStep {
   steps?: CustomStageChildStep[];
   selectedDocumentIds?: string[];
   selectedTranscriptIds?: string[];
+  selectedSkillIds?: string[];
   outputType?: 'CHAT_INTERFACE' | 'EXCEL_DOC' | 'PRESENTATION';
   excelTableTemplate?: 'FIELD_VALUE' | 'KPI_TRACKER' | 'ACTION_REGISTER';
   excelTemplate?: {

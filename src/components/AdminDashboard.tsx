@@ -5,6 +5,7 @@ import { listAllUsers, setUserRole, deleteUser, getScenarios, createNewUser, get
 import type { Role, Scenario, UserProfile, JourneyStepKey, JourneyStepSettings } from '../types';
 import { Icons } from '../constants';
 import BusinessDomainManagement from './BusinessDomainManagement';
+import SkillsManagement from './SkillsManagement';
 import SidebarNav, { SidebarNavItem } from './SidebarNav';
 
 interface AdminDashboardProps {
@@ -213,7 +214,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
-  const [activeTab, setActiveTab] = useState<'users' | 'domains' | 'journeySteps'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'domains' | 'skills' | 'journeySteps'>('users');
   const [journeyStepSettings, setJourneyStepSettings] = useState<JourneyStepSettings>({
     companyResearch: true,
     targetDomains: true,
@@ -435,7 +436,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
             <h1 className="text-2xl font-bold text-wm-blue mb-2 flex items-center gap-2">
               <Icons.ChartBar /> Admin Dashboard
             </h1>
-            <p className="text-wm-blue/60">Manage users, roles, and domains.</p>
+            <p className="text-wm-blue/60">Manage users, roles, domains, and skills markdown files.</p>
             {error && <p className="text-red-600 mt-2 font-bold">{error}</p>}
             
             <div className="mt-4 border-b border-wm-neutral/30">
@@ -473,6 +474,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
                   <Icons.Workflow />
                   Journey Stages
                 </button>
+                <button
+                  onClick={() => setActiveTab('skills')}
+                  className={`pb-3 px-1 inline-flex items-center gap-2 text-sm font-bold ${
+                    activeTab === 'skills'
+                      ? 'border-b-2 border-wm-accent text-wm-accent'
+                      : 'text-wm-blue/60 hover:text-wm-blue'
+                  }`}
+                >
+                  <Icons.FileText />
+                  Skills
+                </button>
               </nav>
             </div>
           </div>
@@ -492,6 +504,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) => {
             />
           ) : activeTab === 'domains' ? (
             <BusinessDomainManagement currentUser={currentUser} />
+          ) : activeTab === 'skills' ? (
+            <SkillsManagement currentUser={currentUser} />
           ) : (
             <JourneyStepsTab
               settings={journeyStepSettings}

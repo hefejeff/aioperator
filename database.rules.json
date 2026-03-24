@@ -66,6 +66,13 @@
       }
     },
 
+    "skillsLibrary": {
+      ".indexOn": ["updatedAt", "title", "fileName"],
+      "$skillId": {
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'SUPER_ADMIN' || root.child('users').child(auth.uid).child('role').val() === 'ADMIN')"
+      }
+    },
+
     "companies": {
       ".indexOn": ["createdBy", "name"],
       "$companyId": {

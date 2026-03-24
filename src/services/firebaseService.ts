@@ -24,7 +24,8 @@ import type {
   Company,
   RelatedScenario,
   RfpAnalysis
-  ,JourneyStepSettings
+  ,JourneyStepSettings,
+  SkillMarkdownFile
 } from '../types';
 import { ALL_SCENARIOS } from '../constants';
 
@@ -649,6 +650,115 @@ export const savePitch = async (
     return newPitchRef.key as string;
   } catch (error) {
     console.error('Failed to save Elevator Pitch:', error);
+    throw error;
+  }
+};
+
+const SKILLS_LIBRARY_PATH = 'skillsLibrary';
+
+const normalizeSkillFileName = (value: string): string => {
+  const sanitized = value
+    .toLowerCase()
+    .replace(/\.md$/i, '')
+    .replace(/[^a-z0-9\s-_]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+
+  const fallback = sanitized || `skill-${Date.now()}`;
+  return `${fallback}.md`;
+};
+
+export const listSkillMarkdownFiles = async (): Promise<SkillMarkdownFile[]> => {
+  try {
+    const skillsRef = ref(db, SKILLS_LIBRARY_PATH);
+    const snapshot = await get(skillsRef);
+
+    if (!snapshot.exists()) {
+      return [];
+    }
+
+    const data = snapshot.val() as Record<string, Omit<SkillMarkdownFile, 'id'>>;
+    return Object.entries(data)
+      .map(([id, value]) => ({
+        id,
+        title: value.title || 'Untitled Skill',
+        fileName: normalizeSkillFileName(value.fileName || value.title || id),
+        markdown: value.markdown || '',
+        description: value.description || '',
+        createdAt: value.createdAt || Date.now(),
+        updatedAt: value.updatedAt || value.createdAt || Date.now(),
+        updatedBy: value.updatedBy || null,
+      }))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  } catch (error) {
+    console.error('Failed to list skill markdown files:', error);
+    throw error;
+  }
+};
+
+type SaveSkillMarkdownInput = {
+  id?: string;
+  title: string;
+  fileName?: string;
+  markdown: string;
+  description?: string;
+  updatedBy?: string | null;
+};
+
+export const saveSkillMarkdownFile = async (input: SaveSkillMarkdownInput): Promise<SkillMarkdownFile> => {
+  try {
+    const now = Date.now();
+    const title = input.title.trim() || 'Untitled Skill';
+    const fileName = normalizeSkillFileName(input.fileName || title);
+
+    if (input.id) {
+      const existingRef = ref(db, `${SKILLS_LIBRARY_PATH}/${input.id}`);
+      const existingSnap = await get(existingRef);
+      const existing = existingSnap.exists() ? existingSnap.val() as Partial<SkillMarkdownFile> : {};
+
+      const updatedRecord: Omit<SkillMarkdownFile, 'id'> = {
+        title,
+        fileName,
+        markdown: input.markdown,
+        description: input.description?.trim() || '',
+        createdAt: existing.createdAt || now,
+        updatedAt: now,
+        updatedBy: input.updatedBy ?? existing.updatedBy ?? null,
+      };
+
+      await set(existingRef, updatedRecord);
+      return { id: input.id, ...updatedRecord };
+    }
+
+    const skillsRef = ref(db, SKILLS_LIBRARY_PATH);
+    const newSkillRef = push(skillsRef);
+    const newRecord: Omit<SkillMarkdownFile, 'id'> = {
+      title,
+      fileName,
+      markdown: input.markdown,
+      description: input.description?.trim() || '',
+      createdAt: now,
+      updatedAt: now,
+      updatedBy: input.updatedBy ?? null,
+    };
+
+    await set(newSkillRef, newRecord);
+    return {
+      id: newSkillRef.key as string,
+      ...newRecord,
+    };
+  } catch (error) {
+    console.error('Failed to save skill markdown file:', error);
+    throw error;
+  }
+};
+
+export const deleteSkillMarkdownFile = async (skillId: string): Promise<void> => {
+  try {
+    await remove(ref(db, `${SKILLS_LIBRARY_PATH}/${skillId}`));
+  } catch (error) {
+    console.error('Failed to delete skill markdown file:', error);
     throw error;
   }
 };

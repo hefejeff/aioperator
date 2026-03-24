@@ -9,7 +9,8 @@ const sanitizeCustomStageForSave = (stage: CustomJourneyStep): CustomJourneyStep
     createdAt: stage.createdAt,
     updatedAt: stage.updatedAt,
     selectedDocumentIds: Array.isArray(stage.selectedDocumentIds) ? [...stage.selectedDocumentIds] : [],
-    selectedTranscriptIds: Array.isArray(stage.selectedTranscriptIds) ? [...stage.selectedTranscriptIds] : []
+    selectedTranscriptIds: Array.isArray(stage.selectedTranscriptIds) ? [...stage.selectedTranscriptIds] : [],
+    selectedSkillIds: Array.isArray(stage.selectedSkillIds) ? [...stage.selectedSkillIds] : []
   };
 
   if (typeof stage.description !== 'undefined') {
@@ -51,6 +52,7 @@ const sanitizeCustomStageForSave = (stage: CustomJourneyStep): CustomJourneyStep
         ...(typeof child.desiredOutput !== 'undefined' ? { desiredOutput: child.desiredOutput } : {}),
         ...(Array.isArray(child.selectedDocumentIds) ? { selectedDocumentIds: [...child.selectedDocumentIds] } : {}),
         ...(Array.isArray(child.selectedTranscriptIds) ? { selectedTranscriptIds: [...child.selectedTranscriptIds] } : {}),
+        ...(Array.isArray(child.selectedSkillIds) ? { selectedSkillIds: [...child.selectedSkillIds] } : {}),
         ...(typeof child.outputType !== 'undefined' ? { outputType: child.outputType } : {}),
         ...(child.excelTemplate
           ? {
