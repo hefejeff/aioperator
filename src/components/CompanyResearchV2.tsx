@@ -248,6 +248,37 @@ const tableToCsv = (table: ParsedMarkdownTable): string => {
     .join('\n');
 };
 
+const tableToMarkdown = (table: ParsedMarkdownTable): string => {
+  const escapeCell = (value: string): string => (value || '').replace(/\|/g, '\\|');
+  const header = `| ${table.headers.map((cell) => escapeCell(cell)).join(' | ')} |`;
+  const separator = `| ${table.headers.map(() => '---').join(' | ')} |`;
+  const rows = table.rows.map((row) => `| ${row.map((cell) => escapeCell(cell)).join(' | ')} |`);
+  return [header, separator, ...rows].join('\n');
+};
+
+const estimateTokenCount = (text: string): number => {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return Math.max(1, Math.ceil(trimmed.length / 4));
+};
+
+const markdownToReadableText = (value: string): string => {
+  if (!value) return '';
+
+  return value
+    .replace(/```[\s\S]*?```/g, (block) => block.replace(/```[a-zA-Z0-9_-]*\n?/g, '').replace(/```/g, '').trim())
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/~~(.*?)~~/g, '$1')
+    .replace(/\[(.*?)\]\((.*?)\)/g, '$1 ($2)')
+    .replace(/^\s*[-*+]\s+/gm, '• ')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 const parseMarkdownTableBlock = (text: string): ParsedMarkdownTableBlock | null => {
   const rawLines = text.split(/\r?\n/);
   const parseRow = (line: string): string[] =>
@@ -417,6 +448,7 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [companyResearch, setCompanyResearch] = useState<CompanyResearch | null>(null);
@@ -514,13 +546,23 @@ const CompanyResearchV2: React.FC<CompanyResearchV2Props> = ({ user }) => {
   const [isCustomStepChatSending, setIsCustomStepChatSending] = useState(false);
   const [customStepChatByStepId, setCustomStepChatByStepId] = useState<Record<string, Array<{ role: 'user' | 'assistant'; content: string }>>>({});
   const [customStepActivityNotesByStepId, setCustomStepActivityNotesByStepId] = useState<Record<string, Record<string, string>>>({});
-  const [expandedCustomActivityByStepId, setExpandedCustomActivityByStepId] = useState<Record<string, string | null>>({});
+  const [customStepActivityResponsesByStepId, setCustomStepActivityResponsesByStepId] = useState<Record<string, Record<string, string>>>({});
+  const [expandedCustomActivityByStepId, setExpandedCustomActivityByStepId] = useState<Record<string, Record<string, boolean>>>({});
+  const [runningCustomActivityIdByStepId, setRunningCustomActivityIdByStepId] = useState<Record<string, string | null>>({});
   const [customStepExecutionCompletedByChildKey, setCustomStepExecutionCompletedByChildKey] = useState<Record<string, boolean>>({});
+  const [customStepTokenUsageByStepId, setCustomStepTokenUsageByStepId] = useState<Record<string, {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    activityCount: number;
+    updatedAt: number;
+  }>>({});
   const [customStepFinalOutputByStepId, setCustomStepFinalOutputByStepId] = useState<Record<string, string>>({});
   const [customStepAdditionalContextByStepId, setCustomStepAdditionalContextByStepId] = useState<Record<string, string>>({});
   const [selectedModeOptionByStepId, setSelectedModeOptionByStepId] = useState<Record<string, string>>({});
   const [customStepContextFilesByStepId, setCustomStepContextFilesByStepId] = useState<Record<string, CustomStepContextFile[]>>({});
   const [isAttachingCustomStepContextFile, setIsAttachingCustomStepContextFile] = useState(false);
+  const [isCustomContextDrawerOpen, setIsCustomContextDrawerOpen] = useState(false);
   const customStepContextFileInputRef = useRef<HTMLInputElement>(null);
   const [activeChildStepIndexByCustomStepId, setActiveChildStepIndexByCustomStepId] = useState<Record<string, number>>({});
   const [pendingAutoRunRequest, setPendingAutoRunRequest] = useState<{ customStepId: string; childIndex: number; message: string } | null>(null);
@@ -3536,12 +3578,6 @@ ${domainSlides}
 
     return activities.slice(0, 10);
   };
-
-
-  const customStepById = useMemo(
-    () => new Map(customSteps.map((step) => [step.id, step])),
-    [customSteps]
-  );
   const selectedCustomChildSteps = useMemo(
     () => (selectedCustomStep ? getResolvedChildStepsForCustomStep(selectedCustomStep) : []),
     [selectedCustomStep, customSteps]
@@ -3582,9 +3618,70 @@ ${domainSlides}
   const selectedCustomActivityNotes = selectedCustomStep
     ? (customStepActivityNotesByStepId[selectedCustomStep.id] || {})
     : {};
-  const selectedCustomExpandedActivityId = selectedCustomStep
-    ? (expandedCustomActivityByStepId[selectedCustomStep.id] ?? selectedCustomPromptActivities[0]?.id ?? null)
+  const selectedCustomActivityResponses = selectedCustomStep
+    ? (customStepActivityResponsesByStepId[selectedCustomStep.id] || {})
+    : {};
+  const selectedCustomActivityEditorPartsById = useMemo(() => {
+    const parts: Record<string, { text: string; table: ParsedMarkdownTable | null; raw: string }> = {};
+    selectedCustomPromptActivities.forEach((activity) => {
+      const response = selectedCustomActivityResponses[activity.id];
+      const note = selectedCustomActivityNotes[activity.id];
+      const raw = typeof response === 'string' && response.trim().length > 0
+        ? response
+        : (note || '');
+      const parsed = parseMarkdownTableBlock(raw);
+      if (!parsed) {
+        parts[activity.id] = {
+          text: markdownToReadableText(raw),
+          table: null,
+          raw,
+        };
+        return;
+      }
+      const prose = markdownToReadableText([parsed.beforeText, parsed.afterText].filter(Boolean).join('\n\n').trim());
+      parts[activity.id] = {
+        text: prose,
+        table: parsed.table,
+        raw,
+      };
+    });
+    return parts;
+  }, [selectedCustomPromptActivities, selectedCustomActivityResponses, selectedCustomActivityNotes]);
+  const selectedCustomEditableActivityValueById = useMemo(() => {
+    const merged: Record<string, string> = {};
+    selectedCustomPromptActivities.forEach((activity) => {
+      merged[activity.id] = selectedCustomActivityEditorPartsById[activity.id]?.text || '';
+    });
+    return merged;
+  }, [selectedCustomPromptActivities, selectedCustomActivityEditorPartsById]);
+  const selectedCustomActivityFullContextValueById = useMemo(() => {
+    const merged: Record<string, string> = {};
+    selectedCustomPromptActivities.forEach((activity) => {
+      const parsed = selectedCustomActivityEditorPartsById[activity.id];
+      if (!parsed) {
+        merged[activity.id] = '';
+        return;
+      }
+      if (!parsed.table) {
+        merged[activity.id] = parsed.text || '';
+        return;
+      }
+      const tableMarkdown = tableToMarkdown(parsed.table);
+      merged[activity.id] = [parsed.text.trim(), tableMarkdown].filter(Boolean).join('\n\n').trim();
+    });
+    return merged;
+  }, [selectedCustomPromptActivities, selectedCustomActivityEditorPartsById]);
+  const selectedCustomExpandedActivityMap = selectedCustomStep
+    ? (expandedCustomActivityByStepId[selectedCustomStep.id] || {})
+    : {};
+  const areAllSelectedCustomActivitiesExpanded = selectedCustomPromptActivities.length > 0
+    && selectedCustomPromptActivities.every((activity) => selectedCustomExpandedActivityMap[activity.id]);
+  const selectedCustomRunningActivityId = selectedCustomStep
+    ? (runningCustomActivityIdByStepId[selectedCustomStep.id] ?? null)
     : null;
+  const selectedCustomStepTokenUsage = selectedCustomStep
+    ? customStepTokenUsageByStepId[selectedCustomStep.id]
+    : undefined;
   const selectedCustomFinalOutputDraft = selectedCustomStep
     ? (customStepFinalOutputByStepId[selectedCustomStep.id] ?? (selectedCustomPrimaryStep?.desiredOutput || ''))
     : '';
@@ -4004,7 +4101,7 @@ ${domainSlides}
 
     const base = buildAutoRunMessageForChildStep(selectedCustomStep.id, selectedCustomActiveChildStepIndex);
     const activityLines = selectedCustomPromptActivities.map((activity, index) => {
-      const notes = (selectedCustomActivityNotes[activity.id] || '').trim();
+      const notes = (selectedCustomEditableActivityValueById[activity.id] || '').trim();
       return [
         `Activity ${index + 1}: ${activity.title}`,
         `User edits/context: ${notes || 'No extra context provided.'}`,
@@ -4025,15 +4122,90 @@ ${domainSlides}
     ].join('\n\n');
   };
 
+  const confirmProceedWithLowReadiness = (): boolean => {
+    if (!selectedCustomStep) return false;
+    const readinessScore = selectedCustomStepContextGap.readinessScore;
+    if (readinessScore >= 70) return true;
+
+    if (typeof window === 'undefined') return true;
+
+    const shouldProceed = window.confirm(
+      `Readiness score is ${readinessScore}% for this step. Running now may produce weaker results. Do you want to proceed anyway?`
+    );
+
+    if (!shouldProceed) {
+      setCustomStepOutputStatus('Step run canceled. Improve context readiness to at least 70% or proceed manually.');
+    }
+
+    return shouldProceed;
+  };
+
+  const updateSelectedActivityEditorValue = (activityId: string, nextText: string, nextTable?: ParsedMarkdownTable | null) => {
+    if (!selectedCustomStep) return;
+    const stepId = selectedCustomStep.id;
+    const currentParts = selectedCustomActivityEditorPartsById[activityId];
+    const table = typeof nextTable !== 'undefined' ? nextTable : (currentParts?.table || null);
+    const serialized = table
+      ? [nextText.trim(), tableToMarkdown(table)].filter(Boolean).join('\n\n').trim()
+      : nextText;
+
+    setCustomStepActivityNotesByStepId((prev) => ({
+      ...prev,
+      [stepId]: {
+        ...(prev[stepId] || {}),
+        [activityId]: serialized,
+      },
+    }));
+    setCustomStepActivityResponsesByStepId((prev) => ({
+      ...prev,
+      [stepId]: {
+        ...(prev[stepId] || {}),
+        [activityId]: serialized,
+      },
+    }));
+  };
+
+  const buildRunMessageForActivityExecution = (
+    activity: PromptActivityDefinition,
+    activityIndex: number,
+    activityCount: number,
+    priorActivityOutputs: Array<{ title: string; response: string }>
+  ): string => {
+    if (!selectedCustomStep) return '';
+
+    const base = buildAutoRunMessageForChildStep(selectedCustomStep.id, selectedCustomActiveChildStepIndex);
+    const notes = (selectedCustomEditableActivityValueById[activity.id] || '').trim();
+    const finalOutputDraft = selectedCustomFinalOutputDraft.trim();
+    const additionalContext = selectedCustomAdditionalRunContext.trim();
+
+    const priorOutputsText = priorActivityOutputs.length > 0
+      ? priorActivityOutputs
+        .map((entry, index) => `Activity ${index + 1}: ${entry.title}\n${entry.response}`)
+        .join('\n\n')
+      : 'No prior activity outputs yet.';
+
+    return [
+      base,
+      `Run activity ${activityIndex + 1} of ${activityCount}: ${activity.title}`,
+      `User edits/context: ${notes || 'No extra context provided.'}`,
+      `Prior activity outputs:\n${priorOutputsText}`,
+      `Final output expectation from user: ${finalOutputDraft || 'Use the prompt-defined final output.'}`,
+      additionalContext
+        ? `Additional context to apply for this run:\n${additionalContext}`
+        : 'Additional context to apply for this run: None.',
+      'Return the complete response for this activity only.',
+    ].join('\n\n');
+  };
+
   const handleSendCustomStepChat = async (
     presetMessage?: string,
     skipNavigationIntentCheck = false,
     hideUserMessage = false,
     markAsStepExecutionRun = false
-  ) => {
-    if (!selectedCustomStep || isCustomStepChatSending) return;
+  ): Promise<{ response: string | null; tokenUsage: { inputTokens: number; outputTokens: number; totalTokens: number } | null } | null> => {
+    if (!selectedCustomStep || isCustomStepChatSending) return null;
     const userMessage = (presetMessage ?? customStepChatInput).trim();
-    if (!userMessage) return;
+    if (!userMessage) return null;
 
     const stepId = selectedCustomStep.id;
 
@@ -4055,7 +4227,7 @@ ${domainSlides}
           message: buildAutoRunMessageForChildStep(stepId, nextChildStepInfo.nextIndex)
         });
         setCustomStepStatus(`Moved to next child step: ${nextChildStepInfo.title}. Running it now...`);
-        return;
+        return null;
       }
 
       const nextStepInfo = getNextStepNavigationInfo(stepId);
@@ -4075,7 +4247,7 @@ ${domainSlides}
         selectedStepDirtyRef.current = true;
         setCustomStepChatInput('');
         setCustomStepStatus(`Moved to next step: ${nextStepInfo.nextStepTitle}.${nextStepInfo.nextCustomStepId ? ' Running it now...' : ''}`);
-        return;
+        return null;
       }
     }
 
@@ -4153,6 +4325,17 @@ ${domainSlides}
           [stepId]: true
         }));
       }
+      const inputTokens = estimateTokenCount(`${contextPrefix}\n\n${runtimeUserMessage}`);
+      const outputTokens = estimateTokenCount(aiResponse || '');
+
+      return {
+        response: aiResponse || null,
+        tokenUsage: {
+          inputTokens,
+          outputTokens,
+          totalTokens: inputTokens + outputTokens,
+        },
+      };
     } catch (error) {
       console.error('Failed to send custom step chat message:', error);
       const leadQuestion = buildNextStepLeadQuestion(stepId);
@@ -4170,6 +4353,10 @@ ${domainSlides}
           [stepId]: true
         }));
       }
+      return {
+        response: null,
+        tokenUsage: null,
+      };
     } finally {
       if (markAsStepExecutionRun) {
         const executionKey = getCustomStepExecutionKey(stepId, activeChildIndexForRun);
@@ -4179,6 +4366,130 @@ ${domainSlides}
         }));
       }
       setIsCustomStepChatSending(false);
+    }
+  };
+
+  const handleRunStepExecutionWithActivities = async () => {
+    if (!selectedCustomStep || isCustomStepChatSending) return;
+    if (!confirmProceedWithLowReadiness()) return;
+
+    const stepId = selectedCustomStep.id;
+    const activities = selectedCustomPromptActivities;
+
+    if (activities.length === 0) {
+      const singleRunResult = await handleSendCustomStepChat(
+        buildRunStepExecutionMessage(),
+        true,
+        true,
+        true
+      );
+      if (singleRunResult?.tokenUsage) {
+        setCustomStepTokenUsageByStepId((prev) => ({
+          ...prev,
+          [stepId]: {
+            ...singleRunResult.tokenUsage,
+            activityCount: 1,
+            updatedAt: Date.now(),
+          },
+        }));
+      }
+      return;
+    }
+
+    const clearedResponses = activities.reduce<Record<string, string>>((acc, activity) => {
+      acc[activity.id] = '';
+      return acc;
+    }, {});
+
+    setCustomStepActivityResponsesByStepId((prev) => ({
+      ...prev,
+      [stepId]: clearedResponses,
+    }));
+
+    const allExpandedMap = activities.reduce<Record<string, boolean>>((acc, activity) => {
+      acc[activity.id] = true;
+      return acc;
+    }, {});
+    setExpandedCustomActivityByStepId((prev) => ({
+      ...prev,
+      [stepId]: allExpandedMap,
+    }));
+
+    const priorOutputs: Array<{ title: string; response: string }> = [];
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+
+    try {
+      setCustomStepOutputStatus(`Running ${activities.length} activities in sequence...`);
+
+      for (let index = 0; index < activities.length; index += 1) {
+        const activity = activities[index];
+        setRunningCustomActivityIdByStepId((prev) => ({
+          ...prev,
+          [stepId]: activity.id,
+        }));
+        setCustomStepOutputStatus(`Running activity ${index + 1} of ${activities.length}: ${activity.title}`);
+
+        const runResult = await handleSendCustomStepChat(
+          buildRunMessageForActivityExecution(activity, index, activities.length, priorOutputs),
+          true,
+          true,
+          false
+        );
+        if (runResult?.tokenUsage) {
+          totalInputTokens += runResult.tokenUsage.inputTokens;
+          totalOutputTokens += runResult.tokenUsage.outputTokens;
+        }
+
+        const response = runResult?.response;
+
+        const rawResponse = (response || 'No response returned for this activity.').trim() || 'No response returned for this activity.';
+        const parsedTableBlock = parseMarkdownTableBlock(rawResponse);
+        const normalizedResponse = parsedTableBlock
+          ? [
+              markdownToReadableText([parsedTableBlock.beforeText, parsedTableBlock.afterText].filter(Boolean).join('\n\n').trim()),
+              tableToMarkdown(parsedTableBlock.table),
+            ].filter(Boolean).join('\n\n').trim()
+          : markdownToReadableText(rawResponse);
+
+        setCustomStepActivityResponsesByStepId((prev) => ({
+          ...prev,
+          [stepId]: {
+            ...(prev[stepId] || {}),
+            [activity.id]: normalizedResponse,
+          },
+        }));
+
+        priorOutputs.push({
+          title: activity.title,
+          response: normalizedResponse,
+        });
+      }
+
+      const executionKey = getCustomStepExecutionKey(stepId, getActiveChildStepIndex(stepId));
+      setCustomStepExecutionCompletedByChildKey((prev) => ({
+        ...prev,
+        [executionKey]: true,
+      }));
+      setCustomStepTokenUsageByStepId((prev) => ({
+        ...prev,
+        [stepId]: {
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          totalTokens: totalInputTokens + totalOutputTokens,
+          activityCount: activities.length,
+          updatedAt: Date.now(),
+        },
+      }));
+      setCustomStepOutputStatus(`Completed ${activities.length} activities in sequence.`);
+    } catch (error) {
+      console.error('Failed to run step activities in sequence:', error);
+      setCustomStepOutputStatus('Failed while running activities in sequence. Please retry.');
+    } finally {
+      setRunningCustomActivityIdByStepId((prev) => ({
+        ...prev,
+        [stepId]: null,
+      }));
     }
   };
 
@@ -4362,6 +4673,31 @@ ${domainSlides}
       };
     });
 
+    setCustomStepActivityResponsesByStepId((prev) => {
+      const existingForStep = prev[stepId] || {};
+      const nextForStep: Record<string, string> = {};
+      let changed = false;
+
+      selectedCustomPromptActivities.forEach((activity) => {
+        if (typeof existingForStep[activity.id] === 'string') {
+          nextForStep[activity.id] = existingForStep[activity.id];
+        } else {
+          nextForStep[activity.id] = '';
+          changed = true;
+        }
+      });
+
+      if (Object.keys(existingForStep).length !== Object.keys(nextForStep).length) {
+        changed = true;
+      }
+
+      if (!changed) return prev;
+      return {
+        ...prev,
+        [stepId]: nextForStep,
+      };
+    });
+
     setCustomStepFinalOutputByStepId((prev) => {
       if (typeof prev[stepId] === 'string') return prev;
       return {
@@ -4379,23 +4715,27 @@ ${domainSlides}
     });
 
     setExpandedCustomActivityByStepId((prev) => {
-      const currentExpandedId = prev[stepId];
-      const firstActivityId = selectedCustomPromptActivities[0]?.id ?? null;
+      const existingForStep = prev[stepId] || {};
+      const nextForStep: Record<string, boolean> = {};
+      let changed = false;
 
-      if (
-        typeof currentExpandedId === 'string' &&
-        selectedCustomPromptActivities.some((activity) => activity.id === currentExpandedId)
-      ) {
-        return prev;
+      selectedCustomPromptActivities.forEach((activity, index) => {
+        if (typeof existingForStep[activity.id] === 'boolean') {
+          nextForStep[activity.id] = existingForStep[activity.id];
+        } else {
+          nextForStep[activity.id] = index === 0;
+          changed = true;
+        }
+      });
+
+      if (Object.keys(existingForStep).length !== Object.keys(nextForStep).length) {
+        changed = true;
       }
 
-      if ((currentExpandedId ?? null) === firstActivityId) {
-        return prev;
-      }
-
+      if (!changed) return prev;
       return {
         ...prev,
-        [stepId]: firstActivityId,
+        [stepId]: nextForStep,
       };
     });
   }, [selectedCustomStep?.id, selectedCustomPromptActivities, selectedCustomPrimaryStep?.desiredOutput]);
@@ -4422,248 +4762,28 @@ ${domainSlides}
               <div className="flex items-center gap-2 min-w-0">
                 <h1 className="text-2xl font-bold text-wm-blue truncate">{displayCompanyName}</h1>
               </div>
-              {companyId && Object.keys(journeys).length > 0 && (
-                <div className="flex items-center gap-2 ml-auto flex-shrink-0">
-                  <select
-                    value={selectedJourneyId || ''}
-                    onChange={async (event) => {
-                      const nextJourneyId = event.target.value || null;
-                      setSelectedJourneyId(nextJourneyId);
-                      if (typeof window !== 'undefined' && nextJourneyId) {
-                        localStorage.setItem('companyJourneyJourneyId', nextJourneyId);
-                      }
-                      if (companyId && nextJourneyId) {
-                        await updateCompanyJourneyStatus(companyId, user.uid, {}, nextJourneyId);
-                        navigate(`/company2?companyId=${companyId}&journeyId=${nextJourneyId}`, { replace: true });
-                        const active = journeys[nextJourneyId];
-                        const fallbackKickoffDomains = active?.kickoffSelectedDomains || [];
-                        const fallbackKickoffUseCases = active?.kickoffSelectedUseCases || [];
-                        const fallbackPhase2Domains = active?.phase2SelectedDomains || fallbackKickoffDomains;
-                        const fallbackPhase2UseCases = active?.phase2SelectedUseCases || fallbackKickoffUseCases;
-                        setCompanySelectedDomains(
-                          Array.isArray(active?.kickoffSelectedDomains)
-                            ? active.kickoffSelectedDomains
-                            : fallbackKickoffDomains
-                        );
-                        setCompanySelectedScenarios(
-                          Array.isArray(active?.kickoffSelectedUseCases)
-                            ? active.kickoffSelectedUseCases
-                            : fallbackKickoffUseCases
-                        );
-                        setIsCompanyResearchComplete(!!active?.companyResearchComplete);
-                        setKickoffPresentationUrl(active?.kickoffPresentationUrl || '');
-                        setKickoffTemplateReference(active?.kickoffTemplateReference || null);
-                        setDeepDiveTemplateReference(active?.deepDiveTemplateReference || null);
-                        setKickoffMeetingNotes(active?.kickoffMeetingNotes || []);
-                        setPhase2SelectedDomains(
-                          Array.isArray(active?.phase2SelectedDomains)
-                            ? active.phase2SelectedDomains
-                            : fallbackPhase2Domains
-                        );
-                        setPhase2SelectedUseCases(
-                          Array.isArray(active?.phase2SelectedUseCases)
-                            ? active.phase2SelectedUseCases
-                            : fallbackPhase2UseCases
-                        );
-                        setDeepDiveSelectedDomains(
-                          Array.isArray(active?.deepDiveSelectedDomains)
-                            ? active.deepDiveSelectedDomains
-                            : (Array.isArray(active?.phase2SelectedDomains) ? active.phase2SelectedDomains : fallbackPhase2Domains)
-                        );
-                        setDeepDiveSelectedUseCases(
-                          Array.isArray(active?.deepDiveSelectedUseCases)
-                            ? active.deepDiveSelectedUseCases
-                            : (Array.isArray(active?.phase2SelectedUseCases) ? active.phase2SelectedUseCases : fallbackPhase2UseCases)
-                        );
-                        const loadedFunctionalMeetings = Array.isArray(active?.functionalHighLevelMeetings)
-                          ? active.functionalHighLevelMeetings
-                          : [];
-                        const loadedDeepDiveMeetings = Array.isArray(active?.functionalDeepDiveMeetings)
-                          ? active.functionalDeepDiveMeetings
-                          : [];
-                        const loadedCustomSteps = Array.isArray(active?.customSteps)
-                          ? active.customSteps
-                          : [];
-                        setFunctionalHighLevelMeetings(loadedFunctionalMeetings);
-                        setSelectedFunctionalMeetingId(loadedFunctionalMeetings[0]?.id || null);
-                        setFunctionalDeepDiveMeetings(loadedDeepDiveMeetings);
-                        setSelectedDeepDiveMeetingId(loadedDeepDiveMeetings[0]?.id || null);
-                        setCustomSteps(loadedCustomSteps);
-                        setJourneyStepOverrides(active?.journeyStepSettings || {});
-                        setSelectedStepId(active?.currentStepId || 'companyResearch');
-                        setJourneyStepOrder(Array.isArray(active?.stepOrder) ? active.stepOrder : []);
-                        setSharePointPresentationOptions([]);
-                        setDeepDiveSharePointPresentationOptions([]);
-                        setKickoffUrlStatus(null);
-                        setKickoffTemplateStatus(null);
-                        setDeepDiveTemplateStatus(null);
-                        setKickoffNotesStatus(null);
-                        setPhase2TargetsStatus(null);
-                        setFunctionalMeetingsStatus(null);
-                        setDeepDiveMeetingsStatus(null);
-                        setDeepDiveTargetsStatus(null);
-                        setCustomStepStatus(null);
-                        setIsCustomStepFormOpen(false);
-                        setNewCustomStepTitle('');
-                        setNewCustomStepDescription('');
-                        setNewCustomStepModelId('gemini-2.5-pro');
-                        setNewCustomStepPrompt('');
-                        setNewCustomStepSelectedDocumentIds([]);
-                        setNewCustomStepSelectedTranscriptIds([]);
-                        setNewCustomStepSelectedSkillIds([]);
-                        setJourneyStepOverridesStatus(null);
-                        setJourneyStepOrderStatus(null);
-                        setIsJourneyStepManagerOpen(false);
-                        kickoffUrlDirtyRef.current = false;
-                        kickoffTargetsDirtyRef.current = false;
-                        kickoffNotesDirtyRef.current = false;
-                        phase2TargetsDirtyRef.current = false;
-                        functionalMeetingsDirtyRef.current = false;
-                        deepDiveMeetingsDirtyRef.current = false;
-                        deepDiveTargetsDirtyRef.current = false;
-                        selectedStepDirtyRef.current = false;
-                        journeyStepOverridesDirtyRef.current = false;
-                      }
-                    }}
-                    className="rounded-md border border-wm-neutral/30 bg-white px-3 py-2 text-sm text-wm-blue"
-                  >
-                    {journeyOptions.map((journey, index) => (
-                        <option key={journey.id} value={journey.id}>
-                          {`Journey ${index + 1} • ${new Date(journey.createdAt).toLocaleString()}`}
-                        </option>
-                      ))}
-                  </select>
-                <button
-                  type="button"
-                  onClick={handleRerunResearch}
-                  disabled={isResearchRunning || !rerunnableCompanyName}
-                  className={`px-3 py-2 text-sm font-semibold rounded-md border ${
-                    isResearchRunning || !rerunnableCompanyName
-                      ? 'border-wm-neutral/20 text-wm-blue/30 cursor-not-allowed'
-                      : 'border-wm-accent/30 text-wm-accent hover:bg-wm-accent/10'
-                  }`}
-                >
-                  {isResearchRunning ? 'Re-running...' : 'Re-run research'}
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!companyId) return;
-                    const newJourneyId = `journey-${Date.now()}`;
-                    await updateCompanyJourneyStatus(
-                      companyId,
-                      user.uid,
-                      {
-                        companyResearchComplete: false,
-                        currentStepId: 'companyResearch',
-                        stepOrder: [],
-                        journeyStepSettings: {},
-                        kickoffSelectedDomains: companySelectedDomains,
-                        kickoffSelectedUseCases: companySelectedScenarios,
-                        phase2SelectedDomains: companySelectedDomains,
-                        phase2SelectedUseCases: companySelectedScenarios,
-                        deepDiveSelectedDomains: companySelectedDomains,
-                        deepDiveSelectedUseCases: companySelectedScenarios
-                      },
-                      newJourneyId
-                    );
-                    if (typeof window !== 'undefined') {
-                      localStorage.setItem('companyJourneyJourneyId', newJourneyId);
-                    }
-                    const refreshed = await getCompany(companyId, user.uid);
-                    const refreshedJourneys = (refreshed as any)?.journeys || {};
-                    setJourneys(refreshedJourneys);
-                    setSelectedJourneyId(newJourneyId);
-                    setIsCompanyResearchComplete(false);
-                    setSharePointPresentationOptions([]);
-                    setDeepDiveSharePointPresentationOptions([]);
-                    setKickoffPresentationUrl('');
-                    setKickoffTemplateReference(null);
-                    setDeepDiveTemplateReference(null);
-                    setKickoffMeetingNotes([]);
-                    setNewKickoffMeetingNote('');
-                    setCompanySelectedDomains(companySelectedDomains);
-                    setCompanySelectedScenarios(companySelectedScenarios);
-                    setPhase2SelectedDomains(companySelectedDomains);
-                    setPhase2SelectedUseCases(companySelectedScenarios);
-                    setDeepDiveSelectedDomains(companySelectedDomains);
-                    setDeepDiveSelectedUseCases(companySelectedScenarios);
-                    setFunctionalHighLevelMeetings([]);
-                    setSelectedFunctionalMeetingId(null);
-                    setNewFunctionalMeetingNote('');
-                    setFunctionalDeepDiveMeetings([]);
-                    setSelectedDeepDiveMeetingId(null);
-                    setNewDeepDiveMeetingNote('');
-                    setCustomSteps([]);
-                    setJourneyStepOverrides({});
-                    setSelectedStepId('companyResearch');
-                    setJourneyStepOrder([]);
-                    setIsCustomStepFormOpen(false);
-                    setNewCustomStepTitle('');
-                    setNewCustomStepDescription('');
-                    setNewCustomStepModelId('gemini-2.5-pro');
-                    setNewCustomStepPrompt('');
-                    setNewCustomStepSelectedDocumentIds([]);
-                    setNewCustomStepSelectedTranscriptIds([]);
-                    setNewCustomStepSelectedSkillIds([]);
-                    setJourneyStepOverridesStatus(null);
-                    setJourneyStepOrderStatus(null);
-                    setIsJourneyStepManagerOpen(false);
-                    setKickoffUrlStatus(null);
-                    setKickoffTemplateStatus(null);
-                    setDeepDiveTemplateStatus(null);
-                    setKickoffNotesStatus(null);
-                    setPhase2TargetsStatus(null);
-                    setFunctionalMeetingsStatus(null);
-                    setDeepDiveMeetingsStatus(null);
-                    setDeepDiveTargetsStatus(null);
-                    setCustomStepStatus(null);
-                    kickoffUrlDirtyRef.current = false;
-                    kickoffTargetsDirtyRef.current = false;
-                    kickoffNotesDirtyRef.current = false;
-                    phase2TargetsDirtyRef.current = false;
-                    functionalMeetingsDirtyRef.current = false;
-                    deepDiveMeetingsDirtyRef.current = false;
-                    deepDiveTargetsDirtyRef.current = false;
-                    selectedStepDirtyRef.current = false;
-                    journeyStepOverridesDirtyRef.current = false;
-                    navigate(`/company2?companyId=${companyId}&journeyId=${newJourneyId}`, { replace: true });
-                  }}
-                  className="px-3 py-2 text-sm font-semibold rounded-md bg-wm-accent text-white hover:bg-wm-accent/90"
-                >
-                  New journey
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!companyId || !selectedJourneyId) return;
-                    void handleDeleteJourney(companyId, selectedJourneyId, journeyOptions.length);
-                  }}
-                  disabled={isDeletingJourney || !selectedJourneyId || journeyOptions.length <= 1}
-                  className={`px-3 py-2 text-sm font-semibold rounded-md border ${
-                    isDeletingJourney || !selectedJourneyId || journeyOptions.length <= 1
-                      ? 'border-wm-neutral/20 text-wm-blue/30 cursor-not-allowed'
-                      : 'border-wm-pink/30 text-wm-pink hover:bg-wm-pink/10'
-                  }`}
-                >
-                  {isDeletingJourney ? 'Deleting...' : 'Delete journey'}
-                </button>
-                {canDeleteCompany && (
+              {hasResearch && (
+                <div className="flex items-center gap-2 ml-auto">
                   <button
                     type="button"
                     onClick={() => {
-                      void handleDeleteCompany();
+                      const nextIsOpen = !isJourneyStepManagerOpen;
+                      setIsJourneyStepManagerOpen(nextIsOpen);
+                      if (nextIsOpen) {
+                        setIsCreateUseCaseModalOpen(false);
+                        setShowKickoffPromptModal(false);
+                      }
+                      if (!nextIsOpen) {
+                        setIsCustomStepFormOpen(false);
+                        setEditingCustomStepId(null);
+                      }
+                      setJourneyStepOverridesStatus(null);
+                      setJourneyStepOrderStatus(null);
                     }}
-                    disabled={isDeletingCompany || !companyId}
-                    className={`px-3 py-2 text-sm font-semibold rounded-md border ${
-                      isDeletingCompany || !companyId
-                        ? 'border-wm-neutral/20 text-wm-blue/30 cursor-not-allowed'
-                        : 'border-red-300 text-red-600 hover:bg-red-50'
-                    }`}
+                    className="px-3 py-2 rounded-lg border border-wm-neutral/30 text-wm-blue text-sm font-semibold hover:bg-wm-neutral/10"
                   >
-                    {isDeletingCompany ? 'Deleting company...' : 'Delete company'}
+                    {isJourneyStepManagerOpen ? 'Close stage manager' : 'Manage journey stages'}
                   </button>
-                )}
                 </div>
               )}
             </div>
@@ -4721,33 +4841,7 @@ ${domainSlides}
           )}
 
           {hasResearch && (
-            <section className="mb-6 rounded-xl border border-wm-neutral/30 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-wm-blue/60">Stage-by-stage guide</h2>
-              <div className="flex items-center gap-2 ml-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextIsOpen = !isJourneyStepManagerOpen;
-                    setIsJourneyStepManagerOpen(nextIsOpen);
-                    if (nextIsOpen) {
-                      setIsCreateUseCaseModalOpen(false);
-                      setShowKickoffPromptModal(false);
-                    }
-                    if (!nextIsOpen) {
-                      setIsCustomStepFormOpen(false);
-                      setEditingCustomStepId(null);
-                    }
-                    setJourneyStepOverridesStatus(null);
-                    setJourneyStepOrderStatus(null);
-                  }}
-                  className="px-3 py-2 rounded-lg border border-wm-neutral/30 text-wm-blue text-sm font-semibold hover:bg-wm-neutral/10"
-                >
-                  {isJourneyStepManagerOpen ? 'Close stage manager' : 'Manage journey stages'}
-                </button>
-              </div>
-            </div>
-
+            <section className="mb-6">
             {isJourneyStepManagerOpen && (
               <div className="mt-3 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -5424,70 +5518,6 @@ ${domainSlides}
                     );
                   })}
                 </div>
-
-                {/* Active step detail card */}
-                {(() => {
-                  const step = visibleOrderedSteps.find((s) => s.id === selectedStepId);
-                  if (!step) return null;
-                  const stepIndex = visibleOrderedSteps.indexOf(step);
-                  const prevStep = stepIndex > 0 ? visibleOrderedSteps[stepIndex - 1] : null;
-                  const nextStep = stepIndex < visibleOrderedSteps.length - 1 ? visibleOrderedSteps[stepIndex + 1] : null;
-                  const customStage = step.isCustom && step.customStepId ? customStepById.get(step.customStepId) : null;
-                  const childSteps = customStage && Array.isArray(customStage.steps) ? customStage.steps : [];
-
-                  return (
-                    <div className={`rounded-lg border px-4 py-3 ${
-                      step.status === 'current'
-                        ? 'border-wm-accent/30 bg-wm-accent/5'
-                        : 'border-wm-neutral/20 bg-wm-neutral/5'
-                    }`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                              step.status === 'current' ? 'bg-wm-accent text-white' : 'bg-wm-blue/10 text-wm-blue'
-                            }`}>
-                              {stepIndex + 1}
-                            </span>
-                            <span className="text-base font-bold text-wm-blue">{step.title}</span>
-                            {step.isCustom && (
-                              <span className="rounded-full border border-wm-accent/30 bg-wm-accent/10 px-2 py-0.5 text-[11px] font-semibold text-wm-accent">Custom</span>
-                            )}
-                          </div>
-                          {step.description && (
-                            <p className="mt-1 text-sm text-wm-blue/60 ml-8">{step.description}</p>
-                          )}
-                          {childSteps.length > 0 && (
-                            <div className="mt-2 ml-8 flex flex-wrap gap-1.5">
-                              {childSteps.map((cs, ci) => (
-                                <span key={ci} className="inline-flex items-center gap-1 rounded-full border border-wm-neutral/20 bg-white px-2 py-0.5 text-[11px] text-wm-blue/70">
-                                  <span className="font-semibold text-wm-blue/40">{ci + 1}</span>
-                                  {cs.title}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => { if (prevStep && (!prevStep.locked || prevStep.title === 'Company Research')) { setSelectedStepId(prevStep.id); selectedStepDirtyRef.current = true; } }}
-                            disabled={!prevStep || (prevStep.locked && prevStep.title !== 'Company Research')}
-                            className="p-1.5 rounded-lg border border-wm-neutral/20 text-wm-blue/50 hover:text-wm-blue hover:bg-wm-neutral/10 disabled:opacity-30 disabled:cursor-not-allowed"
-                            aria-label="Previous step"
-                          >◀</button>
-                          <button
-                            type="button"
-                            onClick={() => { if (nextStep && (!nextStep.locked || nextStep.title === 'Company Research')) { setSelectedStepId(nextStep.id); selectedStepDirtyRef.current = true; } }}
-                            disabled={!nextStep || (nextStep.locked && nextStep.title !== 'Company Research')}
-                            className="p-1.5 rounded-lg border border-wm-neutral/20 text-wm-blue/50 hover:text-wm-blue hover:bg-wm-neutral/10 disabled:opacity-30 disabled:cursor-not-allowed"
-                            aria-label="Next step"
-                          >▶</button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
             )}
           </section>
@@ -5498,308 +5528,337 @@ ${domainSlides}
 
           {selectedStep?.isCustom && companyId && (
             <section className="mb-6 rounded-xl border border-wm-neutral/30 bg-white p-4 shadow-sm [&_button]:!text-sm [&_input]:!text-sm [&_li]:!text-sm [&_p]:!text-sm [&_span]:!text-sm [&_summary]:!text-sm [&_textarea]:!text-sm">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div>
-                  <h2 className="text-lg font-semibold text-wm-blue">{selectedStep.title}</h2>
-                  <p className="text-sm text-wm-blue/60 mt-1">{selectedStep.description}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsJourneyStepManagerOpen(true)}
-                    className="px-3 py-2 rounded-lg text-sm font-semibold border border-wm-neutral/30 text-wm-blue hover:bg-wm-neutral/10"
-                  >
-                    Manage stages
-                  </button>
-                </div>
+              <div>
+                <h2 className="text-lg font-semibold text-wm-blue">{selectedStep.title}</h2>
+                <p className="text-sm text-wm-blue/60 mt-1">{selectedStep.description}</p>
               </div>
-              <p className="mt-4 text-sm text-wm-blue/70">
-                This is a custom journey stage. Use this area to track bespoke work items for this customer journey.
-              </p>
+              {selectedCustomChildSteps.length > 0 && (
+                <div className="mt-3">
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                    {selectedCustomChildSteps.map((child, childIndex) => {
+                      const isActive = childIndex === selectedCustomActiveChildStepIndex;
+                      return (
+                        <button
+                          key={child.id}
+                          type="button"
+                          onClick={() => {
+                            if (!selectedCustomStep) return;
+                            setActiveChildStepIndexByCustomStepId((prev) => ({
+                              ...prev,
+                              [selectedCustomStep.id]: childIndex,
+                            }));
+                          }}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors ${
+                            isActive
+                              ? 'border-wm-accent bg-wm-accent text-white'
+                              : 'border-wm-neutral/30 bg-white text-wm-blue/70 hover:bg-wm-neutral/10'
+                          }`}
+                          aria-pressed={isActive}
+                        >
+                          <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold ${
+                            isActive ? 'bg-white/20 text-white' : 'bg-wm-neutral/20 text-wm-blue/50'
+                          }`}>
+                            {childIndex + 1}
+                          </span>
+                          {child.title}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {selectedCustomStep && (
-                <div className="mt-4 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-3 space-y-3 text-sm text-wm-blue/80">
-                  <div className="flex flex-wrap gap-2">
-                    <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
-                      <span className="font-semibold text-wm-blue mr-1">Model</span>
-                      {selectedCustomStep.aiModelId || 'Not set'}
-                    </span>
-                    
-                    <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
-                      <span className="font-semibold text-wm-blue mr-1">Docs</span>
-                      {(selectedCustomStep.selectedDocumentIds || []).length}
-                    </span>
-                    <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
-                      <span className="font-semibold text-wm-blue mr-1">Transcripts</span>
-                      {(selectedCustomStep.selectedTranscriptIds || []).length}
-                    </span>
-                    <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
-                      <span className="font-semibold text-wm-blue mr-1">Skills</span>
-                      {(selectedCustomStep.selectedSkillIds || []).length}
-                    </span>
-                    <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
-                      <span className="font-semibold text-wm-blue mr-1">Files</span>
-                      {selectedCustomContextFiles.length}
-                    </span>
-                    <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
-                      <span className="font-semibold text-wm-blue mr-1">Child steps</span>
-                      {selectedCustomChildSteps.length}
-                    </span>
+                <div className="mt-3 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-2 xl:hidden">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm text-wm-blue/80">
+                        Current step in stage: <span className="font-semibold">{selectedCustomPrimaryStep?.title || `Step ${selectedCustomActiveChildStepIndex + 1}`}</span>
+                      </p>
+                      {(selectedCustomPrimaryStep?.description || selectedCustomStep.description) && (
+                        <p className="mt-1 text-[11px] text-wm-blue/70 whitespace-pre-wrap">
+                          {selectedCustomPrimaryStep?.description || selectedCustomStep.description}
+                        </p>
+                      )}
+                      {selectedCustomChildSteps.length > 1 && (
+                        <p className="text-[11px] text-wm-blue/60">
+                          Step {selectedCustomActiveChildStepIndex + 1} of {selectedCustomChildSteps.length}
+                        </p>
+                      )}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
+                          <span className="font-semibold text-wm-blue mr-1">Model</span>
+                          {selectedCustomStep.aiModelId || 'Not set'}
+                        </span>
+
+                        <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
+                          <span className="font-semibold text-wm-blue mr-1">Docs</span>
+                          {(selectedCustomStep.selectedDocumentIds || []).length}
+                        </span>
+                        <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
+                          <span className="font-semibold text-wm-blue mr-1">Transcripts</span>
+                          {(selectedCustomStep.selectedTranscriptIds || []).length}
+                        </span>
+                        <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
+                          <span className="font-semibold text-wm-blue mr-1">Skills</span>
+                          {(selectedCustomStep.selectedSkillIds || []).length}
+                        </span>
+                        <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
+                          <span className="font-semibold text-wm-blue mr-1">Files</span>
+                          {selectedCustomContextFiles.length}
+                        </span>
+                        <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
+                          <span className="font-semibold text-wm-blue mr-1">Child steps</span>
+                          {selectedCustomChildSteps.length}
+                        </span>
+                      </div>
+                    </div>
+                    {!isCustomPromptEditing && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isCustomPromptExpanded) {
+                            setIsCustomPromptExpanded(false);
+                            return;
+                          }
+                          setIsCustomPromptExpanded(true);
+                          setCustomPromptDraft(selectedCustomPrimaryStep?.prompt || selectedCustomStep.prompt || '');
+                          setIsCustomPromptEditing(true);
+                        }}
+                        className="text-[11px] font-semibold text-wm-accent hover:underline"
+                      >
+                        {isCustomPromptExpanded ? 'less...' : 'more...'}
+                      </button>
+                    )}
                   </div>
 
-                  {selectedCustomChildSteps.length > 0 && (
-                    <details className="rounded-lg border border-wm-neutral/20 bg-white px-3 py-2">
-                      <summary className="cursor-pointer text-sm font-semibold text-wm-blue">
-                        View stage steps ({selectedCustomChildSteps.length})
-                      </summary>
-                      <ol className="mt-2 space-y-2">
-                        {selectedCustomChildSteps.map((child, childIndex) => (
-                          <li key={child.id} className="rounded border border-wm-neutral/20 bg-wm-neutral/5 px-2 py-1.5">
-                            <p className="text-sm font-semibold text-wm-blue">Step {childIndex + 1}: {child.title}</p>
-                            {child.description && (
-                              <p className="text-[11px] text-wm-blue/70 mt-0.5">{child.description}</p>
-                            )}
-                          </li>
-                        ))}
-                      </ol>
-                    </details>
-                  )}
-
-                  {(selectedCustomStepDocumentLabels.length > 0 || selectedCustomStepTranscriptLabels.length > 0 || selectedCustomStepSkillLabels.length > 0) && (
-                    <details className="rounded-lg border border-wm-neutral/20 bg-white px-3 py-2">
-                      <summary className="cursor-pointer text-sm font-semibold text-wm-blue">
-                        View selected sources ({selectedCustomStepDocumentLabels.length + selectedCustomStepTranscriptLabels.length + selectedCustomStepSkillLabels.length})
-                      </summary>
-                      <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60 mb-1">Documents</p>
-                          {selectedCustomStepDocumentLabels.length === 0 ? (
-                            <p className="text-sm text-wm-blue/50">None selected</p>
-                          ) : (
-                            <ul className="list-disc pl-4 text-sm space-y-1 max-h-24 overflow-auto">
-                              {selectedCustomStepDocumentLabels.map((label, index) => (
-                                <li key={`doc-${label}-${index}`}>{label}</li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60 mb-1">Meeting transcripts</p>
-                          {selectedCustomStepTranscriptLabels.length === 0 ? (
-                            <p className="text-sm text-wm-blue/50">None selected</p>
-                          ) : (
-                            <ul className="list-disc pl-4 text-sm space-y-1 max-h-24 overflow-auto">
-                              {selectedCustomStepTranscriptLabels.map((label, index) => (
-                                <li key={`tr-${label}-${index}`}>{label}</li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60 mb-1">Skills</p>
-                          {selectedCustomStepSkillLabels.length === 0 ? (
-                            <p className="text-sm text-wm-blue/50">None selected</p>
-                          ) : (
-                            <ul className="list-disc pl-4 text-sm space-y-1 max-h-24 overflow-auto">
-                              {selectedCustomStepSkillLabels.map((label, index) => (
-                                <li key={`skill-${label}-${index}`}>{label}</li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      </div>
-                    </details>
-                  )}
-
-                  {selectedCustomStep && (
-                    <div className="rounded-lg border border-wm-accent/20 bg-white p-3">
-                      <div className="mb-2 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm text-wm-blue/80">
-                              Current step in stage: <span className="font-semibold">{selectedCustomPrimaryStep?.title || `Step ${selectedCustomActiveChildStepIndex + 1}`}</span>
-                            </p>
-                            {(selectedCustomPrimaryStep?.description || selectedCustomStep.description) && (
-                              <p className="mt-1 text-[11px] text-wm-blue/70 whitespace-pre-wrap">
-                                {selectedCustomPrimaryStep?.description || selectedCustomStep.description}
-                              </p>
-                            )}
-                            {selectedCustomChildSteps.length > 1 && (
-                              <p className="text-[11px] text-wm-blue/60">
-                                Step {selectedCustomActiveChildStepIndex + 1} of {selectedCustomChildSteps.length}
-                              </p>
-                            )}
-                          </div>
-                          {!isCustomPromptEditing && (
+                  {(isCustomPromptEditing || isCustomPromptExpanded) && (
+                    <div className="mt-2 border-t border-wm-neutral/20 pt-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Step prompt</p>
+                      {isCustomPromptEditing ? (
+                        <div className="mt-1 space-y-2">
+                          <textarea
+                            value={customPromptDraft}
+                            onChange={(event) => setCustomPromptDraft(event.target.value)}
+                            rows={6}
+                            className="w-full rounded-lg border border-wm-neutral/30 bg-white px-3 py-2 text-sm text-wm-blue"
+                          />
+                          <div className="flex items-center gap-2 justify-end">
                             <button
                               type="button"
                               onClick={() => {
-                                if (isCustomPromptExpanded) {
-                                  setIsCustomPromptExpanded(false);
-                                  return;
-                                }
-                                setIsCustomPromptExpanded(true);
+                                setIsCustomPromptEditing(false);
+                                setIsCustomPromptExpanded(false);
                                 setCustomPromptDraft(selectedCustomPrimaryStep?.prompt || selectedCustomStep.prompt || '');
-                                setIsCustomPromptEditing(true);
                               }}
-                              className="text-[11px] font-semibold text-wm-accent hover:underline"
+                              className="px-2.5 py-1.5 rounded-md text-sm font-semibold border border-wm-neutral/30 text-wm-blue hover:bg-wm-neutral/10"
                             >
-                              {isCustomPromptExpanded ? 'less...' : 'more...'}
+                              Cancel
                             </button>
-                          )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleSaveInlineCustomPrompt();
+                              }}
+                              disabled={isSavingCustomStep}
+                              className={`px-2.5 py-1.5 rounded-md text-sm font-semibold ${
+                                isSavingCustomStep
+                                  ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
+                                  : 'bg-wm-accent text-white hover:bg-wm-accent/90'
+                              }`}
+                            >
+                              Save prompt
+                            </button>
+                          </div>
                         </div>
+                      ) : (
+                        <p className={`mt-1 text-sm text-wm-blue/80 whitespace-pre-wrap ${isCustomPromptExpanded ? '' : 'line-clamp-2'}`}>
+                          {selectedCustomPrimaryStep?.prompt || selectedCustomStep.prompt || 'No prompt provided.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {selectedCustomStep && (
+                <div className="mt-4 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-3 space-y-3 text-sm text-wm-blue/80">
+                  {selectedCustomStep && (
+                    <div className="rounded-lg border border-wm-accent/20 bg-white p-3">
+                      {isCustomContextDrawerOpen && (
+                        <div className="fixed inset-0 z-50 flex justify-end bg-black/20" onClick={() => setIsCustomContextDrawerOpen(false)}>
+                          <aside
+                            className="h-full w-full max-w-2xl overflow-y-auto border-l border-wm-neutral/20 bg-white shadow-2xl"
+                            onClick={(event) => event.stopPropagation()}
+                            aria-label="Step context drawer"
+                          >
+                            <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-wm-neutral/20 bg-white px-4 py-3">
+                              <div>
+                                <p className="text-sm font-semibold uppercase tracking-wide text-wm-blue/60">Step context drawer</p>
+                                <p className="text-sm text-wm-blue">Context files and readiness checks</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setIsCustomContextDrawerOpen(false)}
+                                className="rounded-md border border-wm-neutral/30 px-2 py-1 text-sm font-semibold text-wm-blue hover:bg-wm-neutral/10"
+                              >
+                                Close
+                              </button>
+                            </div>
 
-                        {(isCustomPromptEditing || isCustomPromptExpanded) && (
-                          <div className="mt-2 border-t border-wm-neutral/20 pt-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Step prompt</p>
-                            {isCustomPromptEditing ? (
-                              <div className="mt-1 space-y-2">
-                                <textarea
-                                  value={customPromptDraft}
-                                  onChange={(event) => setCustomPromptDraft(event.target.value)}
-                                  rows={6}
-                                  className="w-full rounded-lg border border-wm-neutral/30 bg-white px-3 py-2 text-sm text-wm-blue"
+                            <div className="space-y-3 p-4">
+                              <div className="rounded-lg border border-wm-neutral/20 bg-white p-2">
+                                <input
+                                  ref={customStepContextFileInputRef}
+                                  type="file"
+                                  multiple
+                                  className="hidden"
+                                  accept=".txt,.md,.csv,.json,.pdf,.docx,text/plain,text/markdown,text/csv,application/json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                  onChange={handleAddCustomStepContextFiles}
                                 />
-                                <div className="flex items-center gap-2 justify-end">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-sm font-semibold text-wm-blue">Step context files</p>
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setIsCustomPromptEditing(false);
-                                      setIsCustomPromptExpanded(false);
-                                      setCustomPromptDraft(selectedCustomPrimaryStep?.prompt || selectedCustomStep.prompt || '');
-                                    }}
-                                    className="px-2.5 py-1.5 rounded-md text-sm font-semibold border border-wm-neutral/30 text-wm-blue hover:bg-wm-neutral/10"
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void handleSaveInlineCustomPrompt();
-                                    }}
-                                    disabled={isSavingCustomStep}
+                                    onClick={() => customStepContextFileInputRef.current?.click()}
+                                    disabled={isAttachingCustomStepContextFile || selectedCustomContextFiles.length >= MAX_CUSTOM_STEP_CONTEXT_FILES}
                                     className={`px-2.5 py-1.5 rounded-md text-sm font-semibold ${
-                                      isSavingCustomStep
+                                      isAttachingCustomStepContextFile || selectedCustomContextFiles.length >= MAX_CUSTOM_STEP_CONTEXT_FILES
                                         ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
                                         : 'bg-wm-accent text-white hover:bg-wm-accent/90'
                                     }`}
                                   >
-                                    Save prompt
+                                    {isAttachingCustomStepContextFile ? 'Attaching...' : 'Add files'}
                                   </button>
                                 </div>
+                                <p className="mt-1 text-[11px] text-wm-blue/60">
+                                  Add up to {MAX_CUSTOM_STEP_CONTEXT_FILES} files for this step. Text, Markdown, CSV, JSON, PDF, and DOCX are supported.
+                                </p>
+                                {selectedCustomContextFiles.length > 0 && (
+                                  <ul className="mt-2 flex flex-wrap gap-2">
+                                    {selectedCustomContextFiles.map((file) => (
+                                      <li key={file.id} className="inline-flex items-center gap-2 rounded-full border border-wm-neutral/30 bg-wm-neutral/5 px-2 py-1 text-[11px] text-wm-blue">
+                                        <span className="max-w-[220px] truncate" title={file.name}>{file.name}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveCustomStepContextFile(file.id)}
+                                          className="text-wm-blue/60 hover:text-wm-pink"
+                                          aria-label={`Remove ${file.name}`}
+                                        >
+                                          ✕
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
                               </div>
-                            ) : (
-                              <p className={`mt-1 text-sm text-wm-blue/80 whitespace-pre-wrap ${isCustomPromptExpanded ? '' : 'line-clamp-2'}`}>
-                                {selectedCustomPrimaryStep?.prompt || selectedCustomStep.prompt || 'No prompt provided.'}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
 
-                      <div className="rounded-lg border border-wm-neutral/20 bg-white p-2">
-                        <input
-                          ref={customStepContextFileInputRef}
-                          type="file"
-                          multiple
-                          className="hidden"
-                          accept=".txt,.md,.csv,.json,.pdf,.docx,text/plain,text/markdown,text/csv,application/json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                          onChange={handleAddCustomStepContextFiles}
-                        />
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-wm-blue">Step context files</p>
-                          <button
-                            type="button"
-                            onClick={() => customStepContextFileInputRef.current?.click()}
-                            disabled={isAttachingCustomStepContextFile || selectedCustomContextFiles.length >= MAX_CUSTOM_STEP_CONTEXT_FILES}
-                            className={`px-2.5 py-1.5 rounded-md text-sm font-semibold ${
-                              isAttachingCustomStepContextFile || selectedCustomContextFiles.length >= MAX_CUSTOM_STEP_CONTEXT_FILES
-                                ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
-                                : 'bg-wm-accent text-white hover:bg-wm-accent/90'
-                            }`}
-                          >
-                            {isAttachingCustomStepContextFile ? 'Attaching...' : 'Add files'}
-                          </button>
+                              {(selectedCustomStepDocumentLabels.length > 0 || selectedCustomStepTranscriptLabels.length > 0 || selectedCustomStepSkillLabels.length > 0) && (
+                                <details className="rounded-lg border border-wm-neutral/20 bg-white px-3 py-2">
+                                  <summary className="cursor-pointer text-sm font-semibold text-wm-blue">
+                                    View selected sources ({selectedCustomStepDocumentLabels.length + selectedCustomStepTranscriptLabels.length + selectedCustomStepSkillLabels.length})
+                                  </summary>
+                                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div>
+                                      <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60 mb-1">Documents</p>
+                                      {selectedCustomStepDocumentLabels.length === 0 ? (
+                                        <p className="text-sm text-wm-blue/50">None selected</p>
+                                      ) : (
+                                        <ul className="list-disc pl-4 text-sm space-y-1 max-h-24 overflow-auto">
+                                          {selectedCustomStepDocumentLabels.map((label, index) => (
+                                            <li key={`doc-${label}-${index}`}>{label}</li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60 mb-1">Meeting transcripts</p>
+                                      {selectedCustomStepTranscriptLabels.length === 0 ? (
+                                        <p className="text-sm text-wm-blue/50">None selected</p>
+                                      ) : (
+                                        <ul className="list-disc pl-4 text-sm space-y-1 max-h-24 overflow-auto">
+                                          {selectedCustomStepTranscriptLabels.map((label, index) => (
+                                            <li key={`tr-${label}-${index}`}>{label}</li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60 mb-1">Skills</p>
+                                      {selectedCustomStepSkillLabels.length === 0 ? (
+                                        <p className="text-sm text-wm-blue/50">None selected</p>
+                                      ) : (
+                                        <ul className="list-disc pl-4 text-sm space-y-1 max-h-24 overflow-auto">
+                                          {selectedCustomStepSkillLabels.map((label, index) => (
+                                            <li key={`skill-${label}-${index}`}>{label}</li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </div>
+                                  </div>
+                                </details>
+                              )}
+
+                              <div className="mb-2 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Context gap check</p>
+                                    <p className="text-sm text-wm-blue/80 mt-0.5">
+                                      Compares selected source context against this step's goals before execution.
+                                    </p>
+                                  </div>
+                                  <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${selectedCustomStepReadinessTone}`}>
+                                    {selectedCustomStepContextGap.readinessLabel} · {selectedCustomStepContextGap.readinessScore}%
+                                  </span>
+                                </div>
+
+                                <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] text-wm-blue/70">
+                                  <div className="rounded border border-wm-neutral/20 bg-white px-2 py-1.5">
+                                    <p className="uppercase tracking-wide text-wm-blue/50">Documents</p>
+                                    <p className="font-semibold text-wm-blue text-sm">{selectedCustomStepDocumentLabels.length}</p>
+                                  </div>
+                                  <div className="rounded border border-wm-neutral/20 bg-white px-2 py-1.5">
+                                    <p className="uppercase tracking-wide text-wm-blue/50">Transcripts</p>
+                                    <p className="font-semibold text-wm-blue text-sm">{selectedCustomStepTranscriptLabels.length}</p>
+                                  </div>
+                                  <div className="rounded border border-wm-neutral/20 bg-white px-2 py-1.5">
+                                    <p className="uppercase tracking-wide text-wm-blue/50">Skills</p>
+                                    <p className="font-semibold text-wm-blue text-sm">{selectedCustomStepSkillLabels.length}</p>
+                                  </div>
+                                  <div className="rounded border border-wm-neutral/20 bg-white px-2 py-1.5">
+                                    <p className="uppercase tracking-wide text-wm-blue/50">Attached files</p>
+                                    <p className="font-semibold text-wm-blue text-sm">{selectedCustomContextFiles.length}</p>
+                                  </div>
+                                </div>
+
+                                <p className="mt-2 text-[11px] text-wm-blue/60">
+                                  Goal keyword coverage: {selectedCustomStepContextGap.coveredGoalTokens} / {selectedCustomStepContextGap.totalGoalTokens || 0}
+                                </p>
+
+                                {selectedCustomStepContextGap.gaps.length > 0 ? (
+                                  <div className="mt-2 rounded border border-rose-200 bg-rose-50 px-2 py-1.5">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Detected gaps</p>
+                                    <ul className="mt-1 list-disc pl-4 text-xs text-rose-700 space-y-0.5">
+                                      {selectedCustomStepContextGap.gaps.map((gap, index) => (
+                                        <li key={`ctx-gap-${index}`}>{gap}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                ) : (
+                                  <p className="mt-2 text-xs text-emerald-700">No major context gaps detected for this step.</p>
+                                )}
+
+                                <div className="mt-2 rounded border border-wm-neutral/20 bg-white px-2 py-1.5">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Readiness recommendations</p>
+                                  <ul className="mt-1 list-disc pl-4 text-xs text-wm-blue/70 space-y-0.5">
+                                    {selectedCustomStepContextGap.recommendations.slice(0, 3).map((rec, index) => (
+                                      <li key={`ctx-rec-${index}`}>{rec}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                          </aside>
                         </div>
-                        <p className="mt-1 text-[11px] text-wm-blue/60">
-                          Add up to {MAX_CUSTOM_STEP_CONTEXT_FILES} files for this step. Text, Markdown, CSV, JSON, PDF, and DOCX are supported.
-                        </p>
-                        {selectedCustomContextFiles.length > 0 && (
-                          <ul className="mt-2 flex flex-wrap gap-2">
-                            {selectedCustomContextFiles.map((file) => (
-                              <li key={file.id} className="inline-flex items-center gap-2 rounded-full border border-wm-neutral/30 bg-wm-neutral/5 px-2 py-1 text-[11px] text-wm-blue">
-                                <span className="max-w-[220px] truncate" title={file.name}>{file.name}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveCustomStepContextFile(file.id)}
-                                  className="text-wm-blue/60 hover:text-wm-pink"
-                                  aria-label={`Remove ${file.name}`}
-                                >
-                                  ✕
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-
-                      <div className="mb-2 rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Context gap check</p>
-                            <p className="text-sm text-wm-blue/80 mt-0.5">
-                              Compares selected source context against this step's goals before execution.
-                            </p>
-                          </div>
-                          <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${selectedCustomStepReadinessTone}`}>
-                            {selectedCustomStepContextGap.readinessLabel} · {selectedCustomStepContextGap.readinessScore}%
-                          </span>
-                        </div>
-
-                        <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] text-wm-blue/70">
-                          <div className="rounded border border-wm-neutral/20 bg-white px-2 py-1.5">
-                            <p className="uppercase tracking-wide text-wm-blue/50">Documents</p>
-                            <p className="font-semibold text-wm-blue text-sm">{selectedCustomStepDocumentLabels.length}</p>
-                          </div>
-                          <div className="rounded border border-wm-neutral/20 bg-white px-2 py-1.5">
-                            <p className="uppercase tracking-wide text-wm-blue/50">Transcripts</p>
-                            <p className="font-semibold text-wm-blue text-sm">{selectedCustomStepTranscriptLabels.length}</p>
-                          </div>
-                          <div className="rounded border border-wm-neutral/20 bg-white px-2 py-1.5">
-                            <p className="uppercase tracking-wide text-wm-blue/50">Skills</p>
-                            <p className="font-semibold text-wm-blue text-sm">{selectedCustomStepSkillLabels.length}</p>
-                          </div>
-                          <div className="rounded border border-wm-neutral/20 bg-white px-2 py-1.5">
-                            <p className="uppercase tracking-wide text-wm-blue/50">Attached files</p>
-                            <p className="font-semibold text-wm-blue text-sm">{selectedCustomContextFiles.length}</p>
-                          </div>
-                        </div>
-
-                        <p className="mt-2 text-[11px] text-wm-blue/60">
-                          Goal keyword coverage: {selectedCustomStepContextGap.coveredGoalTokens} / {selectedCustomStepContextGap.totalGoalTokens || 0}
-                        </p>
-
-                        {selectedCustomStepContextGap.gaps.length > 0 ? (
-                          <div className="mt-2 rounded border border-rose-200 bg-rose-50 px-2 py-1.5">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Detected gaps</p>
-                            <ul className="mt-1 list-disc pl-4 text-xs text-rose-700 space-y-0.5">
-                              {selectedCustomStepContextGap.gaps.map((gap, index) => (
-                                <li key={`ctx-gap-${index}`}>{gap}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : (
-                          <p className="mt-2 text-xs text-emerald-700">No major context gaps detected for this step.</p>
-                        )}
-
-                        <div className="mt-2 rounded border border-wm-neutral/20 bg-white px-2 py-1.5">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Readiness recommendations</p>
-                          <ul className="mt-1 list-disc pl-4 text-xs text-wm-blue/70 space-y-0.5">
-                            {selectedCustomStepContextGap.recommendations.slice(0, 3).map((rec, index) => (
-                              <li key={`ctx-rec-${index}`}>{rec}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
+                      )}
 
                       {shouldPromptForNextStepDocument && (
                         <div className="mb-2 rounded-lg border border-wm-accent/25 bg-wm-accent/5 p-2">
@@ -5945,17 +6004,20 @@ ${domainSlides}
                             <p className="text-sm text-wm-blue/60 mt-1">
                               Edit activity-level inputs, final output expectations, and additional context before each run.
                             </p>
+                            {selectedCustomStepTokenUsage && (
+                              <p className="text-xs text-wm-blue/70 mt-1">
+                                Tokens used (estimated): {selectedCustomStepTokenUsage.totalTokens.toLocaleString()} total
+                                {' '}({selectedCustomStepTokenUsage.inputTokens.toLocaleString()} input / {selectedCustomStepTokenUsage.outputTokens.toLocaleString()} output)
+                                {selectedCustomStepTokenUsage.activityCount > 1
+                                  ? ` across ${selectedCustomStepTokenUsage.activityCount} activities`
+                                  : ''}
+                              </p>
+                            )}
                           </div>
                           <button
                             type="button"
                             onClick={() => {
-                              if (!selectedCustomStep) return;
-                              void handleSendCustomStepChat(
-                                buildRunStepExecutionMessage(),
-                                true,
-                                true,
-                                true
-                              );
+                              void handleRunStepExecutionWithActivities();
                             }}
                             disabled={isCustomStepChatSending}
                             className={`px-3 py-2 rounded-lg text-sm font-semibold ${
@@ -5972,77 +6034,9 @@ ${domainSlides}
                           </button>
                         </div>
 
-                        {selectedCustomPromptActivities.length > 0 && (
-                          <div className="mt-2 rounded-lg border border-wm-neutral/20 bg-white p-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Activities from prompt (editable)</p>
-                            <div className="mt-2 space-y-2">
-                              {selectedCustomPromptActivities.map((activity, index) => (
-                                <div key={`activity-edit-${activity.id}`} className="rounded border border-wm-neutral/20 bg-wm-neutral/5 p-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (!selectedCustomStep) return;
-                                      const stepId = selectedCustomStep.id;
-                                      setExpandedCustomActivityByStepId((prev) => ({
-                                        ...prev,
-                                        [stepId]: prev[stepId] === activity.id ? null : activity.id,
-                                      }));
-                                    }}
-                                    className="w-full flex items-center justify-between gap-2 text-left"
-                                  >
-                                    <p className="text-sm font-semibold text-wm-blue">Activity {index + 1}: {activity.title}</p>
-                                    <span className="text-xs font-semibold text-wm-accent">
-                                      {selectedCustomExpandedActivityId === activity.id ? 'Collapse' : 'Expand'}
-                                    </span>
-                                  </button>
-
-                                  {selectedCustomExpandedActivityId === activity.id && (
-                                    <textarea
-                                      value={selectedCustomActivityNotes[activity.id] || ''}
-                                      onChange={(event) => {
-                                        if (!selectedCustomStep) return;
-                                        const stepId = selectedCustomStep.id;
-                                        const value = event.target.value;
-                                        setCustomStepActivityNotesByStepId((prev) => ({
-                                          ...prev,
-                                          [stepId]: {
-                                            ...(prev[stepId] || {}),
-                                            [activity.id]: value,
-                                          },
-                                        }));
-                                      }}
-                                      rows={3}
-                                      placeholder="Add details, constraints, assumptions, or clarifications for this activity"
-                                      className="mt-1 w-full rounded border border-wm-neutral/30 bg-white px-2 py-1.5 text-sm text-wm-blue"
-                                    />
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="mt-2 rounded-lg border border-wm-neutral/20 bg-white p-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Final output for this step (editable)</p>
-                          <textarea
-                            value={selectedCustomFinalOutputDraft}
-                            onChange={(event) => {
-                              if (!selectedCustomStep) return;
-                              const stepId = selectedCustomStep.id;
-                              setCustomStepFinalOutputByStepId((prev) => ({
-                                ...prev,
-                                [stepId]: event.target.value,
-                              }));
-                            }}
-                            rows={3}
-                            placeholder="Define the expected final output format and quality bar for this step"
-                            className="mt-1 w-full rounded border border-wm-neutral/30 bg-white px-2 py-1.5 text-sm text-wm-blue"
-                          />
-                        </div>
-
                         <div className="mt-2 rounded-lg border border-wm-neutral/20 bg-white p-2">
                           <div className="flex items-center justify-between gap-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Additional context for rerun</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Additional context</p>
                             <button
                               type="button"
                               onClick={() => {
@@ -6070,6 +6064,157 @@ ${domainSlides}
                             }}
                             rows={3}
                             placeholder="Add incremental context, corrections, or new constraints, then click Re-run Step"
+                            className="mt-1 w-full rounded border border-wm-neutral/30 bg-white px-2 py-1.5 text-sm text-wm-blue"
+                          />
+                        </div>
+
+                        {selectedCustomPromptActivities.length > 0 && (
+                          <div className="mt-2 rounded-lg border border-wm-neutral/20 bg-white p-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Activities from prompt (editable)</p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!selectedCustomStep) return;
+                                  const stepId = selectedCustomStep.id;
+                                  const nextExpanded = !areAllSelectedCustomActivitiesExpanded;
+                                  const nextMap = selectedCustomPromptActivities.reduce<Record<string, boolean>>((acc, activity) => {
+                                    acc[activity.id] = nextExpanded;
+                                    return acc;
+                                  }, {});
+                                  setExpandedCustomActivityByStepId((prev) => ({
+                                    ...prev,
+                                    [stepId]: nextMap,
+                                  }));
+                                }}
+                                className="text-[11px] font-semibold text-wm-accent hover:underline"
+                              >
+                                {areAllSelectedCustomActivitiesExpanded ? 'Collapse all' : 'Expand all'}
+                              </button>
+                            </div>
+                            <div className="mt-2 space-y-2">
+                              {selectedCustomPromptActivities.map((activity, index) => (
+                                <div key={`activity-edit-${activity.id}`} className="rounded border border-wm-neutral/20 bg-wm-neutral/5 p-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!selectedCustomStep) return;
+                                      const stepId = selectedCustomStep.id;
+                                      setExpandedCustomActivityByStepId((prev) => ({
+                                        ...prev,
+                                        [stepId]: {
+                                          ...(prev[stepId] || {}),
+                                          [activity.id]: !(prev[stepId]?.[activity.id] ?? false),
+                                        },
+                                      }));
+                                    }}
+                                    className="w-full flex items-center justify-between gap-2 text-left"
+                                  >
+                                    <p className="text-sm font-semibold text-wm-blue">Activity {index + 1}: {activity.title}</p>
+                                    <span className="text-xs font-semibold text-wm-accent">
+                                      {selectedCustomExpandedActivityMap[activity.id] ? 'Collapse' : 'Expand'}
+                                    </span>
+                                  </button>
+
+                                  {selectedCustomExpandedActivityMap[activity.id] && (
+                                    <>
+                                      <textarea
+                                        ref={(element) => {
+                                          if (!element) return;
+                                          element.style.height = 'auto';
+                                          element.style.height = `${element.scrollHeight}px`;
+                                        }}
+                                        value={selectedCustomEditableActivityValueById[activity.id] || ''}
+                                        onChange={(event) => {
+                                          const value = event.target.value;
+                                          event.target.style.height = 'auto';
+                                          event.target.style.height = `${event.target.scrollHeight}px`;
+                                          updateSelectedActivityEditorValue(activity.id, value);
+                                        }}
+                                        rows={3}
+                                        placeholder="Add details, constraints, assumptions, or clarifications for this activity. Generated activity response appears here and is editable."
+                                        className="mt-1 w-full resize-none overflow-hidden rounded border border-wm-neutral/30 bg-white px-2 py-1.5 text-sm text-wm-blue"
+                                      />
+                                      {selectedCustomActivityEditorPartsById[activity.id]?.table && (
+                                        <div className="mt-2 overflow-x-auto rounded border border-wm-neutral/20">
+                                          <table className="min-w-full text-sm text-wm-blue bg-white">
+                                            <thead className="bg-wm-neutral/10">
+                                              <tr>
+                                                {selectedCustomActivityEditorPartsById[activity.id]?.table?.headers.map((headerCell, headerIndex) => (
+                                                  <th key={`activity-table-header-${activity.id}-${headerIndex}`} className="border-b border-wm-neutral/20 px-2 py-1.5 text-left align-top">
+                                                    <input
+                                                      type="text"
+                                                      value={headerCell}
+                                                      onChange={(event) => {
+                                                        const existing = selectedCustomActivityEditorPartsById[activity.id];
+                                                        if (!existing?.table) return;
+                                                        const nextTable: ParsedMarkdownTable = {
+                                                          headers: [...existing.table.headers],
+                                                          rows: existing.table.rows.map((row) => [...row]),
+                                                        };
+                                                        nextTable.headers[headerIndex] = event.target.value;
+                                                        updateSelectedActivityEditorValue(activity.id, selectedCustomEditableActivityValueById[activity.id] || '', nextTable);
+                                                      }}
+                                                      className="w-full rounded border border-wm-neutral/30 bg-white px-2 py-1 text-sm font-semibold text-wm-blue"
+                                                    />
+                                                  </th>
+                                                ))}
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {selectedCustomActivityEditorPartsById[activity.id]?.table?.rows.map((row, rowIndex) => (
+                                                <tr key={`activity-table-row-${activity.id}-${rowIndex}`} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-wm-neutral/5'}>
+                                                  {row.map((cell, cellIndex) => (
+                                                    <td key={`activity-table-cell-${activity.id}-${rowIndex}-${cellIndex}`} className="border-b border-wm-neutral/10 px-2 py-1 align-top">
+                                                      <input
+                                                        type="text"
+                                                        value={cell}
+                                                        onChange={(event) => {
+                                                          const existing = selectedCustomActivityEditorPartsById[activity.id];
+                                                          if (!existing?.table) return;
+                                                          const nextTable: ParsedMarkdownTable = {
+                                                            headers: [...existing.table.headers],
+                                                            rows: existing.table.rows.map((existingRow) => [...existingRow]),
+                                                          };
+                                                          if (!nextTable.rows[rowIndex]) return;
+                                                          nextTable.rows[rowIndex][cellIndex] = event.target.value;
+                                                          updateSelectedActivityEditorValue(activity.id, selectedCustomEditableActivityValueById[activity.id] || '', nextTable);
+                                                        }}
+                                                        className="w-full rounded border border-wm-neutral/20 bg-white px-2 py-1 text-sm text-wm-blue"
+                                                      />
+                                                    </td>
+                                                  ))}
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      )}
+                                      {selectedCustomRunningActivityId === activity.id && !(selectedCustomActivityResponses[activity.id] || '').trim() && (
+                                        <p className="mt-2 text-sm text-wm-blue/60">Generating response...</p>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mt-2 rounded-lg border border-wm-neutral/20 bg-white p-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Final output for this step (editable)</p>
+                          <textarea
+                            value={selectedCustomFinalOutputDraft}
+                            onChange={(event) => {
+                              if (!selectedCustomStep) return;
+                              const stepId = selectedCustomStep.id;
+                              setCustomStepFinalOutputByStepId((prev) => ({
+                                ...prev,
+                                [stepId]: event.target.value,
+                              }));
+                            }}
+                            rows={3}
+                            placeholder="Define the expected final output format and quality bar for this step"
                             className="mt-1 w-full rounded border border-wm-neutral/30 bg-white px-2 py-1.5 text-sm text-wm-blue"
                           />
                         </div>
@@ -7515,6 +7660,179 @@ ${domainSlides}
 
         </div>
       </main>
+
+      {hasResearch && !isJourneyStepManagerOpen && (
+        <aside
+          className={`hidden xl:flex border-l border-wm-neutral/20 bg-white transition-all duration-200 ease-in-out ${
+            isRightSidebarCollapsed ? 'w-16' : 'w-[21rem]'
+          }`}
+        >
+          <div className="flex h-full w-full flex-col">
+            <div className="border-b border-wm-neutral/20 p-2 flex items-center justify-between gap-2">
+              {!isRightSidebarCollapsed && <p className="text-sm font-semibold text-wm-blue">Journey sidebar</p>}
+              <button
+                type="button"
+                onClick={() => setIsRightSidebarCollapsed((prev) => !prev)}
+                className="ml-auto rounded-md border border-wm-neutral/30 px-2 py-1 text-sm font-semibold text-wm-blue hover:bg-wm-neutral/10"
+                aria-label={isRightSidebarCollapsed ? 'Expand right sidebar' : 'Collapse right sidebar'}
+                title={isRightSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              >
+                {isRightSidebarCollapsed ? '◀' : '▶'}
+              </button>
+            </div>
+
+            {!isRightSidebarCollapsed && (
+              <div className="flex-1 overflow-y-auto p-3">
+                {selectedStep?.isCustom && selectedCustomStep ? (
+                  <div className="rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm text-wm-blue/80">
+                          Current step in stage: <span className="font-semibold">{selectedCustomPrimaryStep?.title || `Step ${selectedCustomActiveChildStepIndex + 1}`}</span>
+                        </p>
+                        {(selectedCustomPrimaryStep?.description || selectedCustomStep.description) && (
+                          <p className="mt-1 text-[11px] text-wm-blue/70 whitespace-pre-wrap">
+                            {selectedCustomPrimaryStep?.description || selectedCustomStep.description}
+                          </p>
+                        )}
+                        {selectedCustomChildSteps.length > 1 && (
+                          <p className="text-[11px] text-wm-blue/60">
+                            Step {selectedCustomActiveChildStepIndex + 1} of {selectedCustomChildSteps.length}
+                          </p>
+                        )}
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
+                            <span className="font-semibold text-wm-blue mr-1">Model</span>
+                            {selectedCustomStep.aiModelId || 'Not set'}
+                          </span>
+                          <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
+                            <span className="font-semibold text-wm-blue mr-1">Docs</span>
+                            {(selectedCustomStep.selectedDocumentIds || []).length}
+                          </span>
+                          <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
+                            <span className="font-semibold text-wm-blue mr-1">Transcripts</span>
+                            {(selectedCustomStep.selectedTranscriptIds || []).length}
+                          </span>
+                          <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
+                            <span className="font-semibold text-wm-blue mr-1">Skills</span>
+                            {(selectedCustomStep.selectedSkillIds || []).length}
+                          </span>
+                          <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
+                            <span className="font-semibold text-wm-blue mr-1">Files</span>
+                            {selectedCustomContextFiles.length}
+                          </span>
+                          <span className="inline-flex items-center rounded-full bg-white border border-wm-neutral/30 px-2.5 py-1 text-sm">
+                            <span className="font-semibold text-wm-blue mr-1">Child steps</span>
+                            {selectedCustomChildSteps.length}
+                          </span>
+                        </div>
+                      </div>
+                      {!isCustomPromptEditing && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isCustomPromptExpanded) {
+                              setIsCustomPromptExpanded(false);
+                              return;
+                            }
+                            setIsCustomPromptExpanded(true);
+                            setCustomPromptDraft(selectedCustomPrimaryStep?.prompt || selectedCustomStep.prompt || '');
+                            setIsCustomPromptEditing(true);
+                          }}
+                          className="text-[11px] font-semibold text-wm-accent hover:underline"
+                        >
+                          {isCustomPromptExpanded ? 'less...' : 'more...'}
+                        </button>
+                      )}
+                    </div>
+
+                    {(isCustomPromptEditing || isCustomPromptExpanded) && (
+                      <div className="mt-2 border-t border-wm-neutral/20 pt-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-wm-blue/60">Step prompt</p>
+                        {isCustomPromptEditing ? (
+                          <div className="mt-1 space-y-2">
+                            <textarea
+                              value={customPromptDraft}
+                              onChange={(event) => setCustomPromptDraft(event.target.value)}
+                              rows={6}
+                              className="w-full rounded-lg border border-wm-neutral/30 bg-white px-3 py-2 text-sm text-wm-blue"
+                            />
+                            <div className="flex items-center gap-2 justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsCustomPromptEditing(false);
+                                  setIsCustomPromptExpanded(false);
+                                  setCustomPromptDraft(selectedCustomPrimaryStep?.prompt || selectedCustomStep.prompt || '');
+                                }}
+                                className="px-2.5 py-1.5 rounded-md text-sm font-semibold border border-wm-neutral/30 text-wm-blue hover:bg-wm-neutral/10"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleSaveInlineCustomPrompt();
+                                }}
+                                disabled={isSavingCustomStep}
+                                className={`px-2.5 py-1.5 rounded-md text-sm font-semibold ${
+                                  isSavingCustomStep
+                                    ? 'bg-wm-neutral/20 text-wm-blue/40 cursor-not-allowed'
+                                    : 'bg-wm-accent text-white hover:bg-wm-accent/90'
+                                }`}
+                              >
+                                Save prompt
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className={`mt-1 text-sm text-wm-blue/80 whitespace-pre-wrap ${isCustomPromptExpanded ? '' : 'line-clamp-2'}`}>
+                            {selectedCustomPrimaryStep?.prompt || selectedCustomStep.prompt || 'No prompt provided.'}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="mt-3 rounded-lg border border-wm-neutral/20 bg-white p-3">
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div>
+                          <p className="text-sm font-semibold text-wm-blue">Step context and readiness</p>
+                          <p className="mt-1 text-sm text-wm-blue/70">
+                            Manage context files and run context gap checks from the right sidebar drawer.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsCustomContextDrawerOpen(true)}
+                          className="px-3 py-2 rounded-lg text-sm font-semibold bg-wm-accent text-white hover:bg-wm-accent/90"
+                        >
+                          Open context drawer
+                        </button>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-wm-blue/70">
+                        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 font-semibold ${selectedCustomStepReadinessTone}`}>
+                          {selectedCustomStepContextGap.readinessLabel} · {selectedCustomStepContextGap.readinessScore}%
+                        </span>
+                        <span className="inline-flex items-center rounded-full border border-wm-neutral/30 bg-wm-neutral/5 px-2.5 py-1">
+                          Files {selectedCustomContextFiles.length}/{MAX_CUSTOM_STEP_CONTEXT_FILES}
+                        </span>
+                        <span className="inline-flex items-center rounded-full border border-wm-neutral/30 bg-wm-neutral/5 px-2.5 py-1">
+                          Coverage {selectedCustomStepContextGap.coveredGoalTokens}/{selectedCustomStepContextGap.totalGoalTokens || 0}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-wm-neutral/20 bg-wm-neutral/5 p-3">
+                    <p className="text-sm font-semibold text-wm-blue">Current step in stage</p>
+                    <p className="mt-1 text-sm text-wm-blue/60">Select a custom stage to view step details in this sidebar.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </aside>
+      )}
     </div>
   );
 };
